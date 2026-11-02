@@ -50,7 +50,7 @@ The deploy-time `config.json` sits beside `layers-input.json` and is merged over
 
 | Key | Description |
 |---|---|
-| `llm_models` | Array of `{ value, label, endpoint, api_key }`, the models offered in the chat footer. |
+| `llm_models` | Array of `{ value, label, endpoint, api_key }`, the models offered in the chat footer. The app sends `api_key` as `Authorization: Bearer …`. Leave it out when a same-origin proxy injects the real key: the app then sends no `Authorization` header, which a page behind HTTP basic auth needs, because a header the page sets replaces the browser's saved password. |
 | `llm_model` | Which of them is selected on load. Defaults to the first. |
 | `mcp_server_url` | MCP server URL. Overrides `mcp_url` from `layers-input.json`; with [`mcp_servers`](./configuration#multiple-mcp-servers), it replaces only the first (primary) server's URL. |
 | `mcp_auth_token` | Sent to the MCP server (the primary, with `mcp_servers`) as `Authorization: Bearer …`. |

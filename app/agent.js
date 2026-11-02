@@ -13,6 +13,7 @@
  */
 
 import { isFailedToolResult } from './tool-registry.js';
+import { bearerHeader } from './llm-auth.js';
 
 // The pinned ref the app was loaded from lives in the module URL itself
 // (…/SchmidtDSE/glen@v3.36.0/app/agent.js, or …/boettiger-lab/geo-agent@<ref>/… before
@@ -747,7 +748,7 @@ export class Agent {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${modelConfig.api_key}`,
+                    ...bearerHeader(modelConfig.api_key),
                     ...this._clientHeaders(endpoint),
                 },
                 body: JSON.stringify(payload),
