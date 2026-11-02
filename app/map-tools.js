@@ -389,7 +389,27 @@ ${pickLayerNudge}`,
                 type: 'object',
                 properties: {
                     layer_id: { type: 'string', description: 'Layer ID to style' },
-                    style: { type: 'object', description: 'MapLibre paint properties object' }
+                    style: {
+                        type: 'object',
+                        description: 'MapLibre paint properties object, e.g. {"fill-color": "#ff0000", "fill-opacity": 0.8}. Never a string.',
+                        // Named properties give constrained decoders something to
+                        // generate; a property-less object schema collapsed to "" (#409).
+                        properties: {
+                            'fill-color': { description: 'Fill color, or an expression' },
+                            'fill-opacity': { description: 'Fill opacity 0–1, or an expression' },
+                            'fill-outline-color': { description: 'Fill outline color' },
+                            'line-color': { description: 'Line color, or an expression' },
+                            'line-width': { description: 'Line width in pixels, or an expression' },
+                            'line-opacity': { description: 'Line opacity 0–1' },
+                            'circle-color': { description: 'Circle color, or an expression' },
+                            'circle-radius': { description: 'Circle radius in pixels, or an expression' },
+                            'circle-opacity': { description: 'Circle opacity 0–1' },
+                            'fill-extrusion-color': { description: 'Extrusion color, or an expression' },
+                            'fill-extrusion-opacity': { description: 'Extrusion opacity 0–1' },
+                            'raster-opacity': { description: 'Raster opacity 0–1' },
+                        },
+                        additionalProperties: true,
+                    }
                 },
                 required: ['layer_id', 'style']
             },
