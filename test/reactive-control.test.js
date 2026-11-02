@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { buildControlAction, ReactiveControl } from '../app/reactive-control.js';
 
 describe('buildControlAction', () => {
@@ -81,5 +81,60 @@ describe('ReactiveControl (no-DOM core)', () => {
         const { ctrl } = makeControl({ field: 'YEAR_', min: 1835, max: 2024 });
         expect(() => ctrl.destroy()).not.toThrow();
         expect(ctrl.destroyed).toBe(true);
+    });
+});
+
+describe('step-slider autoplay stays on the step grid (#360)', () => {
+    let raf;
+    beforeEach(() => {
+        raf = [];
+        globalThis.requestAnimationFrame = (cb) => { raf.push(cb); return raf.length; };
+        globalThis.cancelAnimationFrame = () => {};
+    });
+    afterEach(() => {
+        delete globalThis.requestAnimationFrame;
+        delete globalThis.cancelAnimationFrame;
+    });
+
+    const make = (config) => {
+        const actions = [];
+        const ctrl = new ReactiveControl({ layerId: 'h', config: { animate: true, ...config }, apply: (a) => actions.push(a), doc: null });
+        return { ctrl, actions };
+    };
+    // Run frames `ms` apart and return every value the binding received.
+    const run = (ctrl, actions, frames, ms) => {
+        const from = actions.length;
+        ctrl.play();
+        for (let i = 0, t = 0; i < frames && raf.length; i++, t += ms) raf.shift()(t);
+        return actions.slice(from).map(a => a.expr[2]);
+    };
+
+    it('setValue snaps a step slider to the nearest step', () => {
+        const { ctrl, actions } = make({ field: 'SEASON', min: 1851, max: 2026, step: 1, mode: 'step' });
+        ctrl.setValue(2024.37);
+        expect(actions.at(-1).expr).toEqual(['==', ['get', 'SEASON'], 2024]);
+    });
+
+    it('autoplay binds only whole steps and advances through them', () => {
+        const { ctrl, actions } = make({ field: 'SEASON', min: 1851, max: 2026, step: 1, mode: 'step', duration_seconds: 1 });
+        // 1 s over a 175-year range, frames 1 ms apart: ~0.175 years per frame.
+        const values = run(ctrl, actions, 60, 1);
+        expect(values.length).toBeGreaterThan(3);
+        expect(values.every(Number.isInteger)).toBe(true);
+        expect(Math.max(...values)).toBeGreaterThan(1851);
+        // Each value is bound once, not re-applied every frame.
+        expect(new Set(values).size).toBe(values.length);
+    });
+
+    it('fractional steps snap cleanly', () => {
+        const { ctrl, actions } = make({ field: 'x', min: 0, max: 1, step: 0.1, mode: 'step' });
+        ctrl.setValue(0.3000001);
+        expect(actions.at(-1).expr[2]).toBe(0.3);
+    });
+
+    it('cumulative autoplay still advances smoothly', () => {
+        const { ctrl, actions } = make({ field: 'SEASON', min: 1851, max: 2026, mode: 'cumulative', default: 1851, duration_seconds: 1 });
+        const values = run(ctrl, actions, 20, 1);
+        expect(values.some(v => !Number.isInteger(v))).toBe(true);
     });
 });

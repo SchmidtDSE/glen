@@ -84,7 +84,7 @@ export class ReactiveControl {
             throw new Error('ReactiveControl requires numeric min and max');
         }
 
-        this.value = clamp(initialValue(this.config), this.config.min, this.config.max);
+        this.value = this._quantize(clamp(initialValue(this.config), this.config.min, this.config.max));
         this.visible = true;
         this.playing = false;
         this.rafId = null;
@@ -104,9 +104,24 @@ export class ReactiveControl {
     }
 
     setValue(v) {
-        this.value = clamp(Number(v), this.config.min, this.config.max);
+        this.value = this._quantize(clamp(Number(v), this.config.min, this.config.max));
         if (this._slider) this._slider.value = String(this.value);
         this.emit();
+    }
+
+    /**
+     * A step slider binds `field == value`, so its value must be on the step
+     * grid: autoplay advances continuously, and a fractional value matches no
+     * feature and empties the layer (#360). Cumulative sliders keep the
+     * fractional value, so their sweep stays smooth.
+     */
+    _quantize(v) {
+        if (this.config.mode !== 'step') return v;
+        const { min, max } = this.config;
+        const step = Number(this.config.step) > 0 ? Number(this.config.step) : 1;
+        const snapped = min + Math.round((v - min) / step) * step;
+        // Trim float noise (0.1 + 0.2) so `==` compares against a clean value.
+        return clamp(Number(snapped.toPrecision(12)), min, max);
     }
 
     _format(v) {
@@ -159,6 +174,10 @@ export class ReactiveControl {
         if (!this.config.animate || this.destroyed) return;
         // Restart from the low end so the sweep accumulates from the beginning.
         if (this.value >= this.config.max) this.setValue(this.config.min);
+        // The sweep position advances continuously; the bound value is that
+        // position snapped to the step, so a step slider holds each value
+        // until the sweep crosses into the next (#360).
+        this._pos = this.value;
         this.playing = true;
         this.lastFrame = null;
         if (this._playBtn) this._playBtn.textContent = '❚❚';
@@ -178,20 +197,24 @@ export class ReactiveControl {
             const delta = now - this.lastFrame;
             const durationMs = this.config.duration_seconds * 1000;
             const range = Math.max(1, this.config.max - this.config.min);
-            const next = this.value + (delta / durationMs) * range;
+            const next = this._pos + (delta / durationMs) * range;
             if (next >= this.config.max) {
                 if (this.value < this.config.max) {
                     // Render the final frame (e.g. the most recent year) before
                     // wrapping or stopping — otherwise it flickers past unseen.
+                    this._pos = this.config.max;
                     this.setValue(this.config.max);
                 } else if (this.config.loop) {
+                    this._pos = this.config.min;
                     this.setValue(this.config.min);
                 } else {
                     this.pause();
                     return;
                 }
             } else {
-                this.setValue(next);
+                this._pos = next;
+                // Re-bind only when the snapped value changes, not every frame.
+                if (this._quantize(next) !== this.value) this.setValue(next);
             }
         }
         this.lastFrame = now;
