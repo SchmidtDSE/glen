@@ -46,7 +46,7 @@ jobs:
       - name: Warm + verify jsDelivr
         env:
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
-          REPO: boettiger-lab/geo-agent
+          REPO: SchmidtDSE/glen
         run: |
           set -uo pipefail
           if [ -z "${TAG:-}" ]; then

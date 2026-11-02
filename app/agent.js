@@ -15,10 +15,11 @@
 import { isFailedToolResult } from './tool-registry.js';
 
 // The pinned ref the app was loaded from lives in the module URL itself
-// (…/geo-agent@v3.13.1/app/agent.js), so it identifies the exact build with no
+// (…/SchmidtDSE/glen@v3.36.0/app/agent.js, or …/boettiger-lab/geo-agent@<ref>/… before
+// the 2026-11-02 move), so it identifies the exact build with no
 // build step. Falls back to 'dev' for local/headless runs (a file:// URL). Used
 // only for the X-Client log-attribution header (#254). See `_clientHeaders`.
-const APP_VERSION = import.meta.url.match(/geo-agent@([^/]+)/)?.[1] || 'dev';
+const APP_VERSION = import.meta.url.match(/\/(?:geo-agent|glen)@([^/]+)/)?.[1] || 'dev';
 
 // How each LLM response ended — `finish_reason`, OpenRouter's
 // `native_finish_reason`, and `usage.completion_tokens` — keyed by its message

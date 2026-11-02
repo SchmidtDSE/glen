@@ -16,7 +16,7 @@ import { sqlArg, isFailedToolResult } from './tool-registry.js';
  * Where the disclosure's "GLEN" link points: the project's deployed page,
  * not its GitHub repo. Apps override it with `export.project_url`.
  */
-export const GLEN_PROJECT_URL = 'https://boettiger-lab.github.io/geo-agent/';
+export const GLEN_PROJECT_URL = 'https://schmidtdse.github.io/glen/';
 
 /**
  * Default public (anonymous) S3 endpoint for the exported setup block.
@@ -599,14 +599,15 @@ export function classifyStep(step) {
 
 /**
  * The GLEN build this page was loaded from, read off the module's own URL:
- * downstream apps load `…/gh/boettiger-lab/geo-agent@<ref>/app/…` from
- * jsDelivr, so the pin is right there. Null for a local or preview build.
+ * downstream apps load `…/gh/SchmidtDSE/glen@<ref>/app/…` from jsDelivr
+ * (`…/gh/boettiger-lab/geo-agent@<ref>/…` before the 2026-11-02 move), so the
+ * pin is right there. Null for a local or preview build.
  *
  * @param {string} [url]
  * @returns {string|null} a tag (`v3.28.0`) or commit SHA
  */
 export function libraryVersion(url = import.meta.url) {
-    const m = /\/geo-agent@([^/]+)\/app\//.exec(String(url || ''));
+    const m = /\/(?:geo-agent|glen)@([^/]+)\/app\//.exec(String(url || ''));
     return m ? m[1] : null;
 }
 

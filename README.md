@@ -10,7 +10,7 @@ A reusable JavaScript library for interactive map applications with LLM-powered 
 
 **Use [boettiger-lab/geo-agent-template](https://github.com/boettiger-lab/geo-agent-template)** — click "Use this template" on GitHub. You get a ready-to-deploy repo with `index.html`, `layers-input.json`, `system-prompt.md`, and `k8s/` manifests pre-wired. Edit those four files for your dataset and you're done.
 
-**Live demo:** <https://boettiger-lab.github.io/geo-agent-template/>
+**Live demo:** <https://schmidtdse.github.io/glen-template/>
 
 ## Using the CDN
 
@@ -18,11 +18,11 @@ Client apps load the core modules directly from jsdelivr:
 
 ```html
 <!-- Styles -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/boettiger-lab/geo-agent@v1.0.0/app/style.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/boettiger-lab/geo-agent@v1.0.0/app/chat.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v1.0.0/app/style.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v1.0.0/app/chat.css">
 
 <!-- App (all modules resolve from CDN via relative imports) -->
-<script type="module" src="https://cdn.jsdelivr.net/gh/boettiger-lab/geo-agent@v1.0.0/app/main.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v1.0.0/app/main.js"></script>
 ```
 
 ### Versioning
@@ -154,5 +154,5 @@ The `app/` directory includes its own `index.html`, `layers-input.json`, and `sy
 | **Hugging Face Spaces** | Mount a `config.json` as a Space secret-file |
 | **Kubernetes** | Secrets injected into `config.json` via ConfigMap + init container |
 
-See the [geo-agent-template](https://github.com/boettiger-lab/geo-agent-template) repo and [deployment docs](https://boettiger-lab.github.io/geo-agent/docs/guide/deployment) for full details.
+See the [geo-agent-template](https://github.com/boettiger-lab/geo-agent-template) repo and [deployment docs](https://schmidtdse.github.io/glen/guide/deployment) for full details.
 

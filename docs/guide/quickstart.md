@@ -4,7 +4,7 @@
 
 | Repo | What it is | Who it's for |
 |---|---|---|
-| [`geo-agent`](https://github.com/boettiger-lab/geo-agent) | Core library — map, chat, agent, tools. Loaded from CDN. | Library contributors; this docs site. |
+| [`geo-agent`](https://github.com/SchmidtDSE/glen) | Core library — map, chat, agent, tools. Loaded from CDN. | Library contributors; this docs site. |
 | [`geo-agent-template`](https://github.com/boettiger-lab/geo-agent-template) | Starter template. Three files to edit, then deploy. | App builders — **start here**. |
 
 **To build a new map app:** use the template. You never touch the library repo.
@@ -13,7 +13,7 @@
 
 Go to [boettiger-lab/geo-agent-template](https://github.com/boettiger-lab/geo-agent-template) and click **Use this template → Create a new repository**. You get a ready-to-deploy repo with the three files you need. Edit them for your dataset and deploy.
 
-**Live demo:** <https://boettiger-lab.github.io/geo-agent-template/>
+**Live demo:** <https://schmidtdse.github.io/glen-template/>
 
 ## Your app is just three files
 
@@ -82,16 +82,16 @@ The canonical `index.html` lives in [boettiger-lab/geo-agent-template](https://g
     crossorigin="anonymous"></script>
 
   <!-- GLEN core styles (pinned) -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/boettiger-lab/geo-agent@v3.32.0/app/style.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/boettiger-lab/geo-agent@v3.32.0/app/chat.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/boettiger-lab/geo-agent@v3.32.0/app/sidebar.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.32.0/app/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.32.0/app/chat.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.32.0/app/sidebar.css">
 </head>
 <body>
   <div id="map"></div>
   <div id="menu"></div>
   <!-- GLEN bootstrap (pinned) -->
   <script type="module"
-    src="https://cdn.jsdelivr.net/gh/boettiger-lab/geo-agent@v3.32.0/app/main.js">
+    src="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.32.0/app/main.js">
   </script>
 </body>
 </html>

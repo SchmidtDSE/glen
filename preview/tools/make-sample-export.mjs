@@ -33,7 +33,7 @@ const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'sample-export.h
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
     pretendToBeVisual: true,   // gives us requestAnimationFrame
-    url: 'https://boettiger-lab.github.io/geo-agent/preview/',
+    url: 'https://schmidtdse.github.io/glen/preview/',
 });
 const { window } = dom;
 

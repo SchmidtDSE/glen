@@ -47,11 +47,11 @@ exactly like a working one:
 
 ```bash
 sleep 20
-curl -s https://boettiger-lab.github.io/geo-agent/preview/<name>/style.css \
+curl -s https://schmidtdse.github.io/glen/preview/<name>/style.css \
   | grep -c '<the thing you changed>'
 ```
 
-URL: `https://boettiger-lab.github.io/geo-agent/preview/<name>/`, where
+URL: `https://schmidtdse.github.io/glen/preview/<name>/`, where
 `<name>` is the branch without the `preview/` prefix. `/preview/` itself is an
 index of whatever is currently published.
 

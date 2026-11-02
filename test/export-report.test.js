@@ -71,6 +71,7 @@ describe('classifyStep', () => {
 
 describe('libraryVersion', () => {
     it('reads the pin off a jsDelivr URL', () => {
+        expect(libraryVersion('https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.36.0/app/export-report.js')).toBe('v3.36.0');
         expect(libraryVersion('https://cdn.jsdelivr.net/gh/boettiger-lab/geo-agent@v3.28.0/app/export-report.js')).toBe('v3.28.0');
         expect(libraryVersion('https://cdn.jsdelivr.net/gh/boettiger-lab/geo-agent@0284371e/app/x.js')).toBe('0284371e');
     });

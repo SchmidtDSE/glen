@@ -36,7 +36,7 @@ That host used to be `esm.sh`, and it was a single point of failure:
   bytes, so there is nothing stable to hash.
 
 Vendoring removes the host entirely. Because jsDelivr serves this repo directly
-(`cdn.jsdelivr.net/gh/boettiger-lab/geo-agent@<tag>/app/…`), the relative import
+(`cdn.jsdelivr.net/gh/SchmidtDSE/glen@<tag>/app/…`), the relative import
 resolves against the same already-working origin that serves `main.js`, and
 downstream apps no longer need an importmap at all.
 
