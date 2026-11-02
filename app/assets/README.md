@@ -5,7 +5,7 @@ reference them from the CDN at its pinned ref rather than each hosting its own
 copy or hotlinking someone's website:
 
 ```
-https://cdn.jsdelivr.net/gh/boettiger-lab/geo-agent@<ref>/app/assets/<file>
+https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/app/assets/<file>
 ```
 
 | File | Use |
@@ -54,7 +54,7 @@ Downstream apps link it from their `index.html`:
 
 ```html
 <link rel="icon" type="image/svg+xml"
-      href="https://cdn.jsdelivr.net/gh/boettiger-lab/geo-agent@<ref>/app/assets/favicon.svg">
+      href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/app/assets/favicon.svg">
 ```
 
 An app with its own branding should point this at its own icon instead.

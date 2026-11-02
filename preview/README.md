@@ -32,7 +32,7 @@ workflow file from the ref it is dispatched on, so dispatching on a branch
 uses that branch's copy, which goes stale whenever the workflow changes. The
 build stages every `preview/*` ref regardless of what triggered it.
 
-It lands at `https://boettiger-lab.github.io/geo-agent/preview/<name>/`, and the
+It lands at `https://schmidtdse.github.io/glen/preview/<name>/`, and the
 docs site keeps its usual URLs, because previews are staged into the built docs
 tree rather than replacing it. `/preview/` lists whatever is published.
 
@@ -123,7 +123,7 @@ so the fixture is sized to crowd it. Between them they cover:
 Plus `sidebar.enabled`, charts, geocoder, draw, upload, geolocate and the
 footer links. The fire slider and a visible legend are deliberately on at once
 — that pairing is the collision from
-[#359](https://github.com/boettiger-lab/geo-agent/issues/359), and the stock
+[#359](https://github.com/SchmidtDSE/glen/issues/359), and the stock
 `app/layers-input.json` (two collections, no sidebar, no slider) cannot show it.
 
 No `config.json` is deployed, so no LLM is configured and the chat will not
@@ -141,7 +141,7 @@ broke something.
 
 `preview/sample-export.html` is a **real exported session report**, published with
 the rest of a branch's preview at
-`https://boettiger-lab.github.io/geo-agent/preview/<branch>/sample-export.html`.
+`https://schmidtdse.github.io/glen/preview/<branch>/sample-export.html`.
 
 It is here because the export is a *downloaded artifact*, which the live app
 preview cannot show: the preview carries no LLM, so no conversation can be run

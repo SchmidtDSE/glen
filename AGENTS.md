@@ -99,7 +99,7 @@ The `main` branch is protected: **direct pushes are rejected**. All changes must
 3. The push output includes a PR URL — open it to create the pull request:
    ```
    remote: Create a pull request ... by visiting:
-   remote:   https://github.com/boettiger-lab/geo-agent/pull/new/<branch-name>
+   remote:   https://github.com/SchmidtDSE/glen/pull/new/<branch-name>
    ```
 4. After the PR is merged, **always clean up**:
    ```bash
@@ -186,7 +186,7 @@ git push -f origin <branch>:preview/<name>   # only preview/* may deploy
 gh workflow run gh-pages.yml --ref main     # main, not your branch — see the skill
 ```
 
-→ `https://boettiger-lab.github.io/geo-agent/preview/<name>/`
+→ `https://schmidtdse.github.io/glen/preview/<name>/`
 (`/preview/` indexes them; every `preview/*` branch is rebuilt on each deploy,
 so publishing yours does not take anyone else's offline)
 

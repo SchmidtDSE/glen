@@ -56,8 +56,8 @@
     "globe": true
   },
   "links": {
-    "github": "https://github.com/boettiger-lab/geo-agent",
-    "docs": "https://boettiger-lab.github.io/geo-agent/",
+    "github": "https://github.com/SchmidtDSE/glen",
+    "docs": "https://schmidtdse.github.io/glen/",
     "carbon": true
   },
   "welcome": {

@@ -265,7 +265,7 @@ For *temporal filtering of static features* — stepping a year/date field on an
 
 ## Reactive-parameter controls (sliders)
 
-A `control` block turns an asset into a layer with a slider that rebinds a map property as you drag it — entirely client-side, with no LLM round-trip per step. The headline use is a **temporal filter**: scrub a year/date field across its range, either cumulatively ("show everything up to year N") or one step at a time ([#147](https://github.com/boettiger-lab/geo-agent/issues/147)). The slider panel floats over the map (like the trajectory controls) and appears whenever the layer is visible.
+A `control` block turns an asset into a layer with a slider that rebinds a map property as you drag it — entirely client-side, with no LLM round-trip per step. The headline use is a **temporal filter**: scrub a year/date field across its range, either cumulatively ("show everything up to year N") or one step at a time ([#147](https://github.com/SchmidtDSE/glen/issues/147)). The slider panel floats over the map (like the trajectory controls) and appears whenever the layer is visible.
 
 The same control is also available to the agent at runtime via the **`create_slider`** tool — e.g. "let me step through the fire years" attaches a year slider to the active layer without any config.
 
@@ -311,7 +311,7 @@ The slider composes with the layer's configured `default_filter` (applied as `["
 
 ## Charts (opt-in)
 
-By default the agent answers analytical questions with the map and SQL result **tables**. Enabling charts gives it one more primitive — a `render_chart` tool that turns a query result into a **bar**, **line**, **scatter**, or **histogram** in a floating panel ([#277](https://github.com/boettiger-lab/geo-agent/issues/277)).
+By default the agent answers analytical questions with the map and SQL result **tables**. Enabling charts gives it one more primitive — a `render_chart` tool that turns a query result into a **bar**, **line**, **scatter**, or **histogram** in a floating panel ([#277](https://github.com/SchmidtDSE/glen/issues/277)).
 
 It is **off by default** (zero footprint — the tool isn't registered and no charting library loads). Turn it on with a top-level flag in `layers-input.json`:
 
@@ -536,15 +536,15 @@ in `layers-input.json`.
 ```html
 <head>
   <!-- ... other tags ... -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/boettiger-lab/geo-agent@v3.32.0/app/style.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/boettiger-lab/geo-agent@v3.32.0/app/chat.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/boettiger-lab/geo-agent@v3.32.0/app/sidebar.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.32.0/app/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.32.0/app/chat.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.32.0/app/sidebar.css">
 </head>
 <body>
   <div id="map"></div>
   <div id="menu"></div>
   <script type="module"
-    src="https://cdn.jsdelivr.net/gh/boettiger-lab/geo-agent@v3.32.0/app/main.js">
+    src="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.32.0/app/main.js">
   </script>
 </body>
 ```
@@ -667,8 +667,8 @@ automatically, with no reload:
 
 ```json
 "brand": {
-  "src":      "https://cdn.jsdelivr.net/gh/boettiger-lab/geo-agent@v3.30.0/app/assets/dse-logo-black.png",
-  "src_dark": "https://cdn.jsdelivr.net/gh/boettiger-lab/geo-agent@v3.30.0/app/assets/dse-logo-white.png",
+  "src":      "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.30.0/app/assets/dse-logo-black.png",
+  "src_dark": "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.30.0/app/assets/dse-logo-white.png",
   "alt":      "Eric and Wendy Schmidt Center for Data Science & Environment",
   "href":     "https://dse.berkeley.edu/"
 }
@@ -964,7 +964,7 @@ Resolution mirrors the sampling params: per-model first, then top-level global. 
 
 ### Prompt caching (optional)
 
-The agentic tool-use loop is heavily prefill-dominated — every turn re-sends the system prompt, the tool definitions, and the running transcript, while outputs are tiny (roughly 43:1 prompt:completion tokens; see [#273](https://github.com/boettiger-lab/geo-agent/issues/273)). The biggest identical chunk re-sent on every call is the system prompt plus its injected dataset catalog (~34k tokens).
+The agentic tool-use loop is heavily prefill-dominated — every turn re-sends the system prompt, the tool definitions, and the running transcript, while outputs are tiny (roughly 43:1 prompt:completion tokens; see [#273](https://github.com/SchmidtDSE/glen/issues/273)). The biggest identical chunk re-sent on every call is the system prompt plus its injected dataset catalog (~34k tokens).
 
 `prompt_cache` attaches an Anthropic-style `cache_control: {"type": "ephemeral"}` breakpoint to the system prompt so that prefix bills at cache-read rates (~10%) on repeat calls instead of full price.
 
@@ -1221,7 +1221,7 @@ The export is **on by default** — the public apps are the common case. Configu
   "enabled": true,
   "public_s3_endpoint": "s3-west.nrp-nautilus.io",
   "default_code_language": "sql",
-  "project_url": "https://boettiger-lab.github.io/geo-agent/"
+  "project_url": "https://schmidtdse.github.io/glen/"
 }
 ```
 
@@ -1230,7 +1230,7 @@ The export is **on by default** — the public apps are the common case. Configu
 | `enabled` | boolean | `true` | `false` removes the save button entirely — it is never created, not merely disabled. |
 | `public_s3_endpoint` | string | `s3-west.nrp-nautilus.io` | S3 host for the export's DuckDB setup block. Set it when an app's data lives on other anonymously-readable storage. A scheme or trailing slash is stripped. |
 | `default_code_language` | `sql` \| `r` \| `python` | `sql` | Which language the saved document opens on. The reader can switch inside the file; an unrecognised value falls back to `sql`. |
-| `project_url` | string | `https://boettiger-lab.github.io/geo-agent/` | Where the report's "Outputs generated with GLEN" disclosure links. |
+| `project_url` | string | `https://schmidtdse.github.io/glen/` | Where the report's "Outputs generated with GLEN" disclosure links. |
 
 `"export": false` is shorthand for `{"enabled": false}`, and a stringified `"false"` from a generated `config.json` counts as off. `public_s3_endpoint` as a top-level key is the older spelling and still works; the block wins when both are set.
 
