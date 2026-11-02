@@ -2,7 +2,7 @@
 
 These are the shared ES modules that power all geo-chat client apps. They are served via [jsdelivr CDN](https://www.jsdelivr.com/github) and loaded by each client app's `index.html`.
 
-**Do not deploy this directory directly.** Use the [geo-agent-template](https://github.com/boettiger-lab/geo-agent-template) to create client apps.
+**Do not deploy this directory directly.** Use the [glen-template](https://github.com/SchmidtDSE/glen-template) to create client apps.
 
 ## Modules
 

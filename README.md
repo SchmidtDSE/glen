@@ -8,7 +8,7 @@ A reusable JavaScript library for interactive map applications with LLM-powered 
 
 ## Quick start: create a new app
 
-**Use [boettiger-lab/geo-agent-template](https://github.com/boettiger-lab/geo-agent-template)** — click "Use this template" on GitHub. You get a ready-to-deploy repo with `index.html`, `layers-input.json`, `system-prompt.md`, and `k8s/` manifests pre-wired. Edit those four files for your dataset and you're done.
+**Use [SchmidtDSE/glen-template](https://github.com/SchmidtDSE/glen-template)** — click "Use this template" on GitHub. You get a ready-to-deploy repo with `index.html`, `layers-input.json`, `system-prompt.md`, and `k8s/` manifests pre-wired. Edit those four files for your dataset and you're done.
 
 **Live demo:** <https://schmidtdse.github.io/glen-template/>
 
@@ -154,5 +154,5 @@ The `app/` directory includes its own `index.html`, `layers-input.json`, and `sy
 | **Hugging Face Spaces** | Mount a `config.json` as a Space secret-file |
 | **Kubernetes** | Secrets injected into `config.json` via ConfigMap + init container |
 
-See the [geo-agent-template](https://github.com/boettiger-lab/geo-agent-template) repo and [deployment docs](https://schmidtdse.github.io/glen/guide/deployment) for full details.
+See the [glen-template](https://github.com/SchmidtDSE/glen-template) repo and [deployment docs](https://schmidtdse.github.io/glen/guide/deployment) for full details.
 

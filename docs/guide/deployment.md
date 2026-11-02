@@ -6,7 +6,7 @@ GLEN apps are **static sites** — just HTML, JSON, and Markdown files. They can
 
 The simplest option. Each user supplies their own LLM API key via the in-app settings panel. No server-side secrets needed.
 
-**Use the [geo-agent-template](https://github.com/boettiger-lab/geo-agent-template)** — it includes a ready-to-use GitHub Actions workflow.
+**Use the [glen-template](https://github.com/SchmidtDSE/glen-template)** — it includes a ready-to-use GitHub Actions workflow.
 
 1. Set `"user_provided": true` in the `llm` section of `layers-input.json`
 2. Push to a GitHub repo and enable Pages (Settings → Pages → Source: **GitHub Actions**)
@@ -24,7 +24,7 @@ If you want visitors to use the app without supplying their own API key, but don
 
 For production deployments with managed API keys and a private LLM proxy.
 
-**Use the [geo-agent-template](https://github.com/boettiger-lab/geo-agent-template)** — it includes `k8s/` manifests ready to adapt.
+**Use the [glen-template](https://github.com/SchmidtDSE/glen-template)** — it includes `k8s/` manifests ready to adapt.
 
 API keys are injected into `config.json` at deploy time via a ConfigMap + init container:
 

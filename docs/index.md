@@ -14,7 +14,7 @@ hero:
       link: https://padus.nrp-nautilus.io/
     - theme: alt
       text: Template Repo
-      link: https://github.com/boettiger-lab/geo-agent-template
+      link: https://github.com/SchmidtDSE/glen-template
 
 features:
   - title: Zero JavaScript
