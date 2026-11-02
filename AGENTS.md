@@ -8,7 +8,7 @@ Core library for map-based applications with LLM-powered data analysis. Interact
 - **Data**: STAC catalog → unified dataset records with visual + parquet assets
 - **Analytics**: SQL queries via MCP (Model Context Protocol) to DuckDB on H3-indexed parquet
 - **LLM**: OpenAI-compatible Chat Completions API (multiple models via proxy)
-- **Deployment**: App JS/CSS is loaded from jsDelivr CDN. **Every downstream app pins a version tag or commit SHA** — `@main` is no longer used in production or demos. Downstream apps only need a static HTML file — see the [geo-agent-template](https://github.com/boettiger-lab/geo-agent-template) repo.
+- **Deployment**: App JS/CSS is loaded from jsDelivr CDN. **Every downstream app pins a version tag or commit SHA** — `@main` is no longer used in production or demos. Downstream apps only need a static HTML file — see the [glen-template](https://github.com/SchmidtDSE/glen-template) repo.
 
 ## Architecture (app/ modules)
 - `main.js` — Bootstrap: loads config, initializes catalog → map → tools → agent → UI
@@ -122,14 +122,14 @@ Downstream apps pin a specific jsDelivr ref — either a release tag (`@vX.Y.Z`,
 Because every consumer is pinned, `jsdelivr.net` cache purges are normally unnecessary; the only situation that needs them is a SHA-pinned demo where a force-push rewrote the SHA's content (don't do this).
 
 **Live deployments:**
-- [boettiger-lab/geo-agent-template](https://github.com/boettiger-lab/geo-agent-template) → canonical starting point for new apps; deployed to GitHub Pages as live demo (pinned to a tag).
+- [SchmidtDSE/glen-template](https://github.com/SchmidtDSE/glen-template) → canonical starting point for new apps; deployed to GitHub Pages as live demo (pinned to a tag).
 
 Downstream apps serve a static HTML file that loads the pinned app code from jsDelivr at runtime. Two cases are easy to conflate:
 
 - **The library ships a new version here.** Pinned downstream apps are unaffected and need no action — that's the whole point of pinning. Nothing to roll out.
 - **A downstream app bumps its own pin.** This *edits the app's `index.html`*, so the new file must be re-served. How depends on the deployment:
-  - **GitHub Pages** (e.g. the geo-agent-template demo) — auto-rebuilds on push; nothing further needed.
-  - **k8s pods that `git clone` at pod start** (initContainer, e.g. the `padus` deployment of geo-agent-template) — the running pod keeps serving the `index.html` it cloned at startup, so you **must** `kubectl -n biodiversity rollout restart deployment/<name>` for the initContainer to re-clone the new pin. No `kubectl apply` is needed when `index.html` comes from the clone rather than a ConfigMap.
+  - **GitHub Pages** (e.g. the glen-template demo) — auto-rebuilds on push; nothing further needed.
+  - **k8s pods that `git clone` at pod start** (initContainer, e.g. the `padus` deployment of glen-template) — the running pod keeps serving the `index.html` it cloned at startup, so you **must** `kubectl -n biodiversity rollout restart deployment/<name>` for the initContainer to re-clone the new pin. No `kubectl apply` is needed when `index.html` comes from the clone rather than a ConfigMap.
   - **k8s pods serving content from a ConfigMap** (private configmap-based apps) — regenerate and `kubectl apply` the ConfigMap, *then* rollout restart.
 
 ## Development

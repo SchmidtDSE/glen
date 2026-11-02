@@ -5,13 +5,13 @@
 | Repo | What it is | Who it's for |
 |---|---|---|
 | [`geo-agent`](https://github.com/SchmidtDSE/glen) | Core library — map, chat, agent, tools. Loaded from CDN. | Library contributors; this docs site. |
-| [`geo-agent-template`](https://github.com/boettiger-lab/geo-agent-template) | Starter template. Three files to edit, then deploy. | App builders — **start here**. |
+| [`glen-template`](https://github.com/SchmidtDSE/glen-template) | Starter template. Three files to edit, then deploy. | App builders — **start here**. |
 
 **To build a new map app:** use the template. You never touch the library repo.
 
 ## Start from the template
 
-Go to [boettiger-lab/geo-agent-template](https://github.com/boettiger-lab/geo-agent-template) and click **Use this template → Create a new repository**. You get a ready-to-deploy repo with the three files you need. Edit them for your dataset and deploy.
+Go to [SchmidtDSE/glen-template](https://github.com/SchmidtDSE/glen-template) and click **Use this template → Create a new repository**. You get a ready-to-deploy repo with the three files you need. Edit them for your dataset and deploy.
 
 **Live demo:** <https://schmidtdse.github.io/glen-template/>
 
@@ -30,7 +30,7 @@ No JavaScript to write. The core library (map, chat, agent, tools) loads from CD
 The HTML shell loads two kinds of code: a set of **pinned third-party libraries** (MapLibre, PMTiles, marked, DOMPurify, highlight.js) as page-global `<script>` tags, and the **GLEN core** (JS + CSS) from the CDN. There is no import map — the MCP SDK ships pre-bundled inside the core, so the only hosts your page contacts are the CDNs listed below. The `<body>` only needs two placeholder `<div>`s — the layout manager builds the rest (chat panel, controls, etc.) dynamically.
 
 ::: warning Copy this file from the template — don't hand-author it
-The canonical `index.html` lives in [boettiger-lab/geo-agent-template](https://github.com/boettiger-lab/geo-agent-template). **Copy it verbatim** rather than retyping the script tags below. In particular, never hand-edit the `integrity="sha384-…"` hashes — see [Subresource Integrity](#about-the-integrity-hashes) for why. The block below is reproduced for reference and matches the template at the pinned release.
+The canonical `index.html` lives in [SchmidtDSE/glen-template](https://github.com/SchmidtDSE/glen-template). **Copy it verbatim** rather than retyping the script tags below. In particular, never hand-edit the `integrity="sha384-…"` hashes — see [Subresource Integrity](#about-the-integrity-hashes) for why. The block below is reproduced for reference and matches the template at the pinned release.
 :::
 
 ```html
