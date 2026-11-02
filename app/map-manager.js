@@ -958,14 +958,26 @@ export class MapManager {
         // layers bypass registerLayer, so trigger it here.
         this._showLegendIfVisible(layerId);
 
-        if (fitBounds && Array.isArray(bounds) && bounds.length === 4) {
-            const [w, s, e, n] = bounds;
-            this.map.fitBounds([[w, s], [e, n]], { padding: 40, duration: 800 });
-        }
-
-        // Tilt the camera so the extrusion reads as 3D. Only when the map is
+        // Tilt the camera so the extrusion reads as 3D, only when the map is
         // still flat, so we don't fight a pitch the user already set (#317).
-        if (is3D) this.tiltForExtrusion();
+        // The fit and the tilt must be one camera move: a second animation
+        // stops the first, so a separate tilt left the map unframed (#416).
+        const fit = fitBounds && Array.isArray(bounds) && bounds.length === 4;
+        const tilt = is3D && this._isFlat();
+        if (fit) {
+            const [w, s, e, n] = bounds;
+            const camera = tilt && typeof this.map.cameraForBounds === 'function'
+                ? this.map.cameraForBounds([[w, s], [e, n]], { padding: 40 })
+                : null;
+            if (camera) {
+                this.map.easeTo({ ...camera, pitch: this._extrusionPitch(), duration: 800 });
+            } else {
+                this.map.fitBounds([[w, s], [e, n]], { padding: 40, duration: 800 });
+                if (tilt) this.map.once?.('moveend', () => this.tiltForExtrusion());
+            }
+        } else if (tilt) {
+            this.tiltForExtrusion();
+        }
 
         return {
             success: true,
@@ -1366,9 +1378,20 @@ export class MapManager {
      * left alone. Default 45°.
      */
     tiltForExtrusion(pitch = 45) {
-        const current = (typeof this.map.getPitch === 'function') ? this.map.getPitch() : 0;
-        if (current > 1) return current;
+        if (!this._isFlat()) return this.map.getPitch();
         return this.setPitch(pitch);
+    }
+
+    /** Whether the camera is (near) flat, so an extrusion should tilt it. */
+    _isFlat() {
+        const current = (typeof this.map.getPitch === 'function') ? this.map.getPitch() : 0;
+        return current <= 1;
+    }
+
+    /** The tilt for an extruded layer, clamped to the map's maximum pitch. */
+    _extrusionPitch(pitch = 45) {
+        const maxPitch = (typeof this.map.getMaxPitch === 'function' ? this.map.getMaxPitch() : 75);
+        return Math.min(pitch, maxPitch);
     }
 
     getMapState() {
