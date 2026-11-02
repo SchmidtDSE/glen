@@ -163,10 +163,13 @@ The agent closes that last gap with `set_legend`, which names the classes (`{"1"
 | `display_name` | string | Label in the layer toggle UI. |
 | `visible` | boolean | Default visibility. Default: `false`. |
 | `colormap` | string | TiTiler colormap name (e.g., `"reds"`, `"blues"`, `"viridis"`). Default: `"reds"`. |
-| `rescale` | string | TiTiler min,max range for color scaling (e.g., `"0,150"`). |
-| `nodata` | number\|string | Pixel value to render transparent (e.g., `0` to mask ocean/no-data). If unset, falls back to the STAC `raster:bands[0].nodata` value; omit both to leave all pixels opaque. |
+| `rescale` | string | TiTiler min,max range for color scaling (e.g., `"0,150"`). The range is in real units when `unscale` is on, and in the stored values otherwise. |
+| `bidx` | integer | 1-based band index for a multi-band COG. Default: `1`. Without it, TiTiler refuses a multi-band source with "Source data must be 1 band" and every tile fails. The band's STAC `nodata` and `classification:classes` are read from this band. |
+| `unscale` | boolean | Apply the band's scale and offset before coloring, so `rescale` and the legend are in real units. Default: on when the STAC `raster:bands` entry gives a `scale` other than 1 or an `offset` other than 0, as for int16 temperatures stored in hundredths of a degree. |
+| `nodata` | number\|string | Pixel value to render transparent (e.g., `0` to mask ocean/no-data). If unset, falls back to the band's STAC `nodata` value; omit both to leave all pixels opaque. Given in stored values, before `unscale`. |
 | `legend_label` | string | Label shown next to the color legend. |
 | `legend_type` | string | `"categorical"` to use STAC `classification:classes` color codes for a discrete legend. |
+| `legend_classes` | array | `{ value, label, color }` entries that replace the STAC `classification:classes` of a categorical raster. They also build the colormap, so a class left out renders transparent. A class whose value is the band's `nodata` is always left out. Keep the list short: each class lengthens the tile URL, and a URL of tens of kilobytes is refused by the tile server. |
 | `group` | string | Overrides the collection-level `group` for this specific layer. |
 | `sidebar` | boolean | Overrides the collection-level `sidebar` for this specific layer — see [Layers outside the panel](#layers-outside-the-panel). |
 | `toggle_group` | string | Layers sharing this value get **one** panel row whose checkbox drives all of them. See [Toggle groups](#toggle-groups). |
