@@ -11,7 +11,7 @@ function fakeMap() {
     const order = ['layer-sst'];
     const layers = new Map([['layer-sst', { id: 'layer-sst', layout: { visibility: 'visible' }, paint: {} }]]);
     const loaded = new Set();
-    const handlers = { sourcedata: new Set(), error: new Set() };
+    const handlers = { sourcedata: new Set(), error: new Set(), render: new Set() };
     const map = {
         sources, layers, order, loaded, handlers,
         getSource: (id) => sources.get(id) || null,
@@ -29,10 +29,15 @@ function fakeMap() {
         isSourceLoaded: (id) => loaded.has(id),
         on: (ev, h) => handlers[ev]?.add(h),
         off: (ev, h) => handlers[ev]?.delete(h),
+        once: (ev, h) => { const w = (e) => { handlers[ev].delete(w); h(e); }; w.inner = h; handlers[ev].add(w); },
+        triggerRepaint: () => { map.repaints = (map.repaints || 0) + 1; },
+        // The map draws a frame.
+        render() { for (const h of [...handlers.render]) h({ type: 'render' }); },
         // A source's tiles finish loading.
         tileDone(id) {
             loaded.add(id);
-            for (const h of handlers.sourcedata) h({ type: 'sourcedata', sourceId: id, tile: {} });
+            for (const h of [...handlers.sourcedata]) h({ type: 'sourcedata', sourceId: id, tile: {} });
+            map.render();
         },
         opacity: (id) => layers.get(id)?.paint['raster-opacity'],
     };
@@ -120,7 +125,8 @@ describe('raster time series in MapManager (#421)', () => {
         map.tileDone(id(1));   // a preload
         await mm.setTime({ layer_id: 'sst', date: '2026-01-01' });
         expect(map.opacity(id(1))).toBe(0.8);
-        expect(map.layers.has(id(6))).toBe(false);   // swapped out, and outside the kept frames
+        map.render();
+        expect(map.layers.has(id(6))).toBe(false);   // swapped out after the render, and outside the kept frames
     });
 
     it('a failed tile still counts as finished, so playback cannot stall on it', async () => {
@@ -244,5 +250,33 @@ describe('resolveFrameSource', () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
         expect(resolveFrameSource({ bind: 'frame', frames: 'nope' }, asset, assets)).toBe(null);
         warn.mockRestore();
+    });
+});
+
+describe('frame swap waits for a render (#421)', () => {
+    it('the old frame stays drawn until the map has rendered the new one', async () => {
+        const mm = await makeManager();
+        const { map } = mm;
+        map.tileDone(id(6));
+        await mm.setTime({ layer_id: 'sst', date: '2026-01-03' });
+        // The new frame's tiles finish, but the map has not drawn yet.
+        map.loaded.add(id(3));
+        for (const h of [...map.handlers.sourcedata]) h({ type: 'sourcedata', sourceId: id(3), tile: {} });
+        expect(map.opacity(id(3))).toBe(0.8);
+        expect(map.opacity(id(6))).toBe(0.8);    // both up for one render
+        expect(map.repaints).toBeGreaterThan(0);
+        map.render();
+        expect(map.layers.has(id(6))).toBe(false);   // hidden, then removed as outside the kept frames
+        expect(map.opacity(id(3))).toBe(0.8);
+    });
+
+    it('the base layer stays visible until the first frame has rendered', async () => {
+        const mm = await makeManager();
+        const { map } = mm;
+        map.loaded.add(id(6));
+        for (const h of [...map.handlers.sourcedata]) h({ type: 'sourcedata', sourceId: id(6), tile: {} });
+        expect(map.layers.get('layer-sst').layout.visibility).toBe('visible');
+        map.render();
+        expect(map.layers.get('layer-sst').layout.visibility).toBe('none');
     });
 });

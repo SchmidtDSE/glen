@@ -632,22 +632,39 @@ export class MapManager {
             state.frameTilesSeen.delete(id);
             for (const [date, v] of state.frameLayers) if (v === id) state.frameLayers.delete(date);
         };
+        // Frames swapped out but still drawn until the map has rendered their
+        // successor; hiding them in the same step left a frame with neither.
+        const outgoing = new Set();
+        let baseOutgoing = false;
         // Remove frames that are neither wanted nor on screen nor about to be.
         const sweep = () => {
             for (const id of [...state.frameLayers.values()]) {
-                if (!keepIds.has(id) && id !== state.frameShown && id !== state.framePending) remove(id);
+                if (!keepIds.has(id) && id !== state.frameShown && id !== state.framePending && !outgoing.has(id)) remove(id);
             }
         };
-        const swapTo = (id) => {
-            if (state.frameShown && state.frameShown !== id && this.map.getLayer(state.frameShown)) {
-                this.map.setPaintProperty(state.frameShown, 'raster-opacity', 0);
+        const finishSwap = () => {
+            for (const id of outgoing) {
+                if (id !== state.frameShown && this.map.getLayer(id)) this.map.setPaintProperty(id, 'raster-opacity', 0);
             }
+            outgoing.clear();
+            // The first frame on screen takes over from the base layer.
+            if (baseOutgoing) this.map.setLayoutProperty(state.mapLayerId, 'visibility', 'none');
+            baseOutgoing = false;
+            sweep();
+        };
+        const swapTo = (id) => {
+            if (state.frameShown && state.frameShown !== id) outgoing.add(state.frameShown);
+            if (!state.frameShown) baseOutgoing = true;
             this.map.setPaintProperty(id, 'raster-opacity', opacity());
             state.frameShown = id;
             state.framePending = null;
-            // The first frame on screen takes over from the base layer.
-            this.map.setLayoutProperty(state.mapLayerId, 'visibility', 'none');
-            sweep();
+            // Hide the old frame after the render that draws the new one.
+            if (typeof this.map.once === 'function') {
+                this.map.once('render', finishSwap);
+                this.map.triggerRepaint?.();
+            } else {
+                finishSwap();
+            }
         };
         const onMapEvent = (e) => {
             if (!isFrameId(e?.sourceId)) return;
@@ -704,6 +721,8 @@ export class MapManager {
                 }
             },
             clear: () => {
+                outgoing.clear();
+                this.map.off?.('render', finishSwap);
                 for (const id of [...state.frameLayers.values()]) remove(id);
                 state.frameShown = null;
                 state.framePending = null;
