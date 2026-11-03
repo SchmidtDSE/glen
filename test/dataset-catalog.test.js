@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { DatasetCatalog } from '../app/dataset-catalog.js';
+import { DatasetCatalog, resolveRasterBand, cogTileUrl } from '../app/dataset-catalog.js';
 
 const stacCollection = (overrides = {}) => ({
     type: 'Collection',
@@ -1256,5 +1256,83 @@ describe('DatasetCatalog toggle_group (#349)', () => {
             mapLayers: [{ assetId: 'cog', title: 'WHP (CONUS)', layerType: 'raster', toggleGroup: 'WHP 2023' }],
         });
         expect(cat.generatePromptCatalog()).toContain('[toggle group "WHP 2023"');
+    });
+});
+
+describe('raster band settings (#357, #350, unscale)', () => {
+    const sixBands = {
+        href: 'https://x/rap.tif',
+        'raster:bands': [1, 2, 3, 4, 5, 6].map(i => ({ nodata: i === 4 ? 255 : 0, 'classification:classes': [{ value: i, 'color-hint': '00ff00' }] })),
+    };
+
+    it('reads nodata and classes from the band bidx picks', () => {
+        const b = resolveRasterBand(sixBands, { bidx: 4 });
+        expect(b.bidx).toBe(4);
+        expect(b.nodata).toBe(255);
+        expect(b.legendClasses).toEqual([{ value: 4, 'color-hint': '00ff00' }]);
+    });
+
+    it('defaults to band 1 and ignores a bidx that is not a positive integer', () => {
+        expect(resolveRasterBand(sixBands, {}).bidx).toBe(null);
+        expect(resolveRasterBand(sixBands, { bidx: 0 }).bidx).toBe(null);
+        expect(resolveRasterBand(sixBands, { bidx: 1.5 }).bidx).toBe(null);
+        expect(resolveRasterBand(sixBands, {}).nodata).toBe(0);
+    });
+
+    it('config legend_classes replace the STAC classes', () => {
+        const asset = { 'raster:bands': [{ 'classification:classes': [
+            { value: 1, 'color-hint': 'aa0000' }, { value: 11, 'color-hint': '0000ff' }] }] };
+        const b = resolveRasterBand(asset, { legend_classes: [{ value: 1, label: 'Low departure', color: '#aa0000' }] });
+        expect(b.legendClasses).toEqual([{ value: 1, name: 'Low departure', 'color-hint': '#aa0000' }]);
+    });
+
+    it('drops a class whose value is the band nodata', () => {
+        const asset = { 'raster:bands': [{ nodata: 250, 'classification:classes': [
+            { value: 11, 'color-hint': '466b9f' }, { value: 250, 'color-hint': '000000' }] }] };
+        expect(resolveRasterBand(asset).legendClasses.map(c => c.value)).toEqual([11]);
+    });
+
+    it('turns unscale on when STAC gives a scale or offset, and lets config override it', () => {
+        const crw = { 'raster:bands': [{ data_type: 'int16', nodata: -32768, scale: 0.01, offset: 0 }] };
+        expect(resolveRasterBand(crw).unscale).toBe(true);
+        expect(resolveRasterBand(crw, { unscale: false }).unscale).toBe(false);
+        expect(resolveRasterBand({ 'raster:bands': [{ scale: 1, offset: 0 }] }).unscale).toBe(false);
+        expect(resolveRasterBand({ 'raster:bands': [{ offset: -273.15 }] }).unscale).toBe(true);
+        expect(resolveRasterBand({}).unscale).toBe(false);
+    });
+
+    it('cogTileUrl carries bidx and unscale', () => {
+        const url = cogTileUrl('https://t', 'https://x/a.tif', { colormap: 'rdbu_r', rescale: '-1,4', bidx: 4, unscale: true, nodata: -32768 });
+        expect(url).toContain('&bidx=4');
+        expect(url).toContain('&unscale=true');
+        expect(url).toContain('&rescale=-1,4');
+        expect(url).toContain('&nodata=-32768');
+    });
+
+    it('cogTileUrl reads #-prefixed config colors into the colormap', () => {
+        const url = cogTileUrl('https://t', 'https://x/a.tif', {
+            legendType: 'categorical',
+            legendClasses: [{ value: 1, 'color-hint': '#ff0000' }, { value: 2, 'color-hint': '00ff00' }],
+        });
+        const cmap = JSON.parse(decodeURIComponent(url.split('&colormap=')[1]));
+        expect(cmap).toEqual({ 1: [255, 0, 0, 255], 2: [0, 255, 0, 255] });
+    });
+
+    it('warns when an inline colormap makes the URL too long', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const classes = Array.from({ length: 832 }, (_, i) => ({ value: i, 'color-hint': '123456' }));
+        cogTileUrl('https://t', 'https://x/evt.tif', { legendType: 'categorical', legendClasses: classes });
+        expect(warn).toHaveBeenCalledWith(expect.stringMatching(/may refuse it/));
+        warn.mockRestore();
+    });
+
+    it('extractMapLayers passes bidx, unscale and config classes through for a raster', () => {
+        const cat = new DatasetCatalog();
+        const layers = cat.extractMapLayers({ id: 'rap', title: 'RAP', assets: {
+            cog: { type: 'image/tiff; application=geotiff', href: 'https://x/rap.tif',
+                'raster:bands': [{ scale: 1 }, { scale: 0.01, nodata: 9 }] },
+        } }, {}, [{ key: 'cog', assetId: 'cog', config: { bidx: 2, legend_classes: [{ value: 3, color: '#000000' }] } }]);
+        expect(layers[0]).toMatchObject({ bidx: 2, unscale: true, nodata: 9 });
+        expect(layers[0].legendClasses).toEqual([{ value: 3, name: 'Class 3', 'color-hint': '#000000' }]);
     });
 });
