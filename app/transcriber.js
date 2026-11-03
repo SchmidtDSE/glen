@@ -12,6 +12,8 @@
  * config.json. Most chat models don't take audio — see the voice-input docs.
  */
 
+import { bearerHeader } from './llm-auth.js';
+
 export class Transcriber {
     /**
      * @param {Object} modelCfg - transcription model config
@@ -66,7 +68,7 @@ export class Transcriber {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this.modelCfg.api_key || 'EMPTY'}`,
+                ...bearerHeader(this.modelCfg.api_key),
             },
             body: JSON.stringify(payload),
             signal: opts.signal ?? AbortSignal.timeout(15_000),

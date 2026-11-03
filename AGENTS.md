@@ -25,6 +25,7 @@ Core library for map-based applications with LLM-powered data analysis. Interact
 - `mcp-client.js` — MCP transport wrapper (connect once, lazy reconnect)
 - `mcp-servers.js` — Resolves which MCP servers an app connects to (`mcp_url` shorthand or `mcp_servers` list; the first is primary)
 - `agent.js` — LLM orchestration loop (agentic tool-use cycle)
+- `llm-auth.js` — The `Authorization` header for LLM requests: none when `api_key` is unset, so basic-auth deployments keep working
 - `chat-ui.js` — Chat UI with collapsible tool-call blocks
 - `export-report.js` — The exported session report: builds a Quarto-style HTML document from the session record ChatUI keeps (no DOM). Also holds the export helpers (setup block, R/Python wrappers, credential scrub, map embed).
 
@@ -197,6 +198,7 @@ When a PR touches a covered module, expect tests to change too. When it touches 
 
 | Module | Coverage | What changes here should be tested |
 |---|---:|---|
+| `app/llm-auth.js` | 100% | `test/llm-auth.test.js` — no `Authorization` header without a key (basic-auth deployments, #420) |
 | `app/transcriber.js` | 100% | `test/transcriber.test.js` — endpoint resolution, error paths, abort signal |
 | `app/overlay-rail.js` | 100% | `test/overlay-rail.test.js` — rail creation, slot ordering, mount/remove, per-document mounting |
 | `app/app-header.js` | 100% | `test/app-header.test.js` — config resolution, nav derivation from `links`, logo slots, mobile takeover |
