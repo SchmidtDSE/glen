@@ -99,6 +99,27 @@ export function cogTileUrl(titilerUrl, cogUrl, o) {
     return url;
 }
 
+/**
+ * Where a raster time series finds its frames (#421): a STAC frame-list asset
+ * named by `control.frames`, or a listing of the COG's directory for
+ * `frames: "list"`. Returns null when the control is not a frame control or
+ * the named asset is missing.
+ * @param {Object|null} control  the asset's `control` block
+ * @param {Object} asset         the layer's STAC asset
+ * @param {Object} stacAssets    every asset in the collection
+ * @returns {{indexUrl?: string, listFrom?: string}|null}
+ */
+export function resolveFrameSource(control, asset, stacAssets) {
+    if (control?.bind !== 'frame') return null;
+    if (control.frames === 'list') return asset?.href ? { listFrom: asset.href } : null;
+    const href = stacAssets?.[control.frames]?.href;
+    if (!href) {
+        console.warn(`[catalog] Frame-list asset "${control.frames}" not found; the layer shows only its latest file.`);
+        return null;
+    }
+    return { indexUrl: href };
+}
+
 export class DatasetCatalog {
     constructor() {
         /** @type {Map<string, DatasetEntry>} keyed by collection ID */
@@ -561,6 +582,8 @@ export class DatasetCatalog {
                         description: asset.description || '',
                         defaultVisible: config.visible === true,
                         defaultFilter: config.default_filter || null,
+                        control: config.control || null,
+                        frameSource: resolveFrameSource(config.control, asset, stacAssets),
                     });
                 } else if (type.includes('geo+json') || asset.href?.endsWith('.geojson')) {
                     // Resolve static_positions_asset reference (another STAC asset
@@ -1180,6 +1203,13 @@ export class DatasetCatalog {
                         },
                         paint: ml.paint || { 'raster-opacity': 0.7 },
                         columns: [], // rasters don't have filterable columns
+                        // A time series (#421): where its frames are listed, and
+                        // the tile URL for any one frame, styled like the layer.
+                        ...(ml.frameSource && {
+                            control: ml.control,
+                            frameSource: ml.frameSource,
+                            frameTileUrl: (href) => cogTileUrl(this.titilerUrl, href, ml),
+                        }),
                     });
                 }
             }

@@ -312,6 +312,69 @@ The slider composes with the layer's configured `default_filter` (applied as `["
 }
 ```
 
+## Raster time series
+
+A raster asset whose data is published as one COG per date can step through those dates ([#421](https://github.com/SchmidtDSE/glen/issues/421)). Give it a `control` with `"bind": "frame"`. The layer then shows a player in the overlay rail, with play and pause, back and forward, a slider over the dates, and the date on screen. The colormap, `rescale`, `unscale` and legend are the layer's own and do not change between frames.
+
+The player keeps the frame on screen and the next three on the map, the next ones at zero opacity so their tiles load before they are needed. A frame replaces the one on screen only once its tiles have loaded, so the map never goes blank between frames, whether playing, dragging the slider or jumping to a date. On a slow connection playback slows down to wait for each frame, for up to `max_wait_ms`.
+
+The layer's STAC asset (for example a `-latest.tif`) is what the layer shows while the frame list loads, and what it falls back to if the list cannot be read.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `bind` | string | — | **Required.** `"frame"`. |
+| `frames` | string | — | **Required.** Where the dates come from. The key of a STAC asset in the same collection that lists the frames (see below), or `"list"` to list the folder holding the layer's COG. |
+| `window` | string | all frames | Play only the most recent part of the series, as an ISO 8601 duration: `"P90D"`, `"P13M"`, `"P10Y"`. |
+| `start`, `end` | string | — | Play only between these dates (`YYYY-MM-DD` or `YYYY-MM`). |
+| `step` | integer | `1` | Play every Nth frame, counted back from the most recent, which is always included. |
+| `frame_ms` | integer | `400` | Milliseconds each frame is shown. |
+| `default` | string | latest | Date shown on load. |
+| `loop` | boolean | `true` | Start again from the first frame after the last. |
+| `preload` | integer | `3` | Frames loaded ahead of the one on screen. More makes fast playback smoother, at the cost of more tile requests. |
+| `max_wait_ms` | integer | `8000` | Longest playback waits for a frame's tiles before moving on. The map keeps the last loaded frame until the next one arrives. |
+| `label` | string | layer name | Text shown on the player. |
+
+The agent controls the player with the **`set_time`** tool, which is registered only in apps that configure a time series. It can jump to a date, change the range or step, set the speed, and start or stop playback. `get_map_state` reports each time series' date on screen and the dates available.
+
+```json
+{
+  "collection_id": "crw-5km-daily-ssta",
+  "assets": [
+    {
+      "id": "ssta-cog",
+      "display_name": "Sea surface temperature anomaly",
+      "colormap": "rdbu_r",
+      "rescale": "-4,4",
+      "control": {
+        "bind": "frame",
+        "frames": "ssta-cog-frames",
+        "window": "P90D",
+        "step": 4,
+        "frame_ms": 400
+      }
+    }
+  ]
+}
+```
+
+### Frame lists
+
+The preferred source of dates is a STAC asset that lists them, which the data pipeline rewrites whenever a file is added or removed. It has type `application/json` and this body, sorted oldest first:
+
+```json
+{
+  "interval": "P1D",
+  "frames": [
+    { "datetime": "2025-09-25", "href": "https://…/ssta-20250925.tif" },
+    { "datetime": "2025-09-26", "href": "https://…/ssta-20250926.tif" }
+  ]
+}
+```
+
+A monthly series dates each frame on the first of the month and is shown as `YYYY-MM`.
+
+With `"frames": "list"`, the app instead lists the folder that holds the layer's COG, using an S3 ListObjectsV2 request, and reads each file's date from an 8-digit (`YYYYMMDD`) or 6-digit (`YYYYMM`) run in its name. Files without one, such as `ssta-latest.tif`, are skipped. This needs a path-style S3 URL and a bucket that allows cross-origin listing. Use it for a series that has no frame-list asset yet.
+
 ## Charts (opt-in)
 
 By default the agent answers analytical questions with the map and SQL result **tables**. Enabling charts gives it one more primitive — a `render_chart` tool that turns a query result into a **bar**, **line**, **scatter**, or **histogram** in a floating panel ([#277](https://github.com/SchmidtDSE/glen/issues/277)).
