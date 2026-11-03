@@ -1396,6 +1396,31 @@ details.layer-group:not([open]) .layer-group-title::before {
     color: var(--panel-fg-muted);
 }
 
+/* ── Raster time-series player (#421) ────────────────────────────────────
+   Shares the .reactive-controls surface. The date readout is wider than a
+   slider value, and dims while the next frame's tiles are loading. */
+.frame-player {
+    gap: 4px;
+}
+
+.frame-player .rc-label {
+    margin-right: 4px;
+}
+
+.frame-player .rc-slider {
+    flex: 1 1 120px;
+    min-width: 80px;
+    margin: 0 4px;
+}
+
+.frame-player .rc-value {
+    min-width: 76px;
+}
+
+.frame-player.loading .rc-value {
+    opacity: 0.5;
+}
+
 /* ── Chart panels (opt-in charting primitive, #277) ──────────────────────
    Floating card anchored bottom-right; multiple charts cascade. */
 .chart-panel {

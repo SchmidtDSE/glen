@@ -430,8 +430,13 @@ export class MapManager {
             control: null,   // filled in by _registerControl when config.control is set
         });
 
-        // Declarative reactive-parameter control (e.g. a temporal slider, #147).
-        if (config.control) this._registerControl(layerId, config.control);
+        // Declarative reactive-parameter control (e.g. a temporal slider, #147),
+        // or a raster time series that steps through dated frames (#421).
+        if (type === 'raster' && config.frameSource && config.frameTileUrl) {
+            this._registerFramePlayer(layerId, config);
+        } else if (config.control) {
+            this._registerControl(layerId, config.control);
+        }
 
         // Wire tooltip handler on every vector layer (even those without
         // declared fields) so set_tooltip can attach fields at runtime. The
@@ -553,6 +558,154 @@ export class MapManager {
     }
 
     /**
+     * Attach a time-series player to a raster layer (#421). The layer's own
+     * source keeps showing the latest file until the frame list loads; after
+     * that it stays hidden and the player's frame layers draw in its place in
+     * the layer stack.
+     *
+     * @param {string} layerId
+     * @param {Object} config  the layer config, with `control`, `frameSource`
+     *   and `frameTileUrl` from the catalog
+     * @returns {Promise<{success:boolean, error?:string}>}
+     */
+    _registerFramePlayer(layerId, config) {
+        const state = this.layers.get(layerId);
+        if (!state) return Promise.resolve({ success: false, error: `Unknown layer: ${layerId}` });
+        state.frameLayers = new Map();   // frame datetime → MapLibre layer/source id
+        state.frameShown = null;
+        state.framePlayerReady = (async () => {
+            try {
+                const [{ loadFrames }, { FramePlayer }] = await Promise.all([
+                    import('./raster-frames.js'),
+                    import('./frame-player.js'),
+                ]);
+                const frames = await loadFrames(config.frameSource);
+                if (!frames.length) throw new Error('the frame list is empty');
+                if (!this.layers.has(layerId)) return { success: false, error: 'layer removed' };
+                state.framePlayer = new FramePlayer({
+                    layerId,
+                    displayName: state.displayName,
+                    frames,
+                    config: config.control,
+                    visible: state.visible,
+                    ops: this._frameOps(state, config.frameTileUrl),
+                });
+                // The player's frames replace the layer's latest-file view.
+                this.map.setLayoutProperty(state.mapLayerId, 'visibility', 'none');
+                return { success: true };
+            } catch (err) {
+                console.error(`[Map] Time series for ${layerId} unavailable, showing its latest file:`, err);
+                state.framePlayerError = err.message;
+                return { success: false, error: err.message };
+            }
+        })();
+        return state.framePlayerReady;
+    }
+
+    /**
+     * The map operations a FramePlayer drives: each frame is its own raster
+     * source and layer, placed just below the layer's hidden base layer so the
+     * series keeps the layer's position in the stack.
+     */
+    _frameOps(state, frameTileUrl) {
+        const idFor = (frame) => `${state.mapLayerId}-t${frame.datetime}`;
+        const opacity = () => {
+            const o = this._effectivePaint(state)?.['raster-opacity'];
+            return typeof o === 'number' ? o : 0.7;
+        };
+        return {
+            ensure: (frame, role) => {
+                const id = idFor(frame);
+                if (!this.map.getSource(id)) {
+                    this.map.addSource(id, { type: 'raster', tiles: [frameTileUrl(frame.href)], tileSize: 256 });
+                }
+                if (!this.map.getLayer(id)) {
+                    this.map.addLayer({
+                        id,
+                        type: 'raster',
+                        source: id,
+                        layout: { visibility: 'visible' },
+                        // Zero opacity keeps a preloading frame invisible while
+                        // its tiles load; no fade, so a step is a clean cut.
+                        paint: { 'raster-opacity': 0, 'raster-fade-duration': 0 },
+                    }, state.mapLayerId);
+                    state.frameLayers.set(frame.datetime, id);
+                }
+                if (role === 'show') {
+                    if (state.frameShown && state.frameShown !== id && this.map.getLayer(state.frameShown)) {
+                        this.map.setPaintProperty(state.frameShown, 'raster-opacity', 0);
+                    }
+                    this.map.setPaintProperty(id, 'raster-opacity', opacity());
+                    state.frameShown = id;
+                }
+            },
+            isLoaded: (frame) => {
+                const id = idFor(frame);
+                if (!this.map.getSource(id)) return false;
+                try { return this.map.isSourceLoaded(id); } catch { return false; }
+            },
+            prune: (keep) => {
+                const keepIds = new Set(keep.filter(Boolean).map(idFor));
+                for (const [date, id] of state.frameLayers) {
+                    if (keepIds.has(id)) continue;
+                    if (this.map.getLayer(id)) this.map.removeLayer(id);
+                    if (this.map.getSource(id)) this.map.removeSource(id);
+                    state.frameLayers.delete(date);
+                    if (state.frameShown === id) state.frameShown = null;
+                }
+            },
+        };
+    }
+
+    /**
+     * Set the date of a raster time series, the frames it plays, and whether it
+     * plays. Used by the agent's `set_time` tool (#421).
+     *
+     * @param {Object} args
+     * @param {string} args.layer_id
+     * @param {string} [args.date]   jump to the frame nearest this date
+     * @param {string} [args.start]  first date to play
+     * @param {string} [args.end]    last date to play
+     * @param {number} [args.step]   play every Nth frame
+     * @param {number} [args.frame_ms] time each frame is shown
+     * @param {boolean} [args.play]  start (true) or stop (false) playback
+     * @returns {Promise<Object>}
+     */
+    async setTime(args = {}) {
+        const state = this.layers.get(args.layer_id);
+        if (!state) {
+            return { success: false, error: `Unknown layer: ${args.layer_id}. Available: ${this.getLayerIds().join(', ')}` };
+        }
+        if (!state.framePlayerReady) {
+            const series = [...this.layers].filter(([, s]) => s.framePlayerReady).map(([id]) => id);
+            return { success: false, error: `"${args.layer_id}" is not a time series. Time-series layers: ${series.join(', ') || 'none'}.` };
+        }
+        const ready = await state.framePlayerReady;
+        const player = state.framePlayer;
+        if (!ready.success || !player) {
+            return { success: false, error: `The frames for "${args.layer_id}" could not be loaded: ${ready.error || state.framePlayerError}` };
+        }
+        if (!state.visible) {
+            this.showLayer(args.layer_id);
+            this.syncCheckbox?.(args.layer_id);
+        }
+        const range = {};
+        if ('start' in args) range.start = args.start || null;
+        if ('end' in args) range.end = args.end || null;
+        if (args.start || args.end) range.window = null;   // an explicit range replaces the configured window
+        if (args.step != null) range.step = args.step;
+        if (Object.keys(range).length) player.setRange(range);
+        if (!player.frames.length) {
+            return { success: false, error: 'No frames fall in that range.', ...player.describe() };
+        }
+        if (args.frame_ms != null) player.setFrameMs(args.frame_ms);
+        if (args.date) player.setDate(args.date);
+        if (args.play === true) player.play();
+        if (args.play === false) player.pause();
+        return { success: true, layer: args.layer_id, displayName: state.displayName, ...player.describe() };
+    }
+
+    /**
      * Create a slider that filters a vector layer by a numeric/temporal field,
      * client-side, with no round-trip per step (#147). Used by the agent's
      * `create_slider` tool. The slider is bound as a MapLibre filter:
@@ -626,7 +779,11 @@ export class MapManager {
             if (state.animation) state.animation.setVisible(true);
             return { success: true, layer: layerId, displayName: state.displayName, visible: true };
         }
-        this.map.setLayoutProperty(state.mapLayerId, 'visibility', 'visible');
+        if (state.framePlayer) {
+            state.framePlayer.setVisible(true);   // its frames draw in place of the base layer
+        } else {
+            this.map.setLayoutProperty(state.mapLayerId, 'visibility', 'visible');
+        }
         if (state.outlineLayerId) this.map.setLayoutProperty(state.outlineLayerId, 'visibility', 'visible');
         if (state.control) state.control.setVisible(true);
         if (this._hasLegend(state)) this._showLegend(layerId);
@@ -651,6 +808,7 @@ export class MapManager {
         this.map.setLayoutProperty(state.mapLayerId, 'visibility', 'none');
         if (state.outlineLayerId) this.map.setLayoutProperty(state.outlineLayerId, 'visibility', 'none');
         if (state.control) state.control.setVisible(false);
+        if (state.framePlayer) state.framePlayer.setVisible(false);
         if (this._hasLegend(state)) this._hideLegend(layerId);
         this._syncToggleGroupLegends(layerId);
         return { success: true, layer: layerId, displayName: state.displayName, visible: false };
@@ -1290,6 +1448,10 @@ export class MapManager {
         // ramp the layer was registered with (#333).
         if (Object.keys(applied).length > 0) {
             state.currentPaint = { ...this._effectivePaint(state), ...applied };
+            // A time series draws through its frame layers, not the base layer.
+            if (state.frameShown && 'raster-opacity' in applied && this.map.getLayer?.(state.frameShown)) {
+                this.map.setPaintProperty(state.frameShown, 'raster-opacity', applied['raster-opacity']);
+            }
             if (opts.promoteLegend !== false) this._promoteLegendType(state);
             this._refreshLegend(layerId);
         }
@@ -1389,6 +1551,9 @@ export class MapManager {
                 // blind to the one part of the map it can't see, and reads a
                 // "the colors are wrong" complaint as a paint bug (#334).
                 legend: this.describeLegend(id).legend,
+                // A raster time series: the date on screen and the dates it
+                // can show, so the agent can answer "which day is this" (#421).
+                ...(state.framePlayer && { timeSeries: state.framePlayer.describe() }),
             };
         }
         return { success: true, layers };
@@ -1427,6 +1592,8 @@ export class MapManager {
             return out;
         }
         const out = [];
+        // Time-series frames sit just below the base layer and move with it.
+        if (state.frameLayers) out.push(...state.frameLayers.values());
         if (state.mapLayerId) out.push(state.mapLayerId);
         if (state.outlineLayerId) out.push(state.outlineLayerId);
         return out;

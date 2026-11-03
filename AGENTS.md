@@ -20,6 +20,7 @@ Core library for map-based applications with LLM-powered data analysis. Interact
 - `icons.js` — The few inline SVGs shared by the header nav and the chat footer links.
 - `theme.js` — Selects the chrome colour scheme (light/dark/auto) as a body class and applies per-app colour overrides inline; the tokens themselves live in `style.css`.
 - `map-tools.js` — the local tools the LLM agent can call (map control, styling, legends, geocoding)
+- `raster-frames.js` / `frame-player.js` — Raster time series (#421): find a series' dated COGs (STAC frame-list asset or bucket listing) and play them, preloading the next frames
 - `tool-registry.js` — Unified dispatch for local + remote (MCP) tools
 - `mcp-client.js` — MCP transport wrapper (connect once, lazy reconnect)
 - `mcp-servers.js` — Resolves which MCP servers an app connects to (`mcp_url` shorthand or `mcp_servers` list; the first is primary)
@@ -204,6 +205,8 @@ When a PR touches a covered module, expect tests to change too. When it touches 
 | `app/mcp-client.js` | 99% | `test/mcp-client.test.js` — connect / reconnect / callTool retry / resources / prompts |
 | `app/mcp-servers.js` | 100% | `test/mcp-servers.test.js` — `mcp_url` / `mcp_servers` resolution, primary override, optional flag |
 | `app/tool-registry.js` | 98% | `test/tool-registry.test.js` — registration, dispatch, argsRewriter, schema cleaning, per-server clear and collisions |
+| `app/raster-frames.js` | 100% | `test/raster-frames.test.js` — frame lists, bucket listing, date windows and steps |
+| `app/frame-player.js` | partial | `test/frame-player.test.js` — playback, waiting for frames to load, preloading, ranges; `test/map-manager.time-series.test.js` — the frame layers on the map. The panel is browser-bound; verify on a preview. |
 | `app/map-tools.js` | 98% | `test/map-tools.test.js` — local-tool execute paths, get_schema MCP delegate |
 | `app/export-report.js` | 99% | `test/export-report.test.js`, `test/chat-export*.test.js` — step classification, report shape, disclosure, the ChatUI session record. Regenerate `preview/sample-export.html` after a change. |
 | `app/dataset-catalog.js` | 89% | `test/dataset-catalog.test.js` — STAC parsing, layer config shape, prompt rendering |

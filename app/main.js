@@ -9,7 +9,7 @@ import { DatasetCatalog } from './dataset-catalog.js';
 import { MapManager } from './map-manager.js';
 import { ToolRegistry } from './tool-registry.js';
 import { resolveMcpServers } from './mcp-servers.js';
-import { createMapTools, createRenderChartTool } from './map-tools.js';
+import { createMapTools, createRenderChartTool, createSetTimeTool } from './map-tools.js';
 import { createGeocoder } from './geocoder.js';
 import { Agent } from './agent.js';
 import { ChatUI } from './chat-ui.js';
@@ -288,6 +288,12 @@ async function main() {
     // get_user_location is gated separately on the opt-in geolocate.agent_tool.
     for (const tool of createMapTools(mapManager, catalog, mcp, geocodeToolEnabled ? geocoder : null, { geolocateTool: !!geoLocCfg.agent_tool })) {
         toolRegistry.registerLocal(tool);
+    }
+
+    // Raster time series (#421): the set_time tool exists only in apps that
+    // configure one, so other apps' prompts are unchanged.
+    if (catalog.getMapLayerConfigs().some(c => c.frameSource)) {
+        toolRegistry.registerLocal(createSetTimeTool(mapManager));
     }
 
     // Register draw tool (if draw is enabled and loaded)
