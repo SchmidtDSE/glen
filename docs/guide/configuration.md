@@ -316,7 +316,7 @@ The slider composes with the layer's configured `default_filter` (applied as `["
 
 A raster asset whose data is published as one COG per date can step through those dates ([#421](https://github.com/SchmidtDSE/glen/issues/421)). Give it a `control` with `"bind": "frame"`. The layer then shows a player in the overlay rail, with play and pause, back and forward, a slider over the dates, and the date on screen. The colormap, `rescale`, `unscale` and legend are the layer's own and do not change between frames.
 
-The player keeps the frame on screen and the next two on the map, the next ones at zero opacity so their tiles load before they are needed. Playback moves on only when the next frame has loaded, so on a slow connection it plays more slowly instead of showing blank frames.
+The player keeps the frame on screen and the next three on the map, the next ones at zero opacity so their tiles load before they are needed. A frame replaces the one on screen only once its tiles have loaded, so the map never goes blank between frames, whether playing, dragging the slider or jumping to a date. On a slow connection playback slows down to wait for each frame, for up to `max_wait_ms`.
 
 The layer's STAC asset (for example a `-latest.tif`) is what the layer shows while the frame list loads, and what it falls back to if the list cannot be read.
 
@@ -330,6 +330,8 @@ The layer's STAC asset (for example a `-latest.tif`) is what the layer shows whi
 | `frame_ms` | integer | `400` | Milliseconds each frame is shown. |
 | `default` | string | latest | Date shown on load. |
 | `loop` | boolean | `true` | Start again from the first frame after the last. |
+| `preload` | integer | `3` | Frames loaded ahead of the one on screen. More makes fast playback smoother, at the cost of more tile requests. |
+| `max_wait_ms` | integer | `8000` | Longest playback waits for a frame's tiles before moving on. The map keeps the last loaded frame until the next one arrives. |
 | `label` | string | layer name | Text shown on the player. |
 
 The agent controls the player with the **`set_time`** tool, which is registered only in apps that configure a time series. It can jump to a date, change the range or step, set the speed, and start or stop playback. `get_map_state` reports each time series' date on screen and the dates available.

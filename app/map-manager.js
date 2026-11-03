@@ -559,9 +559,9 @@ export class MapManager {
 
     /**
      * Attach a time-series player to a raster layer (#421). The layer's own
-     * source keeps showing the latest file until the frame list loads; after
-     * that it stays hidden and the player's frame layers draw in its place in
-     * the layer stack.
+     * base layer (its latest file) stays on screen until the first frame has
+     * loaded, and is then hidden while the player's frame layers draw in its
+     * place in the layer stack.
      *
      * @param {string} layerId
      * @param {Object} config  the layer config, with `control`, `frameSource`
@@ -572,7 +572,9 @@ export class MapManager {
         const state = this.layers.get(layerId);
         if (!state) return Promise.resolve({ success: false, error: `Unknown layer: ${layerId}` });
         state.frameLayers = new Map();   // frame datetime → MapLibre layer/source id
-        state.frameShown = null;
+        state.frameShown = null;         // the frame layer on screen
+        state.framePending = null;       // a frame to show once its tiles load
+        state.frameTilesSeen = new Set(); // frame sources that have finished a tile
         state.framePlayerReady = (async () => {
             try {
                 const [{ loadFrames }, { FramePlayer }] = await Promise.all([
@@ -590,8 +592,6 @@ export class MapManager {
                     visible: state.visible,
                     ops: this._frameOps(state, config.frameTileUrl),
                 });
-                // The player's frames replace the layer's latest-file view.
-                this.map.setLayoutProperty(state.mapLayerId, 'visibility', 'none');
                 return { success: true };
             } catch (err) {
                 console.error(`[Map] Time series for ${layerId} unavailable, showing its latest file:`, err);
@@ -603,16 +603,60 @@ export class MapManager {
     }
 
     /**
-     * The map operations a FramePlayer drives: each frame is its own raster
-     * source and layer, placed just below the layer's hidden base layer so the
-     * series keeps the layer's position in the stack.
+     * The map operations a FramePlayer drives. Each frame is its own raster
+     * source and layer, placed just below the layer's base layer so the series
+     * keeps the layer's position in the stack.
+     *
+     * The frame on screen is never taken down before its successor has tiles:
+     * a frame asked to show while still loading waits as `framePending`, and
+     * the swap happens on the map event that finishes its tiles. A frame counts
+     * as loaded only once one of its tiles has finished (loaded or failed) and
+     * MapLibre reports nothing still loading; a just-added source with no tiles
+     * requested yet would otherwise report loaded.
      */
     _frameOps(state, frameTileUrl) {
         const idFor = (frame) => `${state.mapLayerId}-t${frame.datetime}`;
+        const isFrameId = (id) => typeof id === 'string' && [...state.frameLayers.values()].includes(id);
         const opacity = () => {
             const o = this._effectivePaint(state)?.['raster-opacity'];
             return typeof o === 'number' ? o : 0.7;
         };
+        const loaded = (id) => {
+            if (!this.map.getSource(id) || !state.frameTilesSeen.has(id)) return false;
+            try { return this.map.isSourceLoaded(id); } catch { return false; }
+        };
+        let keepIds = new Set();
+        const remove = (id) => {
+            if (this.map.getLayer(id)) this.map.removeLayer(id);
+            if (this.map.getSource(id)) this.map.removeSource(id);
+            state.frameTilesSeen.delete(id);
+            for (const [date, v] of state.frameLayers) if (v === id) state.frameLayers.delete(date);
+        };
+        // Remove frames that are neither wanted nor on screen nor about to be.
+        const sweep = () => {
+            for (const id of [...state.frameLayers.values()]) {
+                if (!keepIds.has(id) && id !== state.frameShown && id !== state.framePending) remove(id);
+            }
+        };
+        const swapTo = (id) => {
+            if (state.frameShown && state.frameShown !== id && this.map.getLayer(state.frameShown)) {
+                this.map.setPaintProperty(state.frameShown, 'raster-opacity', 0);
+            }
+            this.map.setPaintProperty(id, 'raster-opacity', opacity());
+            state.frameShown = id;
+            state.framePending = null;
+            // The first frame on screen takes over from the base layer.
+            this.map.setLayoutProperty(state.mapLayerId, 'visibility', 'none');
+            sweep();
+        };
+        const onMapEvent = (e) => {
+            if (!isFrameId(e?.sourceId)) return;
+            if (e.tile || e.type === 'error') state.frameTilesSeen.add(e.sourceId);
+            if (state.framePending && loaded(state.framePending)) swapTo(state.framePending);
+        };
+        this.map.on?.('sourcedata', onMapEvent);
+        this.map.on?.('error', onMapEvent);
+
         return {
             ensure: (frame, role) => {
                 const id = idFor(frame);
@@ -625,34 +669,46 @@ export class MapManager {
                         type: 'raster',
                         source: id,
                         layout: { visibility: 'visible' },
-                        // Zero opacity keeps a preloading frame invisible while
-                        // its tiles load; no fade, so a step is a clean cut.
+                        // Zero opacity keeps a loading frame invisible; no fade,
+                        // so a step is a clean cut.
                         paint: { 'raster-opacity': 0, 'raster-fade-duration': 0 },
                     }, state.mapLayerId);
                     state.frameLayers.set(frame.datetime, id);
+                } else {
+                    this.map.setLayoutProperty(id, 'visibility', 'visible');
                 }
-                if (role === 'show') {
-                    if (state.frameShown && state.frameShown !== id && this.map.getLayer(state.frameShown)) {
-                        this.map.setPaintProperty(state.frameShown, 'raster-opacity', 0);
-                    }
-                    this.map.setPaintProperty(id, 'raster-opacity', opacity());
-                    state.frameShown = id;
+                if (role !== 'show' || id === state.frameShown) {
+                    if (role === 'show') state.framePending = null;
+                    return;
+                }
+                if (loaded(id)) {
+                    swapTo(id);
+                } else {
+                    state.framePending = id;
+                    sweep();   // drop an earlier pending frame the player has moved past
                 }
             },
-            isLoaded: (frame) => {
-                const id = idFor(frame);
-                if (!this.map.getSource(id)) return false;
-                try { return this.map.isSourceLoaded(id); } catch { return false; }
-            },
+            isLoaded: (frame) => loaded(idFor(frame)),
             prune: (keep) => {
-                const keepIds = new Set(keep.filter(Boolean).map(idFor));
-                for (const [date, id] of state.frameLayers) {
-                    if (keepIds.has(id)) continue;
-                    if (this.map.getLayer(id)) this.map.removeLayer(id);
-                    if (this.map.getSource(id)) this.map.removeSource(id);
-                    state.frameLayers.delete(date);
-                    if (state.frameShown === id) state.frameShown = null;
+                keepIds = new Set(keep.filter(Boolean).map(idFor));
+                sweep();
+            },
+            setVisible: (visible) => {
+                // Hidden frames load no tiles but keep their place, so the
+                // frame on screen comes back at once when the layer is shown.
+                for (const id of state.frameLayers.values()) {
+                    if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
                 }
+                if (visible && !state.frameShown) {
+                    this.map.setLayoutProperty(state.mapLayerId, 'visibility', 'visible');
+                }
+            },
+            clear: () => {
+                for (const id of [...state.frameLayers.values()]) remove(id);
+                state.frameShown = null;
+                state.framePending = null;
+                this.map.off?.('sourcedata', onMapEvent);
+                this.map.off?.('error', onMapEvent);
             },
         };
     }
@@ -780,7 +836,10 @@ export class MapManager {
             return { success: true, layer: layerId, displayName: state.displayName, visible: true };
         }
         if (state.framePlayer) {
-            state.framePlayer.setVisible(true);   // its frames draw in place of the base layer
+            // Its frames draw in place of the base layer, which shows only
+            // until the first frame has loaded.
+            if (!state.frameShown) this.map.setLayoutProperty(state.mapLayerId, 'visibility', 'visible');
+            state.framePlayer.setVisible(true);
         } else {
             this.map.setLayoutProperty(state.mapLayerId, 'visibility', 'visible');
         }

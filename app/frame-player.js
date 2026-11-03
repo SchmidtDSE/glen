@@ -23,7 +23,8 @@ const DEFAULTS = {
     step: 1,
     frame_ms: 400,
     loop: true,
-    preload: 2,       // frames kept loading ahead of the one on screen
+    preload: 3,       // frames kept loading ahead of the one on screen
+    max_wait_ms: 8000, // give up waiting for a frame's tiles after this long
 };
 
 // While waiting for a frame's tiles, check again this often.
@@ -40,6 +41,8 @@ export class FramePlayer {
      * @param {(frame:Object, role:'show'|'preload')=>void} opts.ops.ensure  put a frame on the map
      * @param {(frame:Object)=>boolean} opts.ops.isLoaded  whether a frame's tiles are loaded
      * @param {(keep:Object[])=>void} opts.ops.prune  remove every frame not in `keep`
+     * @param {(visible:boolean)=>void} [opts.ops.setVisible]  show or hide the frames on the map
+     * @param {()=>void} [opts.ops.clear]  remove every frame and stop listening to the map
      * @param {boolean} [opts.visible=true]  whether the layer is on; a hidden layer loads no frames
      * @param {Document|null} [opts.doc]
      * @param {{ setTimeout: Function, clearTimeout: Function }} [opts.clock]
@@ -86,12 +89,13 @@ export class FramePlayer {
     show(i) {
         if (this.destroyed || !this.frames.length) return;
         this.index = Math.max(0, Math.min(this.frames.length - 1, i));
-        const keep = [this.current, ...this._ahead()];
+        // A hidden layer touches nothing on the map; showing it again calls show().
         if (this.visible) {
+            const keep = [this.current, ...this._ahead()];
             this.ops.ensure(this.current, 'show');
             for (const f of keep.slice(1)) this.ops.ensure(f, 'preload');
+            this.ops.prune(keep);
         }
-        this.ops.prune(this.visible ? keep : []);
         this._render();
     }
 
@@ -139,6 +143,7 @@ export class FramePlayer {
     pause() {
         this.playing = false;
         this.waiting = false;
+        this.waitStart = null;
         if (this.timer) { this.clock.clearTimeout(this.timer); this.timer = null; }
         this._render();
     }
@@ -178,13 +183,19 @@ export class FramePlayer {
         }
         const frame = this.frames[next];
         if (!this.ops.isLoaded(frame)) {
-            // Hold the current frame until the next one has its tiles.
-            this.ops.ensure(frame, 'preload');
-            if (!this.waiting) { this.waiting = true; this._render(); }
-            this._schedule(WAIT_MS);
-            return;
+            // Hold the current frame until the next one has its tiles, up to
+            // max_wait_ms; after that move on, and the map keeps showing the
+            // last loaded frame until this one arrives.
+            const now = Date.now();
+            if (!this.waiting) { this.waiting = true; this.waitStart = now; this._render(); }
+            if (now - this.waitStart < this.config.max_wait_ms) {
+                this.ops.ensure(frame, 'preload');
+                this._schedule(WAIT_MS);
+                return;
+            }
         }
         this.waiting = false;
+        this.waitStart = null;
         this.show(next);
         this._schedule(this.config.frame_ms);
     }
@@ -195,13 +206,14 @@ export class FramePlayer {
         this.visible = visible;
         if (this._panel) this._panel.style.display = visible ? '' : 'none';
         if (!visible) this.pause();
-        this.show(this.index);
+        this.ops.setVisible?.(visible);
+        if (visible) this.show(this.index);
     }
 
     destroy() {
         this.pause();
         this.destroyed = true;
-        this.ops.prune([]);
+        if (this.ops.clear) this.ops.clear(); else this.ops.prune([]);
         if (this._panel) this._panel.remove();
     }
 
@@ -246,8 +258,10 @@ export class FramePlayer {
         this._toggle = panel.querySelector('.fp-toggle');
 
         this._slider.addEventListener('input', () => {
+            // Read the value first: pause() re-renders the slider at the old index.
+            const i = Number(this._slider.value);
             this.pause();
-            this.show(Number(this._slider.value));
+            this.show(i);
         });
         this._toggle.addEventListener('click', () => (this.playing ? this.pause() : this.play()));
         panel.querySelector('.fp-prev').addEventListener('click', () => this.stepBy(-1));
