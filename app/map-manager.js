@@ -912,6 +912,8 @@ export class MapManager {
      * @param {string[]} [opts.tooltipFields] - feature property keys to show on hover
      * @param {[number,number,number,number]} [opts.bounds] - [w,s,e,n] for fitBounds
      * @param {boolean} [opts.fitBounds=true]
+     * @param {'polygon'|'point'} [opts.geometryKind='polygon'] - points draw as circles, with no outline layer
+     * @param {string} [opts.pointColor='#d9480f']
      * @returns {{success: boolean, layer_id?: string, already_exists?: boolean, error?: string}}
      */
     addUploadedLayer(opts) {
@@ -919,6 +921,8 @@ export class MapManager {
             id, geojson, displayName,
             fillColor = '#3b82f6', outlineColor = '#1e3a8a', opacity = 0.35,
             tooltipFields = null, bounds, fitBounds = true,
+            // 'point' draws circles (#435); anything else, the polygon fill + outline.
+            geometryKind = 'polygon', pointColor = '#d9480f',
         } = opts;
 
         if (!id) return { success: false, error: 'addUploadedLayer requires an id' };
@@ -926,7 +930,8 @@ export class MapManager {
             return { success: false, error: 'addUploadedLayer requires a parsed geojson object' };
         }
         const layerId = `upload-${id}`;
-        const outlineLayerId = `${layerId}-outline`;
+        const isPoint = geometryKind === 'point';
+        const outlineLayerId = isPoint ? null : `${layerId}-outline`;
 
         // Idempotency: same content hash → same layer → no re-add.
         if (this.layers.has(layerId)) {
@@ -934,21 +939,33 @@ export class MapManager {
             return { success: true, layer_id: layerId, display_name: state.displayName, already_exists: true };
         }
 
+        const paint = isPoint
+            ? {
+                'circle-color': pointColor,
+                'circle-radius': 4,
+                'circle-opacity': 0.8,
+                'circle-stroke-color': '#ffffff',
+                'circle-stroke-width': 1,
+            }
+            : { 'fill-color': fillColor, 'fill-opacity': opacity };
+
         this.map.addSource(layerId, { type: 'geojson', data: geojson });
         this.map.addLayer({
             id: layerId,
-            type: 'fill',
+            type: isPoint ? 'circle' : 'fill',
             source: layerId,
             layout: { visibility: 'visible' },
-            paint: { 'fill-color': fillColor, 'fill-opacity': opacity },
+            paint,
         });
-        this.map.addLayer({
-            id: outlineLayerId,
-            type: 'line',
-            source: layerId,
-            layout: { visibility: 'visible' },
-            paint: { 'line-color': outlineColor, 'line-width': 1.5 },
-        });
+        if (outlineLayerId) {
+            this.map.addLayer({
+                id: outlineLayerId,
+                type: 'line',
+                source: layerId,
+                layout: { visibility: 'visible' },
+                paint: { 'line-color': outlineColor, 'line-width': 1.5 },
+            });
+        }
 
         this.layers.set(layerId, {
             layerId,
@@ -966,7 +983,7 @@ export class MapManager {
             visible: true,
             filter: null,
             defaultFilter: null,
-            defaultPaint: { 'fill-color': fillColor, 'fill-opacity': opacity },
+            defaultPaint: paint,
             tooltipFields,
             defaultTooltipFields: tooltipFields,
             colormap: null,
@@ -981,7 +998,10 @@ export class MapManager {
 
         if (fitBounds && Array.isArray(bounds) && bounds.length === 4) {
             const [w, s, e, n] = bounds;
-            this.map.fitBounds([[w, s], [e, n]], { padding: 40, duration: 800 });
+            // One point (or several at the same spot) has no extent, and
+            // fitBounds would zoom to the map's maximum.
+            if (w === e && s === n) this.map.flyTo({ center: [w, s], zoom: 12, duration: 800 });
+            else this.map.fitBounds([[w, s], [e, n]], { padding: 40, duration: 800, maxZoom: 14 });
         }
 
         return { success: true, layer_id: layerId, display_name: displayName, already_exists: false };

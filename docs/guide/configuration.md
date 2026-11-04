@@ -1202,7 +1202,7 @@ Note the deliberate asymmetry with the [`geocode` tool](#geocoding-optional), wh
 
 ## GeoJSON upload (optional)
 
-Lets a user drop a small polygon boundary (a study area, a parcel, a district) onto the map and ask questions about it. Off by default:
+Lets a user drop a small polygon boundary (a study area, a parcel, a district) or a set of points (their own occurrence records, survey sites) onto the map and ask questions about it. Off by default:
 
 ```json
 { "upload_enabled": true }
@@ -1217,14 +1217,30 @@ To customise, pass an object instead of `true`:
 | `bucket_url` | `https://s3-west.nrp-nautilus.io/public-output` | Bucket the file is written to. |
 | `prefix` | `uploads` | Key prefix inside the bucket. Files are named by content hash. |
 | `max_bytes` | `5242880` (5 MB) | Largest file accepted. |
-| `max_features` | `1000` | Most features accepted. |
-| `ingest_url` | none | Where to send people whose data is too big or isn't polygons, e.g. a data-ingest request form. |
+| `max_features` | `1000` | Most polygon features accepted. |
+| `max_point_features` | `50000` | Most points accepted, after each MultiPoint is split into its points. `max_bytes` still applies. |
+| `ingest_url` | none | Where to send people whose data is too big or isn't polygons or points, e.g. a data-ingest request form. |
 
 ```json
 { "upload_enabled": { "max_features": 200, "ingest_url": "https://example.org/data-request" } }
 ```
 
-Only Polygon and MultiPolygon features are accepted. Larger or other data is out of scope by design; the error message points to `ingest_url`.
+A file holds either polygons (Polygon, MultiPolygon) or points (Point, MultiPoint), not both. Lines and larger data are out of scope by design; the error message points to `ingest_url`.
+
+### Points
+
+Points are drawn as circles and uploaded as GeoJSON, like polygons. A MultiPoint is split into one point per coordinate first, keeping its properties. A point outside the longitude and latitude range is refused, since that usually means swapped or projected coordinates.
+
+For each point upload, `get_uploaded_dataset` gives the agent a ready SQL source that adds H3 cell columns `h10` … `h0` (#435). It computes each point's resolution-10 cell and derives every coarser cell from it with `h3_cell_to_parent`, the way cng-datasets builds the catalog's hex data, so the points join to any H3-indexed dataset on a shared column such as `h8`. Joining on `h0` as well lets DuckDB read only the partitions the points fall in:
+
+```sql
+WITH pts AS (SELECT * FROM <sql_source>)
+SELECT d.*, pts.species
+FROM pts JOIN read_parquet('s3://…/hex/h0=*/data_0.parquet', hive_partitioning = true) d
+  ON d.h8 = pts.h8 AND d.h0 = pts.h0
+```
+
+The cells are computed when the agent queries rather than stored in the file. Parsing the GeoJSON dominates the cost of a query, and storing the cells made the file up to 2.8 times larger and slower to read; #435 has the benchmark.
 
 ::: warning The bucket must accept anonymous browser uploads
 The browser writes the file directly, so the bucket needs anonymous `PUT` **and** a CORS rule allowing `PUT` from your app's origin. Read-only CORS is the common default, and uploads fail at the preflight with a 403. On Ceph RGW the first rule whose `AllowedOrigin` matches wins, so put a specific-origin `PUT` rule before any broad `*` rule. Uploaded files are public.
