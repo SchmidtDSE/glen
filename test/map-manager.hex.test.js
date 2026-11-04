@@ -126,6 +126,42 @@ describe('MapManager.addHexTileLayer', () => {
         expect(mm.map._easeToCalls[0].pitch).toBe(45);
     });
 
+    it('fits and tilts in one camera move when the map starts flat (#416)', () => {
+        mm.map.cameraForBounds = (b, o) => ({ center: [30, 26], zoom: 5, bearing: 0, _b: b, _o: o });
+        mm.addHexTileLayer({
+            tileUrl: 'https://example.com/tiles/hex/eg1/{z}/{x}/{y}.pbf',
+            valueColumn: 'pop',
+            valueStats: { by_res: { '6': { min: 0, max: 100 } } },
+            bounds: [25.03, 21.97, 36.89, 31.64],
+            palette: 'ylorrd',
+            opacity: 0.95,
+            displayName: 'Egypt',
+            fitBounds: true,
+            extrude: true,
+        });
+        // No separate fitBounds for the tilt to cancel: one easeTo carries both.
+        expect(mm.map._fitBoundsCalls.length).toBe(0);
+        expect(mm.map._easeToCalls).toHaveLength(1);
+        expect(mm.map._easeToCalls[0]).toMatchObject({ center: [30, 26], zoom: 5, pitch: 45, duration: 800 });
+    });
+
+    it('fits without tilting when the map is already pitched (#416)', () => {
+        mm.map._pitch = 30;
+        mm.addHexTileLayer({
+            tileUrl: 'https://example.com/tiles/hex/eg2/{z}/{x}/{y}.pbf',
+            valueColumn: 'pop',
+            valueStats: { by_res: { '6': { min: 0, max: 100 } } },
+            bounds: [25.03, 21.97, 36.89, 31.64],
+            palette: 'ylorrd',
+            opacity: 0.95,
+            displayName: 'Egypt',
+            fitBounds: true,
+            extrude: true,
+        });
+        expect(mm.map._fitBoundsCalls.length).toBe(1);
+        expect(mm.map._easeToCalls).toHaveLength(0);
+    });
+
     it('honors an explicit extrude_max_height at the top of the ramp (#317)', () => {
         mm.addHexTileLayer({
             tileUrl: 'https://example.com/tiles/hex/eh/{z}/{x}/{y}.pbf',
