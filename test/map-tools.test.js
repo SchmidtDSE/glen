@@ -620,6 +620,17 @@ describe('createMapTools smoke test', () => {
         }
     });
 
+    it('set_style types its number-valued paint properties as number or expression (#409)', () => {
+        const tools = createMapTools(stubMapManager, stubCatalog);
+        const style = tools.find(t => t.name === 'set_style').inputSchema.properties.style;
+        for (const prop of ['fill-opacity', 'line-width', 'line-opacity', 'circle-radius', 'circle-opacity', 'fill-extrusion-opacity', 'raster-opacity']) {
+            expect(style.properties[prop].type, prop).toEqual(['number', 'array']);
+            expect(style.properties[prop].items, prop).toBeDefined();
+        }
+        // Colors stay untyped: a color is a string or an expression.
+        expect(style.properties['fill-color'].type).toBeUndefined();
+    });
+
     it('set_filter.filter declares items so it is not grammar-collapsed to [] (#243)', () => {
         const tools = createMapTools(stubMapManager, stubCatalog);
         const setFilter = tools.find(t => t.name === 'set_filter');

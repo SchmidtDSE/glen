@@ -1283,7 +1283,16 @@ export class MapManager {
         }
         if (state.type !== 'vector') return { success: false, error: `Layer '${layerId}' is raster — filtering only works on vector layers` };
 
-        this.map.setFilter(state.mapLayerId, filter);
+        // MapLibre rejects an invalid expression through its `error` event and
+        // keeps the old filter, so report that instead of success (#409).
+        const filterErrors = this._mapErrorsDuring(() => this.map.setFilter(state.mapLayerId, filter));
+        if (filterErrors.length > 0) {
+            return {
+                success: false,
+                layer: layerId,
+                error: `MapLibre rejected the filter, so the layer is unchanged: ${filterErrors.join('; ')}`,
+            };
+        }
         if (state.outlineLayerId) this.map.setFilter(state.outlineLayerId, filter);
         state.filter = filter;
 
@@ -1484,6 +1493,31 @@ export class MapManager {
     // ---- Styling ----
 
     /**
+     * Run a synchronous map call and return the messages of any `error` events
+     * it fired, or of the error it threw. MapLibre reports an invalid paint
+     * value through the map's `error` event instead of throwing, so a try/catch
+     * alone reports success for a change that never reached the map (#409).
+     * A filter whose types don't check is thrown instead (MapLibre 5.22).
+     * @param {Function} fn
+     * @returns {string[]}
+     */
+    _mapErrorsDuring(fn) {
+        const errors = [];
+        const onError = (e) => errors.push(e?.error?.message || String(e?.error ?? e));
+        this.map.on?.('error', onError);
+        try {
+            fn();
+        } catch (e) {
+            // Some invalid values (a filter whose types don't check) are thrown
+            // rather than reported through the error event.
+            errors.push(e?.message || String(e));
+        } finally {
+            this.map.off?.('error', onError);
+        }
+        return errors;
+    }
+
+    /**
      * Apply paint properties to a layer.
      * @param {string} layerId
      * @param {Object} paintProps - e.g. { 'fill-color': 'red', 'fill-opacity': 0.5 }
@@ -1496,6 +1530,25 @@ export class MapManager {
     setStyle(layerId, paintProps, opts = {}) {
         const state = this.layers.get(layerId);
         if (!state) return { success: false, error: `Unknown layer: ${layerId}` };
+
+        // Some providers collapse the free-form `style` object under constrained
+        // decoding and the model sends "" or a JSON string (#409). Parse a JSON
+        // string; reject anything that is still not a non-empty object, rather
+        // than iterating a string's characters as property names.
+        if (typeof paintProps === 'string') {
+            try { paintProps = JSON.parse(paintProps); } catch { /* reported below */ }
+        }
+        if (!paintProps || typeof paintProps !== 'object' || Array.isArray(paintProps)
+            || Object.keys(paintProps).length === 0) {
+            const got = typeof paintProps === 'string'
+                ? (paintProps.trim() ? `the string ${JSON.stringify(paintProps.slice(0, 80))}` : 'an empty string')
+                : (Array.isArray(paintProps) ? 'an array' : (paintProps && typeof paintProps === 'object' ? 'an empty object' : String(paintProps)));
+            return {
+                success: false,
+                layer: layerId,
+                error: `style must be an object of paint properties, like {"fill-color": "#ff0000", "fill-opacity": 0.8}; got ${got}. Nothing was changed.`,
+            };
+        }
 
         // Hex layers carry a single dynamic value column (e.g. "species_richness").
         // The agent often emits a data-driven expression against a guessed
@@ -1513,7 +1566,11 @@ export class MapManager {
                 replaced.forEach(p => corrected.add(p));
             }
             try {
-                this.map.setPaintProperty(state.mapLayerId, prop, value);
+                const errors = this._mapErrorsDuring(() => this.map.setPaintProperty(state.mapLayerId, prop, value));
+                if (errors.length > 0) {
+                    results.push({ property: prop, success: false, error: errors.join('; ') });
+                    continue;
+                }
                 applied[prop] = value;
                 results.push({ property: prop, success: true });
             } catch (error) {
