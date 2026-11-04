@@ -1,6 +1,10 @@
 import { validateChartSpec } from './chart-renderer.js';
 import { metadataUrlFromTileUrl } from './hex-layer-helpers.js';
 
+// A paint value that is a number, or an expression (an array). `items: {}`
+// keeps a constrained decoder from collapsing the array to [] (#243).
+const NUM_OR_EXPR = { type: ['number', 'array'], items: {} };
+
 /**
  * Whether a value_stats object is usable for building a hex color ramp (#276):
  * an object with a non-empty `by_res` map.
@@ -394,19 +398,21 @@ ${pickLayerNudge}`,
                         description: 'MapLibre paint properties object, e.g. {"fill-color": "#ff0000", "fill-opacity": 0.8}. Never a string.',
                         // Named properties give constrained decoders something to
                         // generate; a property-less object schema collapsed to "" (#409).
+                        // Number-valued ones are typed, or models send "0.8" as a string,
+                        // which MapLibre rejects.
                         properties: {
                             'fill-color': { description: 'Fill color, or an expression' },
-                            'fill-opacity': { description: 'Fill opacity 0–1, or an expression' },
+                            'fill-opacity': { ...NUM_OR_EXPR, description: 'Fill opacity 0–1, or an expression' },
                             'fill-outline-color': { description: 'Fill outline color' },
                             'line-color': { description: 'Line color, or an expression' },
-                            'line-width': { description: 'Line width in pixels, or an expression' },
-                            'line-opacity': { description: 'Line opacity 0–1' },
+                            'line-width': { ...NUM_OR_EXPR, description: 'Line width in pixels, or an expression' },
+                            'line-opacity': { ...NUM_OR_EXPR, description: 'Line opacity 0–1' },
                             'circle-color': { description: 'Circle color, or an expression' },
-                            'circle-radius': { description: 'Circle radius in pixels, or an expression' },
-                            'circle-opacity': { description: 'Circle opacity 0–1' },
+                            'circle-radius': { ...NUM_OR_EXPR, description: 'Circle radius in pixels, or an expression' },
+                            'circle-opacity': { ...NUM_OR_EXPR, description: 'Circle opacity 0–1' },
                             'fill-extrusion-color': { description: 'Extrusion color, or an expression' },
-                            'fill-extrusion-opacity': { description: 'Extrusion opacity 0–1' },
-                            'raster-opacity': { description: 'Raster opacity 0–1' },
+                            'fill-extrusion-opacity': { ...NUM_OR_EXPR, description: 'Extrusion opacity 0–1' },
+                            'raster-opacity': { ...NUM_OR_EXPR, description: 'Raster opacity 0–1' },
                         },
                         additionalProperties: true,
                     }

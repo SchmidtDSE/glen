@@ -1258,9 +1258,10 @@ export class MapManager {
 
     /**
      * Run a synchronous map call and return the messages of any `error` events
-     * it fired. MapLibre reports an invalid paint value or filter expression
-     * through the map's `error` event instead of throwing, so a try/catch alone
-     * reports success for a change that never reached the map (#409).
+     * it fired, or of the error it threw. MapLibre reports an invalid paint
+     * value through the map's `error` event instead of throwing, so a try/catch
+     * alone reports success for a change that never reached the map (#409).
+     * A filter whose types don't check is thrown instead (MapLibre 5.22).
      * @param {Function} fn
      * @returns {string[]}
      */
@@ -1270,6 +1271,10 @@ export class MapManager {
         this.map.on?.('error', onError);
         try {
             fn();
+        } catch (e) {
+            // Some invalid values (a filter whose types don't check) are thrown
+            // rather than reported through the error event.
+            errors.push(e?.message || String(e));
         } finally {
             this.map.off?.('error', onError);
         }

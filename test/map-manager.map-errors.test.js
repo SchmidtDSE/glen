@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { MapManager } from '../app/map-manager.js';
 
 /**
- * A map that, like MapLibre, reports invalid values through its `error`
- * event instead of throwing. `rejects(prop or 'filter', value)` decides.
+ * A map that, like MapLibre, reports invalid paint values through its
+ * `error` event instead of throwing. `rejects(prop or 'filter', value)` decides.
  */
 function createManager(rejects = () => null) {
     const listeners = new Set();
@@ -82,6 +82,16 @@ describe('MapLibre error events become tool failures (#409)', () => {
         expect(r.success).toBe(false);
         expect(r.error).toMatch(/Expected number but found string/);
         expect(mm.layers.get('A').filter).toBe(null);
+    });
+
+    it('setFilter reports an expression MapLibre throws on, as MapLibre 5.22 does', () => {
+        const mm = createManager();
+        mm.map.setFilter = () => { throw new Error('[2]: Expected boolean but found string instead.'); };
+        const r = mm.setFilter('A', ['match', ['get', 'reGAP'], [1, 2], 'true', 'false']);
+        expect(r.success).toBe(false);
+        expect(r.error).toMatch(/rejected the filter, so the layer is unchanged: \[2\]: Expected boolean/);
+        expect(mm.layers.get('A').filter).toBe(null);
+        expect(mm._listeners.size).toBe(0);
     });
 
     it('removes its error listener after the call', () => {
