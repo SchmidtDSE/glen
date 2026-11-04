@@ -1695,3 +1695,117 @@ body.theme-dark .app-header-logo--dark {
         scroll-behavior: auto !important;
     }
 }
+
+/* ── Data sources page (#433) ─────────────────────────────────────────────
+   A native <dialog> opened on #data, so it sits in the top layer and needs
+   no z-index. Chrome tokens, since it reads as part of the app's shell. */
+#data-page {
+    width: min(760px, calc(100vw - 32px));
+    max-height: min(85vh, calc(100dvh - 32px));
+    padding: 0;
+    border: 1px solid var(--chrome-line);
+    border-radius: 8px;
+    background: var(--chrome-bg-raised);
+    color: var(--chrome-fg);
+    box-shadow: 0 12px 40px var(--chrome-shadow);
+}
+
+#data-page[open] {
+    display: flex;
+    flex-direction: column;
+}
+
+#data-page::backdrop {
+    background: rgba(0, 0, 0, 0.4);
+}
+
+.data-page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px 10px 20px;
+    border-bottom: 1px solid var(--chrome-line);
+}
+
+.data-page-head h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.data-page-close {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 auto;
+    font-size: 18px;
+    line-height: 1;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    color: inherit;
+    cursor: pointer;
+}
+
+.data-page-close:hover {
+    background: var(--chrome-hover);
+}
+
+.data-page-body {
+    overflow-y: auto;
+    padding: 12px 20px 20px;
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.data-page-body a {
+    color: var(--control-accent);
+    overflow-wrap: anywhere;
+}
+
+.data-page-intro,
+.data-page-empty {
+    margin: 0 0 12px;
+    color: var(--chrome-fg-muted);
+}
+
+.data-page-body .ds-list {
+    margin: 0;
+    padding-left: 1.4rem;
+}
+
+.data-page-body .ds-list > li {
+    margin: 0 0 14px;
+}
+
+.data-page-body .ds-list p {
+    margin: 2px 0;
+}
+
+.data-page-body .ds-citation {
+    font-size: 13px;
+}
+
+.data-page-body .ds-none,
+.data-page-body .ds-meta {
+    color: var(--chrome-fg-muted);
+    font-size: 12px;
+}
+
+.data-page-body .ds-none {
+    font-style: italic;
+}
+
+.data-page-body .ds-children {
+    margin-top: 4px;
+    font-size: 13px;
+}
+
+.data-page-body .ds-children summary {
+    cursor: pointer;
+    color: var(--chrome-fg-muted);
+}
+
+.data-page-body .ds-children .ds-list {
+    margin-top: 8px;
+}

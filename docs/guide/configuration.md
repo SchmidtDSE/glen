@@ -755,12 +755,13 @@ in the familiar order:
 | From | Becomes |
 |---|---|
 | `links.docs` | **About** |
+| `links.data` | **Data** — the [data sources page](#data-sources-page), present **by default**. Set `false` to drop it, or `{ "label": "…" }` to rename it. It opens in place rather than in a new tab. |
 | `links.github` | **GitHub** |
 | `links.carbon` | **Carbon** (the NRP LLM carbon dashboard; set a string to point elsewhere) |
 | `links.contact` | **Contact us** — the one entry present **by default**, pointing at `mailto:dse@berkeley.edu`. Give a full URL, or a bare address which is normalised to a `mailto:`. Set `false` to drop it. |
 
-Because Contact defaults on, enabling the header always yields at least one
-nav entry. The mailto opens in the same tab, so no blank one is left behind.
+Because Data and Contact default on, enabling the header always yields at
+least one nav entry. The mailto opens in the same tab, so no blank one is left behind.
 
 When a nav is rendered, the chat footer **stops** showing those same links, so
 they appear once rather than twice.
@@ -946,6 +947,29 @@ Optional links surfaced in the chat UI. All fields are optional — omit any you
 | `github` | URL to the app's source repository. Renders as a GitHub octocat icon in the chat footer. |
 | `docs` | URL to a documentation or about page for the app. Renders as an "About" text link in the chat footer. |
 | `carbon` | Set to `true` to show a carbon dashboard link (leaf icon) in the chat footer. Only meaningful for apps using NRP-hosted LLMs — links to the NRP carbon API dashboard. |
+| `data` | The link to the [data sources page](#data-sources-page), a "Data" text link shown **by default** whether or not a `links` block exists. Set `false` to drop the link, or `{ "label": "Data sources" }` to rename it. |
+
+## Data sources page
+
+Every app has a page listing the datasets it loads, with the citation each
+one's STAC record gives (#433). It is built when the app loads, from the same
+catalog records and the same code as the
+[exported report's Data sources section](#chat-export), so it cannot drift
+from what the app actually loads. Better metadata in the catalog improves the
+page and the export together, with no change to the app.
+
+Each entry has the title, the producers, the citation (`sci:citation` when the
+record has one, otherwise its `sci:doi` or `cite-as` link), the license and
+links to the STAC record and its `about` page. A collection that groups
+sub-collections lists them under it, folded, each with its own citation. A
+record with no citation says so rather than inventing one.
+
+The page opens over the map at the URL fragment `#data`, so it can be linked
+from anywhere. A custom About page that used to keep its own list of datasets
+can link to `https://<your-app>/#data` instead. The header nav and the chat
+footer link to it by default (`links.data` above). Setting `links.data: false`
+removes those links, but `#data` still opens the page, so outside links keep
+working.
 
 ## LLM configuration
 
@@ -1310,7 +1334,7 @@ The saved file is a **session report** (#388), laid out like a Quarto or R Markd
 - **One section per question**, headed by the user's words verbatim. In the order they ran come the SQL-carrying calls (`query`, `register_hex_tiles`, `render_chart`, `filter_by_query`), each a **folded code chunk** with its output beneath it, and then the model's answer as prose. The *Code: Show / Hide* and *Code as* R · Python · SQL controls apply to every chunk.
 - **Charts are figures.** Each `render_chart` the session drew is re-drawn at report width as a static figure under its chunk, captioned with its title, even if the user closed its panel. A chart drawn from rows the model passed inline (rather than SQL) says so, and the rows are in the session log.
 - **Lookups are summarised, not shown.** Schema and catalog reads and status polls (`get_schema`, `get_hex_tile_status`, …) become one *Consulted …* line. Map actions become one line each. Failed or retried calls are left out, with a count.
-- **Data sources.** Each dataset the session used, with the citation its STAC record gives. "Used" means read by a successful query (matched on its `s3://` path, citing the child collection rather than a parent that lists the same asset) or shown on the exported map. Each entry has the title (linked to the record's `about` page), the producers, the citation — `sci:citation` when the record has one, otherwise its `sci:doi` or `cite-as` link — the license and a link to the STAC record. The catalog's metadata is uneven, and a record with no citation says so rather than inventing one; better metadata in the catalog makes better citations here, with no change to the app. The downloaded scripts and notebooks end with the same list.
+- **Data sources.** Each dataset the session used, with the citation its STAC record gives. "Used" means read by a successful query (matched on its `s3://` path, citing the child collection rather than a parent that lists the same asset) or shown on the exported map. Each entry has the title (linked to the record's `about` page), the producers, the citation — `sci:citation` when the record has one, otherwise its `sci:doi` or `cite-as` link — the license and a link to the STAC record. The catalog's metadata is uneven, and a record with no citation says so rather than inventing one; better metadata in the catalog makes better citations here, with no change to the app. The downloaded scripts and notebooks end with the same list. The app's [data sources page](#data-sources-page) uses the same code for every dataset the app loads.
 - **A session log appendix**, collapsed, holding every call with its arguments and result, lookups and failures included. The body is curated; the log shows nothing was hidden.
 - The **map as it stood when Save was clicked** (see below), and a colophon naming the GLEN version the app is pinned to.
 

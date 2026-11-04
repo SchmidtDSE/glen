@@ -25,7 +25,8 @@
  * Logos are supplied by config as URLs; this module ships no image assets.
  */
 
-import { githubIcon, leafIcon, infoIcon, mailIcon } from './icons.js';
+import { githubIcon, leafIcon, infoIcon, mailIcon, databaseIcon } from './icons.js';
+import { resolveDataLink } from './data-page.js';
 
 /** Carbon dashboard for NRP-hosted LLM usage, shown as a nav entry. */
 export const CARBON_DASHBOARD_URL = 'https://carbon-api.nrp-nautilus.io/';
@@ -93,7 +94,7 @@ const DEFAULT_MODE = 'solid';
  * Nav resolution has three tiers, so an app that already has a `links` block
  * gets a sensible nav without configuring anything twice:
  *   1. `header.nav` — an explicit list wins outright.
- *   2. otherwise, derive from the top-level `links` block (About / GitHub /
+ *   2. otherwise, derive from the top-level `links` block (About / Data / GitHub /
  *      Carbon), which is where those links live today.
  *   3. otherwise, no nav.
  *
@@ -217,11 +218,15 @@ function resolveNav(header, links) {
 
     const l = links || {};
 
-    // Mirror the order the footer has used — About, GitHub, Carbon — then
-    // Contact, which is the one entry that appears by default rather than
+    // Mirror the order the footer has used — About, Data, GitHub, Carbon —
+    // then Contact, which is the one entry that appears by default rather than
     // only when configured. Set `links.contact` to false to drop it.
     const derived = [];
     if (l.docs) derived.push({ label: 'About', href: safeHref(l.docs), icon: 'info' });
+    // The data sources page (#433) is part of every app, so it is linked by
+    // default, like Contact. It opens in place, not in a new tab.
+    const data = resolveDataLink(l);
+    if (data) derived.push({ ...data, icon: 'database', external: false });
     if (l.github) derived.push({ label: 'GitHub', href: safeHref(l.github), icon: 'github' });
     if (l.carbon) {
         derived.push({
@@ -374,7 +379,7 @@ function buildMobileMenu(doc, items) {
 
 // Every derived nav entry carries one, so the row reads as a set rather
 // than two decorated links among plain ones.
-const ICONS = { github: githubIcon, leaf: leafIcon, info: infoIcon, mail: mailIcon };
+const ICONS = { github: githubIcon, leaf: leafIcon, info: infoIcon, mail: mailIcon, database: databaseIcon };
 
 function navLink(doc, item, className) {
     const a = el(doc, 'a', { class: className, href: item.href });

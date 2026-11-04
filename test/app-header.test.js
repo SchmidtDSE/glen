@@ -94,21 +94,21 @@ describe('resolveHeaderConfig', () => {
     });
 
     describe('nav resolution', () => {
-        it('derives About / GitHub / Carbon from the existing links block', () => {
+        it('derives About / Data / GitHub / Carbon from the existing links block', () => {
             const cfg = resolveHeaderConfig({
                 header: { enabled: true },
                 links: { docs: 'https://d.example', github: 'https://g.example', carbon: true },
             });
-            expect(cfg.nav.map(n => n.label)).toEqual(['About', 'GitHub', 'Carbon', 'Contact us']);
+            expect(cfg.nav.map(n => n.label)).toEqual(['About', 'Data', 'GitHub', 'Carbon', 'Contact us']);
             expect(cfg.nav[0].href).toBe('https://d.example');
-            expect(cfg.nav[2].href).toBe(CARBON_DASHBOARD_URL);
+            expect(cfg.nav[3].href).toBe(CARBON_DASHBOARD_URL);
             // The carbon entry is marked by its icon, not by a colour — a
             // single recoloured nav item reads as a different kind of link.
-            expect(cfg.nav[2].icon).toBe('leaf');
-            expect(cfg.nav[2].variant).toBeNull();
-            expect(cfg.nav[1].icon).toBe('github');
+            expect(cfg.nav[3].icon).toBe('leaf');
+            expect(cfg.nav[3].variant).toBeNull();
+            expect(cfg.nav[2].icon).toBe('github');
             // Every derived entry has an icon, so the row reads as one set.
-            expect(cfg.nav.map(n => n.icon)).toEqual(['info', 'github', 'leaf', 'mail']);
+            expect(cfg.nav.map(n => n.icon)).toEqual(['info', 'database', 'github', 'leaf', 'mail']);
         });
 
         it('lets carbon be a string to override the default dashboard', () => {
@@ -116,7 +116,7 @@ describe('resolveHeaderConfig', () => {
                 header: { enabled: true },
                 links: { carbon: 'https://carbon.example' },
             });
-            expect(cfg.nav[0].href).toBe('https://carbon.example');
+            expect(cfg.nav.find(n => n.label === 'Carbon').href).toBe('https://carbon.example');
         });
 
         it('omits links that are not configured', () => {
@@ -124,7 +124,7 @@ describe('resolveHeaderConfig', () => {
                 header: { enabled: true },
                 links: { github: 'https://g.example' },
             });
-            expect(cfg.nav.map(n => n.label)).toEqual(['GitHub', 'Contact us']);
+            expect(cfg.nav.map(n => n.label)).toEqual(['Data', 'GitHub', 'Contact us']);
         });
 
         it('an explicit nav wins over the derived one', () => {
@@ -155,8 +155,8 @@ describe('resolveHeaderConfig', () => {
 
         it('still offers Contact when there is no links block at all', () => {
             const nav = resolveHeaderConfig({ header: { enabled: true } }).nav;
-            expect(nav.map(n => n.label)).toEqual(['Contact us']);
-            expect(nav[0].href).toBe(DEFAULT_CONTACT);
+            expect(nav.map(n => n.label)).toEqual(['Data', 'Contact us']);
+            expect(nav[1].href).toBe(DEFAULT_CONTACT);
         });
 
         it('normalises a bare address to a mailto', () => {
@@ -181,6 +181,25 @@ describe('resolveHeaderConfig', () => {
         it('drops Contact when explicitly disabled', () => {
             const cfg = resolveHeaderConfig({
                 header: { enabled: true }, links: { contact: false },
+            });
+            expect(cfg.nav.map(n => n.label)).toEqual(['Data']);
+        });
+
+        it('links the data page in place, by default (#433)', () => {
+            const data = resolveHeaderConfig({ header: { enabled: true } }).nav[0];
+            expect(data).toMatchObject({ label: 'Data', href: '#data', icon: 'database', external: false });
+        });
+
+        it('renames the data page link', () => {
+            const cfg = resolveHeaderConfig({
+                header: { enabled: true }, links: { data: { label: 'Data sources' } },
+            });
+            expect(cfg.nav[0]).toMatchObject({ label: 'Data sources', href: '#data' });
+        });
+
+        it('drops the data page link when disabled', () => {
+            const cfg = resolveHeaderConfig({
+                header: { enabled: true }, links: { data: false, contact: false },
             });
             expect(cfg.nav).toEqual([]);
         });
@@ -295,13 +314,13 @@ describe('buildAppHeader', () => {
             links: { github: 'https://g.example' },
         }, document);
         expect(res.absorbsLinks).toBe(true);
-        // GitHub + the default Contact entry.
-        expect(document.querySelectorAll('#app-header-nav a')).toHaveLength(2);
+        // Data + GitHub + the default Contact entry.
+        expect(document.querySelectorAll('#app-header-nav a')).toHaveLength(3);
     });
 
     it('absorbs nothing when there is no nav to show', () => {
         const res = buildAppHeader(
-            { header: { enabled: true, title: 'X' }, links: { contact: false } }, document);
+            { header: { enabled: true, title: 'X' }, links: { contact: false, data: false } }, document);
         expect(res.absorbsLinks).toBe(false);
         expect(document.getElementById('app-header-nav')).toBeNull();
         // No nav means no menu button either.
@@ -313,9 +332,11 @@ describe('buildAppHeader', () => {
             header: { enabled: true },
             links: { github: 'https://g.example' },
         }, document);
-        const a = document.querySelector('#app-header-nav a');
+        const a = document.querySelector('#app-header-nav a[href="https://g.example"]');
         expect(a.target).toBe('_blank');
         expect(a.rel).toBe('noopener noreferrer');
+        // The data page opens in place.
+        expect(document.querySelector('#app-header-nav a[href="#data"]').target).toBe('');
     });
 
     it('keeps a same-page nav entry in the tab when external is false', () => {
@@ -373,8 +394,8 @@ describe('buildAppHeader', () => {
 
         it('mirrors every nav entry', () => {
             build();
-            // About + GitHub + Contact.
-            expect(document.querySelectorAll('.app-header-menu-link')).toHaveLength(3);
+            // About + Data + GitHub + Contact.
+            expect(document.querySelectorAll('.app-header-menu-link')).toHaveLength(4);
         });
 
         it('closes on Escape', () => {
@@ -410,7 +431,7 @@ describe('nav icons', () => {
     it('renders the icon beside the label, not instead of it', () => {
         buildAppHeader({
             header: { enabled: true },
-            links: { github: 'https://g.example', carbon: true, contact: false },
+            links: { github: 'https://g.example', carbon: true, contact: false, data: false },
         }, document);
 
         const links = [...document.querySelectorAll('#app-header-nav a')];
@@ -501,7 +522,7 @@ describe('href safety', () => {
 
     it('drops a derived link whose configured URL is unsafe', () => {
         const cfg = resolveHeaderConfig({
-            links: { github: 'javascript:alert(1)', docs: 'https://d.example', contact: false },
+            links: { github: 'javascript:alert(1)', docs: 'https://d.example', contact: false, data: false },
         });
         expect(cfg.nav.map(n => n.label)).toEqual(['About']);
     });

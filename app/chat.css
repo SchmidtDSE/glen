@@ -277,7 +277,8 @@
     opacity: 0.85;
 }
 
-.docs-link {
+.docs-link,
+.data-link {
     font-size: 11px;
     font-weight: 500;
     color: #333;
@@ -289,7 +290,7 @@
     display: block;
 }
 
-/* Footer links (github, docs, carbon) live in #chat-footer's left zone. */
+/* Footer links (docs, data, github, carbon) live in #chat-footer's left zone. */
 #chat-footer .footer-link {
     display: inline-flex;
     align-items: center;
