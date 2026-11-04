@@ -8,6 +8,7 @@
 import { CARBON_DASHBOARD_URL } from './app-header.js';
 import { ensurePanelActions } from './panel-actions.js';
 import { sqlArg } from './tool-registry.js';
+import { resolveDataLink } from './data-page.js';
 import { githubIcon, leafIcon, micIcon, stopIcon } from './icons.js';
 
 import {
@@ -174,7 +175,7 @@ export class ChatUI {
         // Export-to-HTML button (unless the app opted out)
         this.initExportButton();
 
-        // Optional header/footer links (github, docs, carbon)
+        // Footer links: docs, the data page, github, carbon
         this.initLinks();
 
         // Wire agent callbacks
@@ -345,8 +346,9 @@ export class ChatUI {
     /* ------------------------------------------------------------------ */
 
     initLinks() {
-        const links = this.config.links;
-        if (!links) return;
+        // The data page link appears without a links block, so this no longer
+        // returns early when there is none.
+        const links = this.config.links || {};
         // The app header renders the same links as top-level nav when one is
         // configured; showing them here too would duplicate every entry.
         if (this.linksAbsorbed) return;
@@ -357,9 +359,9 @@ export class ChatUI {
         if (!footer) return;
 
         // Reverse append order: we prepend each link to the footer so that the
-        // final left-to-right ordering is docs | github | carbon.
+        // final left-to-right ordering is docs | data | github | carbon.
         // (prepend reverses insertion order — insert carbon first, then github,
-        //  then docs.)
+        //  then data, then docs.)
 
         if (links.carbon) {
             const a = document.createElement('a');
@@ -380,6 +382,17 @@ export class ChatUI {
             a.className = 'footer-link github-link';
             a.title = 'Source code';
             a.innerHTML = githubIcon(16);
+            footer.prepend(a);
+        }
+
+        // The data sources page (#433): opens in place, on the #data fragment.
+        const data = resolveDataLink(links);
+        if (data) {
+            const a = document.createElement('a');
+            a.href = data.href;
+            a.className = 'footer-link data-link';
+            a.textContent = data.label;
+            a.title = 'The datasets this app uses, and how to cite them';
             footer.prepend(a);
         }
 

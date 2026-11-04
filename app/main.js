@@ -13,6 +13,7 @@ import { createMapTools, createRenderChartTool, createSetTimeTool } from './map-
 import { createGeocoder } from './geocoder.js';
 import { Agent } from './agent.js';
 import { ChatUI } from './chat-ui.js';
+import { mountDataPage } from './data-page.js';
 import { buildLayout, sidebarHooks } from './layout-manager.js';
 import { mountOverlay, SLOT } from './overlay-rail.js';
 
@@ -118,6 +119,13 @@ async function main() {
     // already kicked off the style fetch); wait for both before wiring layers.
     await Promise.all([catalog.load(appConfig), mapManager.ready]);
     console.log(`[main] Catalog loaded: ${catalog.datasets.size} collections`);
+    // The data sources page opens on #data (#433). Mounted even when the
+    // links to it are turned off, so an About page's #data link still works.
+    try {
+        mountDataPage(catalog);
+    } catch (err) {
+        console.error('[main] Data page failed to mount:', err);
+    }
     // Sidebar resize: reflow the MapLibre canvas during drag (rAF-gated by
     // layout-manager) and one final time on drag-end / window-resize.
     sidebarHooks.onResizeTick = () => mapManager.map.resize();

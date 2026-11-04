@@ -27,6 +27,8 @@ Core library for map-based applications with LLM-powered data analysis. Interact
 - `agent.js` — LLM orchestration loop (agentic tool-use cycle)
 - `llm-auth.js` — The `Authorization` header for LLM requests: none when `api_key` is unset, so basic-auth deployments keep working
 - `chat-ui.js` — Chat UI with collapsible tool-call blocks
+- `dataset-citations.js` — How a dataset is cited, from its STAC record. Shared by the export's Data sources section and the data page, so the two cannot drift.
+- `data-page.js` — The data sources page (#433): every dataset the app loads with its citation, a `<dialog>` opened on the `#data` fragment and linked by default from the header nav and chat footer.
 - `export-report.js` — The exported session report: builds a Quarto-style HTML document from the session record ChatUI keeps (no DOM). Also holds the export helpers (setup block, R/Python wrappers, credential scrub, map embed).
 
 ## Design decisions
@@ -210,6 +212,7 @@ When a PR touches a covered module, expect tests to change too. When it touches 
 | `app/raster-frames.js` | 100% | `test/raster-frames.test.js` — frame lists, bucket listing, date windows and steps |
 | `app/frame-player.js` | partial | `test/frame-player.test.js` — playback, waiting for frames to load, preloading, ranges; `test/map-manager.time-series.test.js` — the frame layers on the map. The panel is browser-bound; verify on a preview. |
 | `app/map-tools.js` | 98% | `test/map-tools.test.js` — local-tool execute paths, get_schema MCP delegate |
+| `app/dataset-citations.js`, `app/data-page.js` | 100% | `test/data-page.test.js` — the default link and its opt-out, the catalog list with sub-collections, escaping, opening and closing on `#data`. The page's look is browser-bound; verify on a preview. |
 | `app/export-report.js` | 99% | `test/export-report.test.js`, `test/chat-export*.test.js` — step classification, report shape, disclosure, the ChatUI session record. Regenerate `preview/sample-export.html` after a change. |
 | `app/dataset-catalog.js` | 89% | `test/dataset-catalog.test.js` — STAC parsing, layer config shape, prompt rendering |
 | `app/agent.js` | 48% | `test/agent-retry.test.js` — retry / abort / timeout. The conversation loop is uncovered (tested manually). |

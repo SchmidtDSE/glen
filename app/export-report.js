@@ -11,6 +11,11 @@
  */
 
 import { sqlArg, isFailedToolResult } from './tool-registry.js';
+import { datasetCitation, datasetTextLines, datasetItemHtml } from './dataset-citations.js';
+
+// Kept importable from here: the citation helpers moved to dataset-citations.js
+// so the data page shares them (#433).
+export { datasetCitation };
 
 /**
  * Where the disclosure's "GLEN" link points: the project's deployed page,
@@ -832,38 +837,6 @@ ${items}
 /*  Data sources: which datasets the session used, and how to cite them */
 /* ------------------------------------------------------------------ */
 
-/**
- * The citation fields of one STAC collection, as a plain object the report
- * and the scripts render. The catalog's metadata is uneven — some collections
- * carry a full `sci:citation`, some only a `cite-as` DOI link, some neither —
- * so every field but the title and STAC link may be missing.
- *
- * @param {object} stac - a STAC collection
- * @param {string} [fallbackUrl] - where it was fetched from, if it has no `self` link
- * @returns {{id: string, title: string, stacUrl: string|null, aboutUrl: string|null,
- *            producers: string[], license: string|null, licenseUrl: string|null,
- *            citation: string|null, doiUrl: string|null}}
- */
-export function datasetCitation(stac, fallbackUrl = null) {
-    const links = Array.isArray(stac?.links) ? stac.links : [];
-    const link = (...rels) => links.find(l => rels.includes(l.rel) && l.href)?.href || null;
-    const doi = typeof stac?.['sci:doi'] === 'string' && stac['sci:doi'].trim();
-    const producers = (stac?.providers || [])
-        .filter(p => p?.name && (p.roles || []).some(r => r === 'producer' || r === 'licensor'))
-        .map(p => p.name);
-    return {
-        id: stac?.id || '',
-        title: stac?.title || stac?.id || 'Untitled dataset',
-        stacUrl: link('self') || fallbackUrl,
-        aboutUrl: link('about'),
-        producers,
-        license: stac?.license || null,
-        licenseUrl: link('license'),
-        citation: typeof stac?.['sci:citation'] === 'string' ? stac['sci:citation'].trim() || null : null,
-        doiUrl: doi ? (/^https?:\/\//.test(doi) ? doi : `https://doi.org/${doi}`) : link('cite-as'),
-    };
-}
-
 /** Every `s3://` or `http(s)://` path a query names. */
 function sqlPaths(sql) {
     return String(sql || '').match(/\b(?:s3|https?):\/\/[^\s'"`)]+/g) || [];
@@ -935,18 +908,6 @@ function datasetUse(d) {
     return d.queried && d.mapped ? 'queried and mapped' : d.queried ? 'queried' : 'mapped';
 }
 
-/** One dataset as plain text lines, for a script comment or a notebook. */
-function datasetTextLines(d) {
-    const lines = [d.title + (d.producers.length ? ` - ${d.producers.join(', ')}` : '') + '.'];
-    if (d.citation) lines.push(d.citation);
-    if (d.doiUrl && !(d.citation || '').includes(d.doiUrl.replace(/^https?:\/\/(dx\.)?doi\.org\//, ''))) {
-        lines.push(`Cite as: ${d.doiUrl}`);
-    }
-    if (d.license) lines.push(`License: ${d.license}${d.licenseUrl ? ` (${d.licenseUrl})` : ''}`);
-    if (d.stacUrl) lines.push(`STAC: ${d.stacUrl}`);
-    return lines;
-}
-
 /** The Data sources section as markdown, for the notebooks. */
 function datasetsMarkdown(datasets) {
     return '## Data sources\n\n' + datasets.map(d => {
@@ -955,31 +916,12 @@ function datasetsMarkdown(datasets) {
     }).join('\n');
 }
 
-/** Make the DOI URLs in already-escaped citation text into links. */
-function linkDois(html) {
-    return html.replace(/https?:\/\/(?:dx\.)?doi\.org\/[^\s<]+?(?=[.,;)]?(?:\s|$))/g, u => `<a href="${u}">${u}</a>`);
-}
-
 /** The report's Data sources section. */
 function dataSourcesHtml(datasets) {
     if (!datasets?.length) return '';
-    const a = (href, text) => href ? `<a href="${escapeHtmlText(href)}">${text}</a>` : text;
-    const items = datasets.map(d => {
-        const title = `<strong>${escapeHtmlText(d.title)}</strong>`;
-        const by = d.producers.length ? ` — ${escapeHtmlText(d.producers.join(', '))}` : '';
-        const doiShown = d.doiUrl && (d.citation || '').includes(d.doiUrl.replace(/^https?:\/\/(dx\.)?doi\.org\//, ''));
-        const cite = d.citation
-            ? `<p class="ds-citation">${linkDois(escapeHtmlText(d.citation))}${d.doiUrl && !doiShown ? ` ${a(d.doiUrl, escapeHtmlText(d.doiUrl))}` : ''}</p>`
-            : d.doiUrl ? `<p class="ds-citation">Cite as ${a(d.doiUrl, escapeHtmlText(d.doiUrl))}</p>`
-            : `<p class="ds-citation ds-none">The catalog gives no formal citation; cite the producer.</p>`;
-        const meta = [
-            d.license ? `License: ${a(d.licenseUrl, escapeHtmlText(d.license))}` : '',
-            d.stacUrl ? a(d.stacUrl, 'STAC record') : '',
-            d.aboutUrl ? a(d.aboutUrl, 'About') : '',
-            escapeHtmlText(datasetUse(d)) + ' in this session',
-        ].filter(Boolean).join(' · ');
-        return `<li><p class="ds-title">${title}${by}</p>${cite}<p class="ds-meta">${meta}</p></li>`;
-    }).join('\n');
+    const items = datasets.map(d =>
+        `<li>${datasetItemHtml(d, { meta: [escapeHtmlText(datasetUse(d)) + ' in this session'] })}</li>`,
+    ).join('\n');
     return `<section class="report-sources" id="data-sources">
 <h2>Data sources</h2>
 <p class="report-appendix-note">The datasets this session's queries read or its map showed, with the citation their catalog record gives.</p>

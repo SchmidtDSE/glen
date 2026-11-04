@@ -27,6 +27,11 @@ export function infoIcon(size = 14) {
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${INFO_PATHS}</svg>`;
 }
 
+/** Database, for the data sources page. */
+export function databaseIcon(size = 14) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${DATABASE_PATHS}</svg>`;
+}
+
 /** Envelope, for Contact us. */
 export function mailIcon(size = 14) {
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${MAIL_PATHS}</svg>`;
@@ -47,6 +52,8 @@ const GITHUB_PATH = `<path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 
 const LEAF_PATHS = `<path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19.2 2.96a1 1 0 0 1 1.8.66c.4 5.85-1.18 12.96-9 16.4"/><path d="M2 21c0-3 1.85-5.36 5.08-6"/>`;
 
 const INFO_PATHS = `<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>`;
+
+const DATABASE_PATHS = `<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>`;
 
 const MAIL_PATHS = `<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>`;
 
