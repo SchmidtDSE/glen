@@ -69,7 +69,7 @@ All deployment options load the core library from jsDelivr. **Always pin to a re
 ```html
 <!-- Pinned to a release tag — required for any deployed app -->
 <script type="module"
-  src="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.32.0/app/main.js">
+  src="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.39.0/app/main.js">
 </script>
 ```
 
