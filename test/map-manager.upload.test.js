@@ -27,6 +27,7 @@ function createManager(layers = []) {
         getLayer: (id) => (layersPresent.has(id) ? { id } : undefined),
         getSource: (id) => (sourcesPresent.has(id) ? { id } : undefined),
         fitBounds: (b, o) => calls.fitBounds.push({ b, o }),
+        flyTo: (o) => (calls.flyTo ||= []).push(o),
         on: () => {},
     };
     return { mm, calls };
@@ -62,6 +63,40 @@ describe('MapManager.addUploadedLayer', () => {
         const row = mm._controlsContainerEl.querySelector('#layer-item-upload-abc');
         expect(row).not.toBeNull();
         expect(row.querySelector('.layer-remove-btn')).not.toBeNull();
+    });
+
+    it('draws points as circles, with no outline layer (#435)', () => {
+        const { mm, calls } = createManager();
+        const pts = { type: 'FeatureCollection', features: [
+            { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [-122, 37] } },
+            { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [-121, 38] } },
+        ] };
+        const r = mm.addUploadedLayer({ id: 'pts', geojson: pts, displayName: 'Obs', geometryKind: 'point', bounds: [-122, 37, -121, 38] });
+        expect(r.success).toBe(true);
+        expect(calls.addLayer.map(l => l.id)).toEqual(['upload-pts']);
+        expect(calls.addLayer[0].type).toBe('circle');
+        expect(calls.addLayer[0].paint['circle-color']).toBeTruthy();
+        const state = mm.layers.get('upload-pts');
+        expect(state.outlineLayerId).toBeNull();
+        expect(state.defaultPaint).toEqual(calls.addLayer[0].paint);
+        expect(calls.fitBounds[0].o.maxZoom).toBe(14);
+    });
+
+    it('flies to a lone point instead of fitting zero-size bounds', () => {
+        const { mm, calls } = createManager();
+        const one = { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [-122, 37] } };
+        mm.addUploadedLayer({ id: 'one', geojson: one, displayName: 'One', geometryKind: 'point', bounds: [-122, 37, -122, 37] });
+        expect(calls.fitBounds).toHaveLength(0);
+        expect(calls.flyTo[0]).toMatchObject({ center: [-122, 37], zoom: 12 });
+    });
+
+    it('removes a point layer cleanly', () => {
+        const { mm, calls } = createManager();
+        const one = { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [-122, 37] } };
+        mm.addUploadedLayer({ id: 'one', geojson: one, displayName: 'One', geometryKind: 'point' });
+        expect(mm.removeUploadedLayer('upload-one').success).toBe(true);
+        expect(calls.removeLayer).toEqual(['upload-one']);
+        expect(mm.layers.has('upload-one')).toBe(false);
     });
 
     it('is idempotent by id', () => {

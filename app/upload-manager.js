@@ -1,9 +1,9 @@
 import { ensurePanelActions } from './panel-actions.js';
 /**
- * UploadManager — user-uploaded GeoJSON polygons as agent-addressable layers
+ * UploadManager — user-uploaded GeoJSON polygons or points as agent-addressable layers
  *
  * Opt-in only (never loaded unless `upload_enabled` is set in config). Lets a
- * user drop a small polygon GeoJSON on the map. The file is:
+ * user drop a small polygon or point GeoJSON on the map. The file is:
  *   1. parsed + validated + size/feature-capped entirely in the browser,
  *   2. PUT directly to the public-output S3 bucket (browser → S3, a plain
  *      fetch PUT — NOT an SDK chunked upload, which the anonymous endpoint
@@ -22,41 +22,150 @@ const DEFAULTS = {
     prefix: 'uploads',
     maxBytes: 5 * 1024 * 1024, // 5 MB — inline geojson stays snappy below this
     maxFeatures: 1000,
+    // Points are small and come in quantity (occurrence records), so they get
+    // their own cap; the byte cap above still applies (#435).
+    maxPointFeatures: 50000,
     ingestUrl: null,
 };
+
+/**
+ * The H3 resolution a point is indexed at, and the coarser resolutions derived
+ * from it. Matches cng-datasets, which builds the catalog's hex parquet: h10
+ * native for points, parents by `h3_cell_to_parent` (#435).
+ */
+export const POINT_RESOLUTION = 10;
+export const POINT_CELL_COLUMNS = Array.from({ length: POINT_RESOLUTION + 1 }, (_, i) => `h${POINT_RESOLUTION - i}`);
+
+const POLYGON_TYPES = new Set(['Polygon', 'MultiPolygon']);
+const POINT_TYPES = new Set(['Point', 'MultiPoint']);
 
 /* ── Pure helpers (unit-tested in test/upload-manager.test.js) ─────────────── */
 
 /**
- * Validate that a parsed object is a polygon GeoJSON within limits.
- * @returns {{ok: boolean, error?: string, features?: Array, geometryTypes?: string[]}}
+ * Validate an upload: polygons (boundaries) or points (records such as
+ * occurrences), not a mix, within the feature cap for that kind.
+ *
+ * @returns {{ok: boolean, error?: string, kind?: 'polygon'|'point',
+ *            features?: Array, geometryTypes?: string[]}}
  */
-export function validatePolygonGeoJSON(obj, { maxFeatures = DEFAULTS.maxFeatures } = {}) {
+export function validateUploadGeoJSON(obj, {
+    maxFeatures = DEFAULTS.maxFeatures,
+    maxPointFeatures = DEFAULTS.maxPointFeatures,
+} = {}) {
     if (!obj || typeof obj !== 'object') return { ok: false, error: 'Not valid JSON.' };
     let features;
     if (obj.type === 'FeatureCollection') features = Array.isArray(obj.features) ? obj.features : [];
     else if (obj.type === 'Feature') features = [obj];
     else return { ok: false, error: 'Expected a GeoJSON Feature or FeatureCollection.' };
-
     if (features.length === 0) return { ok: false, error: 'GeoJSON contains no features.' };
-    if (features.length > maxFeatures) {
-        return { ok: false, error: `Too many features (${features.length} > ${maxFeatures}). Please file a data-ingest request for large datasets.` };
-    }
 
     const geometryTypes = [];
     for (const f of features) {
         const t = f?.geometry?.type;
         if (!t) return { ok: false, error: 'A feature is missing geometry.' };
-        if (t !== 'Polygon' && t !== 'MultiPolygon') {
-            return { ok: false, error: `Only Polygon/MultiPolygon boundaries are supported here (found ${t}). File a data-ingest request for other data.` };
+        if (!POLYGON_TYPES.has(t) && !POINT_TYPES.has(t)) {
+            return { ok: false, error: `Only polygons or points are supported here (found ${t}). File a data-ingest request for other data.` };
         }
         if (!geometryTypes.includes(t)) geometryTypes.push(t);
     }
-    return { ok: true, features, geometryTypes };
+    const hasPoints = geometryTypes.some(t => POINT_TYPES.has(t));
+    const hasPolygons = geometryTypes.some(t => POLYGON_TYPES.has(t));
+    if (hasPoints && hasPolygons) {
+        return { ok: false, error: 'The file mixes points and polygons. Upload them as separate files.' };
+    }
+
+    if (hasPolygons) {
+        if (features.length > maxFeatures) {
+            return { ok: false, error: `Too many features (${features.length} > ${maxFeatures}). Please file a data-ingest request for large datasets.` };
+        }
+        return { ok: true, kind: 'polygon', features, geometryTypes };
+    }
+
+    const points = explodeMultiPoints(features);
+    if (points.length === 0) return { ok: false, error: 'GeoJSON contains no points.' };
+    if (points.length > maxPointFeatures) {
+        return { ok: false, error: `Too many points (${points.length} > ${maxPointFeatures}). Please file a data-ingest request for large datasets.` };
+    }
+    for (const f of points) {
+        const [lon, lat] = f.geometry.coordinates || [];
+        if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
+            return { ok: false, error: 'A point has no valid coordinates.' };
+        }
+        if (Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+            return { ok: false, error: `A point lies outside longitude/latitude range (${lon}, ${lat}). GeoJSON coordinates are [longitude, latitude] in WGS84; check they are not swapped or projected.` };
+        }
+    }
+    return { ok: true, kind: 'point', features: points, geometryTypes };
 }
 
 /**
- * Compute [w, s, e, n] bounds over all coordinates of a polygon GeoJSON.
+ * Split each MultiPoint into one Point feature per point, keeping its
+ * properties, so every row in the uploaded file has one coordinate — the
+ * shape `ST_X`/`ST_Y` and the cell columns need. Points pass through.
+ */
+export function explodeMultiPoints(features) {
+    const out = [];
+    for (const f of features) {
+        if (f?.geometry?.type !== 'MultiPoint') { out.push(f); continue; }
+        for (const c of f.geometry.coordinates || []) {
+            out.push({ type: 'Feature', properties: f.properties ?? {}, geometry: { type: 'Point', coordinates: c } });
+        }
+    }
+    return out;
+}
+
+/** Every property key across the features, uncapped, in first-seen order. */
+export function allPropertyKeys(features) {
+    const keys = new Set();
+    for (const f of features) {
+        const props = f?.properties;
+        if (props && typeof props === 'object') for (const k of Object.keys(props)) keys.add(k);
+    }
+    return [...keys];
+}
+
+/** A string as a single-quoted SQL literal. */
+function sqlString(s) {
+    return `'${String(s).replace(/'/g, "''")}'`;
+}
+
+/** A name as a double-quoted SQL identifier. */
+function sqlIdent(s) {
+    return `"${String(s).replace(/"/g, '""')}"`;
+}
+
+/**
+ * A SQL source for an uploaded point file with its H3 cells, for the agent to
+ * put in `FROM` or a CTE. Built here, not by the model, so the cells are
+ * computed the way cng-datasets computes the catalog's: each point to its
+ * h10 cell, then every coarser resolution derived from that cell with
+ * `h3_cell_to_parent` — never recomputed from the coordinate, which makes the
+ * parents disagree with the true parent for some rows (data-workflows #697).
+ *
+ * Hexed at query time rather than stored in the file: parsing the GeoJSON
+ * dominates, and the cell columns made the file up to 2.8x larger and slower
+ * to read (benchmark in #435). The cells come out UBIGINT, the type the
+ * catalog's hex columns use, so a join on `h8` needs no cast.
+ *
+ * A property already named like a cell column (`h8`) is dropped in favour of
+ * the computed one, so the output has one column of each name.
+ *
+ * @param {string} url - the uploaded file
+ * @param {string[]} [propertyKeys] - every property key in the file
+ * @returns {string}
+ */
+export function pointHexSql(url, propertyKeys = []) {
+    const clash = POINT_CELL_COLUMNS.filter(c => propertyKeys.includes(c));
+    const star = clash.length ? `* EXCLUDE (${clash.map(sqlIdent).join(', ')})` : '*';
+    const native = `h${POINT_RESOLUTION}`;
+    const parents = POINT_CELL_COLUMNS.slice(1).map(c => `h3_cell_to_parent(${native}, ${c.slice(1)}) AS ${c}`);
+    return `(SELECT *, ${parents.join(', ')} FROM (` +
+        `SELECT ${star}, h3_latlng_to_cell(ST_Y(geom), ST_X(geom), ${POINT_RESOLUTION}) AS ${native} ` +
+        `FROM ST_Read(${sqlString(url)})))`;
+}
+
+/**
+ * Compute [w, s, e, n] bounds over all coordinates of a GeoJSON (polygons or points).
  * @returns {[number,number,number,number]|null}
  */
 export function computeBounds(geojson) {
@@ -122,9 +231,10 @@ export class UploadManager {
             prefix: config.prefix || DEFAULTS.prefix,
             maxBytes: config.max_bytes || DEFAULTS.maxBytes,
             maxFeatures: config.max_features || DEFAULTS.maxFeatures,
+            maxPointFeatures: config.max_point_features || DEFAULTS.maxPointFeatures,
             ingestUrl: config.ingest_url || DEFAULTS.ingestUrl,
         };
-        /** @type {Array<{url,layerId,displayName,geometryType,propertyKeys,featureCount}>} */
+        /** @type {Array<{url,layerId,displayName,kind,geometryType,propertyKeys,featureCount,sqlSource?}>} */
         this.uploads = [];
         this._input = null;
     }
@@ -151,7 +261,7 @@ export class UploadManager {
         btn.type = 'button';
         btn.className = 'upload-btn';
         btn.textContent = '+ Upload GeoJSON';
-        btn.title = 'Upload a polygon GeoJSON to show on the map and query';
+        btn.title = 'Upload a GeoJSON of polygons or points to show on the map and query';
         btn.addEventListener('click', () => input.click());
 
         this._status = document.createElement('div');
@@ -217,8 +327,18 @@ export class UploadManager {
         let parsed;
         try { parsed = JSON.parse(text); } catch { return this._fail('File is not valid JSON/GeoJSON.'); }
 
-        const v = validatePolygonGeoJSON(parsed, { maxFeatures: this.cfg.maxFeatures });
+        const v = validateUploadGeoJSON(parsed, {
+            maxFeatures: this.cfg.maxFeatures, maxPointFeatures: this.cfg.maxPointFeatures,
+        });
         if (!v.ok) return this._fail(v.error);
+
+        // A MultiPoint is split into Points so every row has one coordinate;
+        // the split file is what gets uploaded. Otherwise the file goes up
+        // byte for byte as the user gave it.
+        if (v.kind === 'point' && v.geometryTypes.includes('MultiPoint')) {
+            parsed = { type: 'FeatureCollection', features: v.features };
+            text = JSON.stringify(parsed);
+        }
 
         this._setStatus(`Uploading "${file.name}"…`);
         const hash = await contentHash(text);
@@ -241,19 +361,23 @@ export class UploadManager {
 
         const added = this.mapManager.addUploadedLayer({
             id: hash, geojson: parsed, displayName, tooltipFields: propertyKeys, bounds,
+            geometryKind: v.kind,
         });
         if (!added.success) return this._fail(added.error || 'Could not add layer to map.');
 
         const record = {
             url, layerId: added.layer_id, displayName,
-            geometryType: v.geometryTypes.join('+'),
+            kind: v.kind,
+            geometryType: v.kind === 'point' ? 'Point' : v.geometryTypes.join('+'),
             propertyKeys, featureCount: v.features.length,
         };
+        if (v.kind === 'point') record.sqlSource = pointHexSql(url, allPropertyKeys(v.features));
         // Keep one record per url (idempotent re-upload).
         this.uploads = this.uploads.filter(u => u.url !== url);
         this.uploads.push(record);
 
-        this._setStatus(`Added "${displayName}" (${record.featureCount} feature${record.featureCount === 1 ? '' : 's'}).`);
+        const noun = v.kind === 'point' ? 'point' : 'feature';
+        this._setStatus(`Added "${displayName}" (${record.featureCount} ${noun}${record.featureCount === 1 ? '' : 's'}).`);
         window.dispatchEvent(new CustomEvent('geojson-uploaded', { detail: record }));
         return { success: true, ...record };
     }
