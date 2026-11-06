@@ -67,10 +67,6 @@
                 "label": "GLM-5.3 Flash"
             },
             {
-                "value": "qwen/qwen3.8-flash",
-                "label": "Qwen3.8 Flash"
-            },
-            {
                 "value": "minimax/minimax-m3.1-flash",
                 "label": "MiniMax M3.1 Flash"
             }
