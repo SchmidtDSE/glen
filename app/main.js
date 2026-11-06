@@ -366,13 +366,16 @@ async function main() {
                 const hints = [];
                 if (uploads.some(u => u.kind !== 'point')) {
                     hints.push(
-                        "Boundaries: read server-side, never inline the geometry. For a spatial mask: " +
+                        "Boundaries: read server-side, never inline the geometry. For an H3-indexed dataset, convert the " +
+                        "boundary once to cells and JOIN, also on h0, which catalog hex data is partitioned by: " +
+                        "WITH aoi AS (SELECT ST_AsText(ST_Union_Agg(geom)) AS wkt FROM ST_Read('<url>')), " +
+                        "cells AS (SELECT UNNEST(h3_polygon_wkt_to_cells(aoi.wkt, <res>)) AS cell FROM aoi) " +
+                        "SELECT d.* FROM cells JOIN data d ON d.h<res> = cells.cell AND d.h0 = h3_cell_to_parent(cells.cell, 0). " +
+                        "Pick <res> to keep cell counts reasonable (coarser for large areas). " +
+                        "Use this hex join, not an exact geometry test, whenever the dataset has H3 columns: it is much faster. " +
+                        "Only for a dataset without H3 columns, mask with geometry: " +
                         "WITH aoi AS (SELECT ST_Union_Agg(geom) AS g FROM ST_Read('<url>')) " +
-                        "SELECT ... FROM data, aoi WHERE ST_Within(data.geom, aoi.g). " +
-                        "For an H3-indexed dataset, convert once to cells and JOIN: " +
-                        "WITH aoi AS (SELECT ST_AsText(ST_Union_Agg(geom)) AS wkt FROM ST_Read('<url>')) " +
-                        "SELECT d.* FROM aoi, UNNEST(h3_polygon_wkt_to_cells(aoi.wkt, <res>)) AS t(cell) JOIN data d ON d.<h3_col> = t.cell. " +
-                        "Pick <res> to keep cell counts reasonable (coarser for large areas).",
+                        "SELECT ... FROM data, aoi WHERE ST_Within(data.geom, aoi.g).",
                     );
                 }
                 if (uploads.some(u => u.kind === 'point')) {
