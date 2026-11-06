@@ -52,20 +52,3 @@ jobs:
             echo "::error::app/vendor/ does not match a fresh build. Run 'pnpm run build:vendor' and commit the result. See app/vendor/README.md."
             exit 1
           fi
-
-  harness:
-    name: Vendored glen-harness matches its tag
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-      - run: scripts/vendor-harness.sh
-      - name: Fail if app/vendor/glen-harness/ differs from glen-harness at REF
-        run: |
-          if [ -n "$(git status --porcelain -- app/vendor/glen-harness/)" ]; then
-            git status --short -- app/vendor/glen-harness/
-            git diff --stat -- app/vendor/glen-harness/
-            echo "::error::app/vendor/glen-harness/ is not an unmodified copy of glen-harness at $(cat app/vendor/glen-harness/REF). Change glen-harness and re-vendor; see app/vendor/glen-harness/README.md."
-            exit 1
-          fi

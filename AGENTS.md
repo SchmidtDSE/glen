@@ -33,7 +33,7 @@ Core library for map-based applications with LLM-powered data analysis. Interact
 
 ## glen core (core/)
 
-`core/` is a smaller app built from the same pieces: a map of the layers in [Portolan](https://www.portolan-sdi.org/) collections and an agent whose tools act only on the map. It assumes no MCP server or SQL engine; those return as plugins (`core/plugins/mcp.js`). It reuses `app/map-manager.js`, `app/layout-manager.js`, `app/geocoder.js` and `app/data-page.js` unchanged, and uses an unmodified copy of glen-harness in `app/vendor/glen-harness/` for the agent and chat. Its map tools come from `app/map-control-tools.js`, which the full app's `map-tools.js` also uses, so a map tool is defined once. See `core/README.md`. Changes to the shared `app/` modules reach both apps, so check a core app too when they touch layer registration, styling or the layout.
+`core/` is a smaller app built from the same pieces: a map of the layers in [Portolan](https://www.portolan-sdi.org/) collections and an agent whose tools act only on the map. It assumes no MCP server or SQL engine; those return as plugins (`core/plugins/mcp.js`). It reuses `app/map-manager.js`, `app/layout-manager.js`, `app/geocoder.js` and `app/data-page.js` unchanged, and loads glen-harness from jsDelivr at a release tag for the agent and chat. Its map tools come from `app/map-control-tools.js`, which the full app's `map-tools.js` also uses, so a map tool is defined once. See `core/README.md`. Changes to the shared `app/` modules reach both apps, so check a core app too when they touch layer registration, styling or the layout.
 
 - `core/main.js` — Bootstrap: config → Portolan catalog + map → map tools → plugins → agent → chat
 - `core/portolan.js` — Pure rules for reading a Portolan collection (PMTiles links, style assets, COG band statistics)
@@ -168,7 +168,7 @@ to change. CI installs with `--frozen-lockfile`.
 
 ### Vendored dependencies
 
-`app/vendor/glen-harness/` is an unmodified copy of glen-harness at the ref in its `REF` file. Change glen-harness, tag it, and run `scripts/vendor-harness.sh <tag>`; CI fails if the copy differs from that ref.
+glen core imports glen-harness from `cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@<tag>` in `core/main.js`; there is no copy here. Change glen-harness, tag a release, and bump both URLs together.
 
 `app/vendor/mcp-sdk.js` is a **committed build artifact** — the MCP SDK,
 pre-bundled with esbuild so the app has no runtime dependency on a third-party

@@ -28,9 +28,13 @@ function staticGraph(entry) {
 describe('glen core module graph', () => {
     const graph = staticGraph('core/main.js');
 
-    it('loads the vendored harness, not the full app\'s agent or chat', () => {
-        expect(graph).toContain('app/vendor/glen-harness/src/core.js');
-        expect(graph).toContain('app/vendor/glen-harness/ui/chat-ui.js');
+    it('loads glen-harness from a release tag, not the full app\'s agent or chat', () => {
+        const main = readFileSync(resolve(root, 'core/main.js'), 'utf8');
+        const urls = [...main.matchAll(/from '(https:\/\/cdn\.jsdelivr\.net\/gh\/SchmidtDSE\/glen-harness@([^/]+)\/[^']+)'/g)];
+        expect(urls.map(m => m[1].split('@')[1].replace(/^[^/]+/, ''))).toEqual(['/src/core.js', '/ui/chat-ui.js']);
+        // One tag for both, and a tag rather than a branch.
+        expect(new Set(urls.map(m => m[2])).size).toBe(1);
+        expect(urls[0][2]).toMatch(/^v\d+\.\d+\.\d+$/);
         for (const f of ['app/agent.js', 'app/chat-ui.js', 'app/tool-registry.js']) {
             expect(graph).not.toContain(f);
         }
@@ -40,7 +44,6 @@ describe('glen core module graph', () => {
         for (const f of [
             'app/mcp-client.js', 'app/vendor/mcp-sdk.js', 'app/map-tools.js',
             'app/chart-renderer.js', 'app/export-report.js',
-            'app/vendor/glen-harness/ui/export-report.js',
         ]) {
             expect(graph).not.toContain(f);
         }

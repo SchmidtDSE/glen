@@ -95,7 +95,7 @@ A plugin that throws is logged and skipped, and the map and its tools keep worki
 
 ## Harness
 
-The agent loop, tool registry and chat come from [glen-harness](https://github.com/SchmidtDSE/glen-harness), vendored unmodified in `app/vendor/glen-harness/`. The core imports its `src/core.js` entry, which leaves out the MCP client, and turns the session export off unless the config sets `export`. That directory's README says how to move to a new release.
+The agent loop, tool registry and chat come from [glen-harness](https://github.com/SchmidtDSE/glen-harness). `main.js` imports them from jsDelivr at a release tag, the same way apps load glen, so glen keeps no copy. It imports the `src/core.js` entry, which leaves out the MCP client, and turns the session export off unless the config sets `export`; the harness loads the export only if it runs. To move to a new harness release, change the tag in both import URLs in `main.js`.
 
 ## Modules
 

@@ -25,10 +25,11 @@ import { MapManager } from '../app/map-manager.js';
 import { buildLayout, sidebarHooks } from '../app/layout-manager.js';
 import { createGeocoder } from '../app/geocoder.js';
 import { mountDataPage } from '../app/data-page.js';
-// glen-harness, vendored unmodified (app/vendor/glen-harness/README.md). The
-// ./core entry is the agent loop and tool registry without the MCP client.
-import { Agent, ToolRegistry } from '../app/vendor/glen-harness/src/core.js';
-import { ChatUI } from '../app/vendor/glen-harness/ui/chat-ui.js';
+// glen-harness, loaded from jsDelivr at a release tag, as apps load glen
+// itself. Its ./core entry is the agent loop and tool registry without the MCP
+// client. Both URLs name the same tag; bump them together.
+import { Agent, ToolRegistry } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.2.0/src/core.js';
+import { ChatUI } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.2.0/ui/chat-ui.js';
 import { PortolanCatalog } from './portolan-catalog.js';
 import { createCoreMapTools } from './map-tools.js';
 
