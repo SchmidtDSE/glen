@@ -54,10 +54,26 @@
         "user_provided": true,
         "default_endpoint": "https://openrouter.ai/api/v1",
         "models": [
-            { "value": "google/gemini-3.5-flash-lite", "label": "Gemini 3.5 Flash Lite" },
-            { "value": "~deepseek/deepseek-v4-flash-latest", "label": "DeepSeek V4 Flash Latest" },
-            { "value": "z-ai/glm-5.2", "label": "GLM-5.2" },
-            { "value": "anthropic/claude-sonnet-5", "label": "Claude Sonnet 5" }
+            {
+                "value": "~deepseek/deepseek-v4-flash-latest",
+                "label": "DeepSeek V4 Flash"
+            },
+            {
+                "value": "nvidia/nemotron-3.5-super-vl",
+                "label": "Nemotron 3.5 Super"
+            },
+            {
+                "value": "z-ai/glm-5.3-flash",
+                "label": "GLM-5.3 Flash"
+            },
+            {
+                "value": "qwen/qwen3.8-flash",
+                "label": "Qwen3.8 Flash"
+            },
+            {
+                "value": "minimax/minimax-m3.1-flash",
+                "label": "MiniMax M3.1 Flash"
+            }
         ]
     },
     "welcome": {
