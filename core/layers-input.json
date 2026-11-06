@@ -1,0 +1,72 @@
+{
+    "titiler_url": "https://titiler.nrp-nautilus.io",
+    "default_basemap": "plain",
+    "collections": [
+        {
+            "url": "https://storage.googleapis.com/carto-open-catalogs/ocha-cod-jamaica/main/parishes/collection.json",
+            "display_name": "Parishes",
+            "visible": true,
+            "tooltip": ["adm1_name", "T_TL"]
+        },
+        {
+            "url": "https://storage.googleapis.com/carto-open-catalogs/hurricane-melissa-impact/main/building-damage-parishes/collection.json",
+            "display_name": "Building damage by parish",
+            "style": "graduated",
+            "group": "Hurricane Melissa"
+        },
+        {
+            "url": "https://storage.googleapis.com/carto-open-catalogs/hurricane-melissa-impact/main/building-damage-h3/collection.json",
+            "display_name": "Building damage by H3 cell",
+            "style": "graduated",
+            "group": "Hurricane Melissa",
+            "visible": true,
+            "tooltip": ["adm1_name", "share_damaged", "n_damaged", "n_buildings"]
+        },
+        {
+            "url": "https://storage.googleapis.com/carto-open-catalogs/hurricane-melissa-impact/main/road-blockages/collection.json",
+            "display_name": "Road damage and blockages",
+            "style": "categorical",
+            "group": "Hurricane Melissa"
+        },
+        {
+            "url": "https://storage.googleapis.com/carto-open-catalogs/worldpop-jamaica/main/children-grid-1km/collection.json",
+            "display_name": "Children per 1 km cell",
+            "group": "Children in 2020 from WorldPop"
+        },
+        {
+            "url": "https://storage.googleapis.com/carto-open-catalogs/worldpop-jamaica/main/children-0-19/collection.json",
+            "display_name": "Children aged 0 to 19 at 100 m",
+            "group": "Children in 2020 from WorldPop"
+        },
+        {
+            "url": "https://storage.googleapis.com/carto-open-catalogs/worldpop-jamaica/main/children-0-4/collection.json",
+            "display_name": "Children aged 0 to 4 at 100 m",
+            "group": "Children in 2020 from WorldPop"
+        }
+    ],
+    "sidebar": {
+        "enabled": true,
+        "title": "Jamaica after Hurricane Melissa",
+        "chat_title": "Chat"
+    },
+    "auto_approve": true,
+    "llm": {
+        "user_provided": true,
+        "default_endpoint": "https://openrouter.ai/api/v1",
+        "models": [
+            { "value": "google/gemini-3.5-flash-lite", "label": "Gemini 3.5 Flash Lite" },
+            { "value": "~deepseek/deepseek-v4-flash-latest", "label": "DeepSeek V4 Flash Latest" },
+            { "value": "z-ai/glm-5.2", "label": "GLM-5.2" },
+            { "value": "anthropic/claude-sonnet-5", "label": "Claude Sonnet 5" }
+        ]
+    },
+    "welcome": {
+        "message": "I can show, filter and colour the layers on this map of Jamaica after Hurricane Melissa. Try asking:",
+        "examples": [
+            "Show building damage by H3 cell and zoom to it",
+            "Show only cells where more than half the assessed buildings were damaged",
+            "Colour the parishes by name",
+            "Show children aged 0 to 4 with the magma colour map"
+        ]
+    }
+}
