@@ -8,6 +8,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage --coverage.reporter=text --coverage.include='app/**'",
+    "vendor:harness": "scripts/vendor-harness.sh",
     "build:vendor": "esbuild scripts/mcp-sdk-entry.js --bundle --format=esm --platform=browser --minify --legal-comments=eof --outfile=app/vendor/mcp-sdk.js",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",

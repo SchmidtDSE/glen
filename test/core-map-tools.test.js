@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { applyPublishedStyle, setRasterColormap, flyTo, createCoreMapTools } from '../core/map-tools.js';
+import { applyPublishedStyle, setRasterColormap, layerExtent, createCoreMapTools } from '../core/map-tools.js';
+import { flyTo } from '../app/map-control-tools.js';
 
 function fakeMap() {
     const style = { layers: [{ id: 'bg' }, { id: 'layer-pop', type: 'raster', source: 'src-pop' }, { id: 'top' }], sources: { 'src-pop': { type: 'raster', tiles: ['old'], tileSize: 256 } } };
@@ -96,14 +97,15 @@ describe('set_raster_colormap', () => {
 describe('fly_to', () => {
     it('frames a layer extent, a bbox, or a centre', () => {
         const { mapManager, catalog, map } = setup();
-        expect(flyTo(mapManager, catalog, { layer_id: 'roads' }).success).toBe(true);
+        const ext = (id) => layerExtent(catalog, id);
+        expect(flyTo(mapManager, ext, { layer_id: 'roads' }).success).toBe(true);
         expect(map.fitBounds).toHaveBeenCalledWith([[-78, 17], [-76, 19]], expect.any(Object));
-        expect(flyTo(mapManager, catalog, { layer_id: 'pop' }).success).toBe(false);
-        expect(flyTo(mapManager, catalog, { bbox: [0, 10, 1, 5] }).success).toBe(false);
-        flyTo(mapManager, catalog, { center: [-77, 18], zoom: 8 });
+        expect(flyTo(mapManager, ext, { layer_id: 'pop' }).success).toBe(false);
+        expect(flyTo(mapManager, ext, { bbox: [0, 10, 1, 5] }).success).toBe(false);
+        flyTo(mapManager, ext, { center: [-77, 18], zoom: 8 });
         expect(mapManager.flyTo).toHaveBeenCalledWith({ center: [-77, 18], zoom: 8 });
-        expect(flyTo(mapManager, catalog, { center: [18, -177] }).success).toBe(false);
-        expect(flyTo(mapManager, catalog, {}).success).toBe(false);
+        expect(flyTo(mapManager, ext, { center: [18, -177] }).success).toBe(false);
+        expect(flyTo(mapManager, ext, {}).success).toBe(false);
     });
 });
 
@@ -114,6 +116,29 @@ describe('createCoreMapTools', () => {
         expect(names).not.toContain('geocode');
         expect(names.some(n => /sql|query|hex|stac/.test(n))).toBe(false);
         expect(createCoreMapTools(mapManager, catalog, { geocoder: { forwardGeocode: async () => [] } }).map(t => t.name)).toContain('geocode');
+    });
+
+    it('reuses the shared map-control tools with Portolan hints', () => {
+        const { mapManager, catalog } = setup();
+        const tools = createCoreMapTools(mapManager, catalog);
+        const names = tools.map(t => t.name);
+        for (const n of ['show_layer', 'set_filter', 'set_style', 'create_slider', 'fly_to', 'set_projection', 'apply_style', 'set_raster_colormap', 'describe_layer']) {
+            expect(names).toContain(n);
+        }
+        const text = tools.map(t => t.description).join('\n');
+        expect(text).not.toMatch(/get_stac_details|get_schema|SELECT DISTINCT|read_parquet/);
+        expect(tools.find(t => t.name === 'fly_to').inputSchema.properties).toHaveProperty('layer_id');
+    });
+
+    it('resets a raster by restoring its colour map', () => {
+        const { mapManager, catalog, map } = setup();
+        catalog.layers.get('pop').defaultColormap = 'viridis';
+        catalog.layers.get('pop').defaultRescale = '0,10';
+        const reset = createCoreMapTools(mapManager, catalog).find(t => t.name === 'reset_style');
+        expect(JSON.parse(reset.execute({ layer_id: 'pop' }))).toMatchObject({ success: true, colormap: 'viridis' });
+        mapManager.resetStyle = vi.fn(() => ({ success: true }));
+        reset.execute({ layer_id: 'roads' });
+        expect(mapManager.resetStyle).toHaveBeenCalledWith('roads');
     });
 
     it('keeps array parameters decodable under constrained decoding', () => {

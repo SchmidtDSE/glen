@@ -33,7 +33,7 @@ Core library for map-based applications with LLM-powered data analysis. Interact
 
 ## glen core (core/)
 
-`core/` is a smaller app built from the same pieces: a map of the layers in [Portolan](https://www.portolan-sdi.org/) collections and an agent whose tools act only on the map. It assumes no MCP server or SQL engine; those return as plugins (`core/plugins/mcp.js`). It reuses `app/map-manager.js`, `app/layout-manager.js`, `app/geocoder.js` and `app/data-page.js` unchanged, and uses a trimmed copy of glen-harness in `core/vendor/glen-harness/` for the agent and chat. See `core/README.md`. Changes to the shared `app/` modules reach both apps, so check a core app too when they touch layer registration, styling or the layout.
+`core/` is a smaller app built from the same pieces: a map of the layers in [Portolan](https://www.portolan-sdi.org/) collections and an agent whose tools act only on the map. It assumes no MCP server or SQL engine; those return as plugins (`core/plugins/mcp.js`). It reuses `app/map-manager.js`, `app/layout-manager.js`, `app/geocoder.js` and `app/data-page.js` unchanged, and uses an unmodified copy of glen-harness in `app/vendor/glen-harness/` for the agent and chat. Its map tools come from `app/map-control-tools.js`, which the full app's `map-tools.js` also uses, so a map tool is defined once. See `core/README.md`. Changes to the shared `app/` modules reach both apps, so check a core app too when they touch layer registration, styling or the layout.
 
 - `core/main.js` — Bootstrap: config → Portolan catalog + map → map tools → plugins → agent → chat
 - `core/portolan.js` — Pure rules for reading a Portolan collection (PMTiles links, style assets, COG band statistics)
@@ -168,6 +168,8 @@ to change. CI installs with `--frozen-lockfile`.
 
 ### Vendored dependencies
 
+`app/vendor/glen-harness/` is an unmodified copy of glen-harness at the ref in its `REF` file. Change glen-harness, tag it, and run `scripts/vendor-harness.sh <tag>`; CI fails if the copy differs from that ref.
+
 `app/vendor/mcp-sdk.js` is a **committed build artifact** — the MCP SDK,
 pre-bundled with esbuild so the app has no runtime dependency on a third-party
 ESM host (#343). Rebuild with `pnpm run build:vendor`; CI fails if the committed
@@ -227,7 +229,8 @@ When a PR touches a covered module, expect tests to change too. When it touches 
 | `app/agent.js` | 48% | `test/agent-retry.test.js` — retry / abort / timeout. The conversation loop is uncovered (tested manually). |
 | `core/portolan.js`, `core/portolan-catalog.js` | covered | `test/core-portolan.test.js` — tile, style and raster discovery, style conversion, the missing-value guard, catalog walk, prompt |
 | `core/map-tools.js` | covered | `test/core-map-tools.test.js` — published styles and their filters, raster recolouring, fly_to forms. Rendering is browser-bound; verify at `/core/`. |
-| `core/main.js`, `core/vendor/glen-harness/` | 0% | Bootstrap and the vendored chat — verify by loading `/core/` locally. |
+| `core/main.js` | 0% | Bootstrap — verify by loading `/core/` locally. `test/core-module-graph.test.js` checks that it loads no MCP, SQL or export code. |
+| `app/map-control-tools.js` | covered | `test/map-control-tools.test.js` — default and SQL hint text, fly_to with and without layer extents, the reset_style hook. The full app's tool text must not change; compare `createMapTools` output before and after. |
 | `app/main.js` | 0% | Bootstrap — verify by loading the app locally. |
 | `app/animation-manager.js` | partial | `test/animation-manager.test.js` — the pure sampling helpers (`sampleTrack`, `cellBoundary`). MapLibre sublayers and the controls panel are browser-bound; verify visually. |
 | `app/chat-ui.js`, `app/map-manager.js`, `app/layout-manager.js`, `app/map-draw.js`, `app/h3geo.js`, `app/voice-input.js` | 0% | Browser-bound (DOM, MapLibre, MediaRecorder). Verify visually in a deployed app — no harness yet. |

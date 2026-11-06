@@ -1,8 +1,7 @@
 /**
- * The pieces of glen-harness's ui/export-report.js that the live chat needs:
- * rendering model text to safe HTML, the credential scrub that runs first,
- * and the argument keys never shown. glen core carries these instead of
- * export-report.js, so a core app loads no session-export or DuckDB code.
+ * Rendering model text for the chat: the credential scrub, the argument keys
+ * never shown, and markdown to sanitized HTML. The live chat and the session
+ * export both use these; export-report.js re-exports them.
  */
 
 /**
@@ -74,7 +73,7 @@ export function renderMarkdown(md) {
 }
 
 /** DOM-free HTML escape (renderMarkdown fallback path). */
-function escapeHtmlText(str) {
+export function escapeHtmlText(str) {
     return String(str).replace(/[&<>"']/g, (c) => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
     }[c]));

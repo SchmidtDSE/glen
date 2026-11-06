@@ -25,9 +25,10 @@ import { MapManager } from '../app/map-manager.js';
 import { buildLayout, sidebarHooks } from '../app/layout-manager.js';
 import { createGeocoder } from '../app/geocoder.js';
 import { mountDataPage } from '../app/data-page.js';
-import { Agent } from './vendor/glen-harness/agent.js';
-import { ToolRegistry } from './vendor/glen-harness/tool-registry.js';
-import { ChatUI } from './vendor/glen-harness/ui/chat-ui.js';
+// glen-harness, vendored unmodified (app/vendor/glen-harness/README.md). The
+// ./core entry is the agent loop and tool registry without the MCP client.
+import { Agent, ToolRegistry } from '../app/vendor/glen-harness/src/core.js';
+import { ChatUI } from '../app/vendor/glen-harness/ui/chat-ui.js';
 import { PortolanCatalog } from './portolan-catalog.js';
 import { createCoreMapTools } from './map-tools.js';
 
@@ -132,6 +133,9 @@ export async function start({ plugins: extraPlugins = [] } = {}) {
     const systemPrompt = [await promptP, catalog.generatePrompt(), ...promptParts].join('\n\n');
     const agent = new Agent(appConfig, tools, { clientName: `glen-core/${CORE_VERSION}` });
     agent.setSystemPrompt(systemPrompt);
+    // The session export documents SQL sessions; a map-only app leaves it off
+    // unless its config turns it on, and then the harness loads it on first use.
+    appConfig.export ??= false;
     const ui = new ChatUI(agent, appConfig, layoutRefs.chatMount, mapManager);
     ui.catalog = catalog;
     ctx.agent = agent;

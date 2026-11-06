@@ -95,7 +95,7 @@ A plugin that throws is logged and skipped, and the map and its tools keep worki
 
 ## Harness
 
-The agent loop, tool registry and chat interface are a trimmed copy of [glen-harness](https://github.com/SchmidtDSE/glen-harness) in `vendor/glen-harness/`. That directory's README lists what differs from the upstream tag.
+The agent loop, tool registry and chat come from [glen-harness](https://github.com/SchmidtDSE/glen-harness), vendored unmodified in `app/vendor/glen-harness/`. The core imports its `src/core.js` entry, which leaves out the MCP client, and turns the session export off unless the config sets `export`. That directory's README says how to move to a new release.
 
 ## Modules
 
@@ -104,11 +104,11 @@ The agent loop, tool registry and chat interface are a trimmed copy of [glen-har
 | `main.js` | Bootstrap: config, Portolan catalog, map, map tools, plugins, agent, chat |
 | `portolan.js` | Pure rules for reading a Portolan collection: tiles, styles, rasters, metadata |
 | `portolan-catalog.js` | Fetches collections, styles and PMTiles metadata; builds layer configs and the prompt |
-| `map-tools.js` | The agent's map tools |
+| `map-tools.js` | The shared map-control tools from `app/map-control-tools.js`, with Portolan wording, plus `apply_style`, `set_raster_colormap` and `describe_layer` |
 | `system-prompt.md` | The base prompt; an app can replace it with `system_prompt_url` |
 | `plugins/mcp.js` | Example plugin that adds an MCP server's tools and the collections' GeoParquet URLs |
 
-The core reuses these modules from `app/` unchanged: `map-manager.js` (layers, filters, styles, legend, tooltips), `layout-manager.js` with the header, theme and mobile sheet, `geocoder.js` and `data-page.js`.
+The core reuses these modules from `app/` unchanged: `map-control-tools.js` (the map tools both apps share), `map-manager.js` (layers, filters, styles, legend, tooltips), `layout-manager.js` with the header, theme and mobile sheet, `geocoder.js` and `data-page.js`.
 
 ## Limitations
 

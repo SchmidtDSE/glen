@@ -1,23 +1,37 @@
 /**
  * map-tools.js — The local tools of glen core: visual control of the map.
  *
- * Every tool acts on the page; none reads or queries data on a server. They
- * drive glen's MapManager (app/map-manager.js) and read layer metadata from
- * the PortolanCatalog. Extensions add their own tools beside these through
- * the plugin context (see main.js).
+ * Every tool acts on the page; none reads or queries data on a server. The
+ * map-control tools come from app/map-control-tools.js, shared with the full
+ * app; this module adds the tools a Portolan catalog makes possible and the
+ * description hints that point at them. Extensions add their own tools
+ * through the plugin context (see main.js).
  */
 
 import { describeColor } from './portolan.js';
+import {
+    createMapControlTools,
+    createProjectionTool,
+    PICK_LAYER_NUDGE,
+} from '../app/map-control-tools.js';
 
-// A paint value that is a number or an expression. `items: {}` keeps a
-// grammar-constrained decoder from collapsing the array to [] (glen#243).
-const NUM_OR_EXPR = { type: ['number', 'array'], items: {} };
-
-const PICK_LAYER = 'Use a layer_id from the Layers section of the system prompt. Pick the layer by its title, not by guessing from the id.';
+/**
+ * Descriptions that point the agent at what a Portolan catalog provides:
+ * the published styles and describe_layer, and no SQL.
+ */
+export const PORTOLAN_HINTS = Object.freeze({
+    filterValues: 'IMPORTANT: Never guess categorical values used in filters. Use the values a published style lists in your system prompt, values from describe_layer, or values the user gave.',
+    styleValues: 'IMPORTANT: For categorical coloring (e.g., a "match" expression), never guess or assume valid values. Use the values a published style lists in your system prompt, values from describe_layer, or values the user gave. Prefer apply_style when a published style matches the request. Raster colors change with set_raster_colormap, not here.',
+    tooltipFields: 'Property names must exactly match the feature properties in the vector tiles, as listed for the layer in your system prompt or by describe_layer. Unknown names render nothing (no error).',
+});
 
 const json = (x) => JSON.stringify(x);
 
 /**
+ * glen's map-control tools, set up for a Portolan catalog, plus the three
+ * tools only a Portolan catalog supports: apply_style, set_raster_colormap
+ * and describe_layer.
+ *
  * @param {import('../app/map-manager.js').MapManager} mapManager
  * @param {import('./portolan-catalog.js').PortolanCatalog} catalog
  * @param {Object} [options]
@@ -27,86 +41,25 @@ const json = (x) => JSON.stringify(x);
 export function createCoreMapTools(mapManager, catalog, { geocoder = null } = {}) {
     const unknown = (id) => ({ success: false, error: `Unknown layer: ${id}. Available: ${[...catalog.layers.keys()].join(', ')}` });
 
-    const tools = [
-        {
-            name: 'show_layer',
-            description: `Turn a layer on. Use when the user asks to show, display or add a layer.\n\n${PICK_LAYER}`,
-            inputSchema: {
-                type: 'object',
-                properties: { layer_id: { type: 'string', description: 'Layer to show' } },
-                required: ['layer_id'],
+    return [
+        ...createMapControlTools(mapManager, {
+            geocoder,
+            hints: PORTOLAN_HINTS,
+            layerExtent: (id) => layerExtent(catalog, id),
+            reportView: true,
+            // Rasters are TiTiler tiles; their "style" is the colour map in the URL.
+            resetStyle: (id) => {
+                const l = catalog.layers.get(id);
+                if (l?.kind !== 'raster') return undefined;
+                return setRasterColormap(mapManager, catalog, id, { colormap: l.defaultColormap, rescale: l.defaultRescale });
             },
-            execute: (args) => {
-                const r = mapManager.showLayer(args.layer_id);
-                if (r.success) mapManager.syncCheckbox(args.layer_id);
-                return json(r);
-            },
-        },
-        {
-            name: 'hide_layer',
-            description: 'Turn a layer off. Use when the user asks to hide, remove or turn off a layer.',
-            inputSchema: {
-                type: 'object',
-                properties: { layer_id: { type: 'string', description: 'Layer to hide' } },
-                required: ['layer_id'],
-            },
-            execute: (args) => {
-                const r = mapManager.hideLayer(args.layer_id);
-                if (r.success) mapManager.syncCheckbox(args.layer_id);
-                return json(r);
-            },
-        },
-        {
-            name: 'set_filter',
-            description: `Show only the features of a vector layer that match a MapLibre filter expression.
-
-Use the property names listed for the layer in the system prompt, exactly as written (they are case sensitive). Use only values you have seen: the categories a published style lists, values the user gave, or values from describe_layer. Never guess a category.
-
-Expression forms:
-- equal: ["==", ["get", "prop"], "value"]
-- compare: [">=", ["get", "prop"], 100]
-- one of: ["match", ["get", "prop"], ["a", "b"], true, false]
-- and / or: ["all", f1, f2] / ["any", f1, f2]
-- missing values: ["!", ["has", "prop"]]
-
-Do not use the legacy ["in", "prop", a, b] form; MapLibre ignores it.
-
-${PICK_LAYER}`,
-            inputSchema: {
-                type: 'object',
-                properties: {
-                    layer_id: { type: 'string', description: 'Vector layer to filter' },
-                    filter: { type: 'array', items: {}, description: 'MapLibre filter expression' },
-                },
-                required: ['layer_id', 'filter'],
-            },
-            execute: (args) => json(mapManager.setFilter(args.layer_id, args.filter)),
-        },
-        {
-            name: 'clear_filter',
-            description: 'Remove every filter from a layer, including one it started with, so all features show.',
-            inputSchema: {
-                type: 'object',
-                properties: { layer_id: { type: 'string' } },
-                required: ['layer_id'],
-            },
-            execute: (args) => json(mapManager.clearFilter(args.layer_id)),
-        },
-        {
-            name: 'reset_filter',
-            description: 'Return a layer to the filter it had when the app loaded.',
-            inputSchema: {
-                type: 'object',
-                properties: { layer_id: { type: 'string' } },
-                required: ['layer_id'],
-            },
-            execute: (args) => json(mapManager.resetFilter(args.layer_id)),
-        },
+        }),
+        createProjectionTool(mapManager),
         {
             name: 'apply_style',
             description: `Apply one of the styles the data publisher made for a vector layer. The system prompt lists each layer's published styles and what each colours by. Prefer a published style over writing your own paint when one matches the request.
 
-${PICK_LAYER}`,
+${PICK_LAYER_NUDGE}`,
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -116,62 +69,6 @@ ${PICK_LAYER}`,
                 required: ['layer_id', 'style'],
             },
             execute: (args) => json(applyPublishedStyle(mapManager, catalog, args.layer_id, args.style)),
-        },
-        {
-            name: 'set_style',
-            description: `Change the paint of a layer with MapLibre paint properties. Each property name starts with the layer's drawing type: \`fill-\` for polygons, \`line-\` for lines, \`circle-\` for points, \`raster-\` for rasters (only raster-opacity and similar; use set_raster_colormap for raster colours).
-
-Colour by a property:
-  categories: {"fill-color": ["match", ["get", "prop"], "a", "#1b9e77", "b", "#d95f02", "#cccccc"]}
-  ramp:       {"fill-color": ["interpolate", ["linear"], ["get", "prop"], 0, "#fee6ce", 100, "#e6550d"]}
-  classes:    {"fill-color": ["step", ["get", "prop"], "#ffffcc", 10, "#a1dab4", 50, "#253494"]}
-
-Take category values and numeric ranges from the system prompt or describe_layer; never invent them. The legend follows the paint.
-
-A ramp or step paints features that lack the property black. Hide them through the opacity, leaving the colour expression whole so the legend can read it: {"fill-opacity": ["case", ["==", ["typeof", ["get", "prop"]], "number"], 0.6, 0]}.
-
-${PICK_LAYER}`,
-            inputSchema: {
-                type: 'object',
-                properties: {
-                    layer_id: { type: 'string', description: 'Layer to style' },
-                    style: {
-                        type: 'object',
-                        description: 'MapLibre paint properties, e.g. {"fill-color": "#ff0000", "fill-opacity": 0.8}. An object, never a string.',
-                        properties: {
-                            'fill-color': { description: 'Fill colour or expression' },
-                            'fill-opacity': { ...NUM_OR_EXPR, description: 'Fill opacity 0–1' },
-                            'fill-outline-color': { description: 'Fill outline colour' },
-                            'line-color': { description: 'Line colour or expression' },
-                            'line-width': { ...NUM_OR_EXPR, description: 'Line width in pixels' },
-                            'line-opacity': { ...NUM_OR_EXPR, description: 'Line opacity 0–1' },
-                            'circle-color': { description: 'Circle colour or expression' },
-                            'circle-radius': { ...NUM_OR_EXPR, description: 'Circle radius in pixels' },
-                            'circle-opacity': { ...NUM_OR_EXPR, description: 'Circle opacity 0–1' },
-                            'raster-opacity': { ...NUM_OR_EXPR, description: 'Raster opacity 0–1' },
-                        },
-                        additionalProperties: true,
-                    },
-                },
-                required: ['layer_id', 'style'],
-            },
-            execute: (args) => json(mapManager.setStyle(args.layer_id, args.style)),
-        },
-        {
-            name: 'reset_style',
-            description: 'Return a layer to the paint it had when the app loaded.',
-            inputSchema: {
-                type: 'object',
-                properties: { layer_id: { type: 'string' } },
-                required: ['layer_id'],
-            },
-            execute: (args) => {
-                const l = catalog.layers.get(args.layer_id);
-                if (l?.kind === 'raster') {
-                    return json(setRasterColormap(mapManager, catalog, args.layer_id, { colormap: l.defaultColormap, rescale: l.defaultRescale }));
-                }
-                return json(mapManager.resetStyle(args.layer_id));
-            },
         },
         {
             name: 'set_raster_colormap',
@@ -194,86 +91,6 @@ Colour maps: viridis, magma, inferno, plasma, cividis, ylorrd, ylgnbu, blues, gr
             },
         },
         {
-            name: 'set_tooltip',
-            description: 'Choose which feature properties show when the pointer is over a vector layer, in order. Pass [] to turn the tooltip off.',
-            inputSchema: {
-                type: 'object',
-                properties: {
-                    layer_id: { type: 'string' },
-                    fields: { type: 'array', items: { type: 'string' }, description: 'Property names, exactly as listed for the layer' },
-                },
-                required: ['layer_id', 'fields'],
-            },
-            execute: (args) => json(mapManager.setTooltip(args.layer_id, args.fields)),
-        },
-        {
-            name: 'reset_tooltip',
-            description: 'Return a layer to the tooltip fields it had when the app loaded.',
-            inputSchema: {
-                type: 'object',
-                properties: { layer_id: { type: 'string' } },
-                required: ['layer_id'],
-            },
-            execute: (args) => json(mapManager.resetTooltip(args.layer_id)),
-        },
-        {
-            name: 'set_legend',
-            description: 'Label a layer\'s legend: a title, units for a colour bar, or names for category values (keys are the values in the layer\'s match expression, as strings). Colours always follow the paint, so change those with set_style.',
-            inputSchema: {
-                type: 'object',
-                properties: {
-                    layer_id: { type: 'string' },
-                    title: { type: 'string', description: 'Legend heading' },
-                    units: { type: 'string', description: 'Unit after a colour bar\'s end values' },
-                    labels: { type: 'object', additionalProperties: { type: 'string' }, description: 'Category value → label' },
-                    visible: { type: 'boolean', description: 'false hides this legend' },
-                },
-                required: ['layer_id'],
-            },
-            execute: (args) => json(mapManager.setLegend(args.layer_id, {
-                labels: args.labels, title: args.title, units: args.units, visible: args.visible,
-            })),
-        },
-        {
-            name: 'reset_legend',
-            description: 'Remove labels, title and units set with set_legend.',
-            inputSchema: {
-                type: 'object',
-                properties: { layer_id: { type: 'string' } },
-                required: ['layer_id'],
-            },
-            execute: (args) => json(mapManager.resetLegend(args.layer_id)),
-        },
-        {
-            name: 'fly_to',
-            description: `Move the map. Give one of:
-- layer_id: frame the whole extent of that layer's data;
-- bbox: [west, south, east, north] in degrees;
-- center: [longitude, latitude] (longitude first), with an optional zoom (0–22).
-For a named place, call geocode first; never recall coordinates from memory.`,
-            inputSchema: {
-                type: 'object',
-                properties: {
-                    layer_id: { type: 'string', description: 'Frame this layer\'s extent' },
-                    bbox: { type: 'array', items: { type: 'number' }, description: '[west, south, east, north]' },
-                    center: { type: 'array', items: { type: 'number' }, description: '[longitude, latitude]' },
-                    zoom: { type: 'number', description: 'Zoom level 0–22' },
-                },
-            },
-            execute: (args) => json(flyTo(mapManager, catalog, args)),
-        },
-        {
-            name: 'get_map_state',
-            description: 'Report what the map shows now: each layer\'s visibility, filter, paint and legend, and the view. Use it before changing a layer you have already changed.',
-            inputSchema: { type: 'object', properties: {} },
-            execute: () => {
-                const state = mapManager.getMapState();
-                const m = mapManager.map;
-                const c = m.getCenter();
-                return json({ ...state, view: { center: [round(c.lng, 4), round(c.lat, 4)], zoom: round(m.getZoom(), 2) } });
-            },
-        },
-        {
             name: 'describe_layer',
             description: 'Full metadata for one layer: every feature property with its description, the published styles with the values or range each colours by, raster statistics, license, and links to the publisher\'s README and agent guide.',
             inputSchema: {
@@ -288,31 +105,14 @@ For a named place, call geocode first; never recall coordinates from memory.`,
             },
         },
     ];
+}
 
-    if (geocoder) {
-        tools.push({
-            name: 'geocode',
-            description: 'Find the coordinates of a named place (address, town, landmark, region). Call it whenever the user names a place, then fly_to the result. Never recall coordinates from memory.',
-            inputSchema: {
-                type: 'object',
-                properties: {
-                    query: { type: 'string', description: 'The place, with enough context to be unambiguous' },
-                    limit: { type: 'number', description: 'Maximum results (default 5)' },
-                },
-                required: ['query'],
-            },
-            execute: async (args) => {
-                try {
-                    const results = await geocoder.forwardGeocode(args.query, { limit: args.limit ?? 5 });
-                    if (!results.length) return json({ success: true, count: 0, results: [], message: `No location found for "${args.query}".` });
-                    return json({ success: true, count: results.length, source: results[0].source, results });
-                } catch (err) {
-                    return json({ success: false, error: `Geocoding failed: ${err.message}` });
-                }
-            },
-        });
-    }
-    return tools;
+/** A layer's published extent as [w, s, e, n], or null. */
+export function layerExtent(catalog, layerId) {
+    const l = catalog.layers.get(layerId);
+    const b = l && catalog.datasets.get(l.datasetId)?.bbox;
+    if (!b) return null;
+    return b.length === 6 ? [b[0], b[1], b[3], b[4]] : b;
 }
 
 /** Apply a named published style to a vector layer. */
@@ -374,27 +174,6 @@ function replaceRasterTiles(map, sourceId, mapLayerId, tileUrl) {
     map.addLayer(def, beforeId);
 }
 
-/** fly_to: a layer's extent, a bbox, or a centre and zoom. */
-export function flyTo(mapManager, catalog, { layer_id, bbox, center, zoom } = {}) {
-    if (layer_id) {
-        const l = catalog.layers.get(layer_id);
-        const ds = l && catalog.datasets.get(l.datasetId);
-        if (!ds?.bbox) return { success: false, error: l ? `${layer_id} has no published extent.` : `Unknown layer: ${layer_id}` };
-        bbox = ds.bbox.length === 6 ? [ds.bbox[0], ds.bbox[1], ds.bbox[3], ds.bbox[4]] : ds.bbox;
-    }
-    if (Array.isArray(bbox) && bbox.length === 4 && bbox.every(Number.isFinite)) {
-        const [w, s, e, n] = bbox;
-        if (s > n || Math.abs(s) > 90 || Math.abs(n) > 90) return { success: false, error: 'bbox must be [west, south, east, north] in degrees.' };
-        mapManager.map.fitBounds([[w, s], [e, n]], { padding: 40, maxZoom: 16 });
-        return { success: true, bbox: [w, s, e, n] };
-    }
-    if (Array.isArray(center) && center.length === 2) {
-        if (Math.abs(center[1]) > 90) return { success: false, error: 'center is [longitude, latitude]; the latitude is out of range.' };
-        return mapManager.flyTo({ center, zoom });
-    }
-    return { success: false, error: 'Give layer_id, bbox, or center.' };
-}
-
 /** Everything the catalog knows about one layer, for describe_layer. */
 export function describeLayer(catalog, l) {
     const ds = catalog.datasets.get(l.datasetId);
@@ -423,9 +202,4 @@ export function describeLayer(catalog, l) {
         styles: [...l.styles.entries()].map(([name, s]) => ({ name, title: s.title, colours_by: describeColor(s.paint) })),
         active_style: l.activeStyle || l.defaultStyle,
     };
-}
-
-function round(v, d) {
-    const f = 10 ** d;
-    return Math.round(v * f) / f;
 }

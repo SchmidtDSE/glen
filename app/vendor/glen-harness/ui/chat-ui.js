@@ -7,28 +7,35 @@
  * Extracted from geo-agent's app/chat-ui.js. The host builds the DOM it
  * mounts into (geo-agent's layout-manager, or buildChatPanel in ./layout.js)
  * and may override exportRow() to place the export button elsewhere.
- *
- * Trimmed for glen core from glen-harness v0.1.0 (see ../README.md): the
- * session export is removed, and markdown rendering comes from ./markdown.js.
- * Voice input still loads lazily, and only when the config names a
- * transcription_model; core does not vendor the voice modules.
  */
 
-import { sqlArg } from '../tool-registry.js';
+import { sqlArg } from '../src/tool-registry.js';
 import { githubIcon, leafIcon, micIcon, stopIcon } from './icons.js';
-import { renderMarkdown, REDACTED_KEYS } from './markdown.js';
 
-export { renderMarkdown };
+import { renderMarkdown, scrubCredentials, REDACTED_KEYS } from './markdown.js';
+import { resolveExportConfig } from './export-config.js';
+
+/*
+ * The session export (export-report.js: the report builder, the DuckDB setup
+ * block and the R and Python wrappers) loads only when someone exports, with
+ * import() in exportHtml(). An app with `"export": false` never loads it.
+ */
+let exportReportModule = null;
+function loadExportReport() {
+    exportReportModule ??= import('./export-report.js').catch((err) => {
+        exportReportModule = null; // let the next click retry
+        throw err;
+    });
+    return exportReportModule;
+}
 
 /** Default target of the `links.carbon` footer link. */
 export const CARBON_DASHBOARD_URL = 'https://carbon-api.nrp-nautilus.io/';
 
-/**
- * glen core ships without the session export (export-report.js holds the
- * DuckDB setup, the R/Python wrappers and the report builder). An app that
- * wants it adds it as an extension; until then the button is never built.
- */
-const EXPORT_OFF = Object.freeze({ enabled: false });
+// Re-exported so existing importers keep resolving them here. The export's
+// heavier helpers are imported from ./export-report.js directly.
+export { renderMarkdown, scrubCredentials, REDACTED_KEYS, resolveExportConfig };
+
 
 export class ChatUI {
     /**
@@ -50,7 +57,7 @@ export class ChatUI {
         this.config = config;
         // Export settings (opt-out + endpoint), resolved once — initExportButton
         // needs them before any DOM is built.
-        this.exportConfig = EXPORT_OFF;
+        this.exportConfig = resolveExportConfig(config);
         this.mapManager = mapManager;
         this.chartRenderer = chartRenderer;
         // Set by main.js; the export cites the datasets a session used from it.
@@ -1145,16 +1152,110 @@ export class ChatUI {
      * per question, the SQL the agent ran as folded code chunks with their
      * output, the model's answer as prose, the final map as the figure, and
      * the full call log as an appendix. Built from the session record, not
-     * from the chat panel's DOM.
+     * from the chat panel's DOM. The report builder loads on first use.
+     *
+     * @returns {Promise<void>} settles once the download has been offered
      */
-    exportHtml() {
-        this.addMessage('error', 'Session export is not part of glen core.');
+    async exportHtml() {
+        let report;
+        try {
+            report = await loadExportReport();
+        } catch (err) {
+            console.error('[ChatUI] Export module failed to load:', err);
+            this.addMessage('error', "couldn't load the export — check your connection and try again");
+            return;
+        }
+        const { buildReportHtml, buildMapEmbedHtml, chartIdOf, libraryVersion, sessionDatasets } = report;
+        const exportCfg = this.exportConfig || resolveExportConfig(this.config);
+
+        // Capture the final map state (one map per saved log). Guarded so a
+        // ChatUI built without a map still exports the report.
+        let mapState = null;
+        try {
+            mapState = this.mapManager?.getExportState?.() ?? null;
+        } catch (err) {
+            console.warn('[ChatUI] map capture for export failed:', err);
+        }
+
+        // Each chart the session drew, re-drawn as a static figure. Guarded
+        // like the map: a failed figure costs the figure, not the export.
+        const figures = new Map();
+        for (const turn of this._session().turns) {
+            for (const step of turn.steps) {
+                const id = chartIdOf(step);
+                if (!id || figures.has(id)) continue;
+                try {
+                    const svg = this.chartRenderer?.exportFigure?.(id);
+                    if (svg) figures.set(id, svg);
+                } catch (err) {
+                    console.warn('[ChatUI] chart capture for export failed:', err);
+                }
+            }
+        }
+
+        const html = buildReportHtml(this._session(), {
+            figures,
+            title: this._exportTitle(),
+            appTitle: document.title || 'GLEN',
+            appUrl: window.location.href,
+            exportedAt: new Date(),
+            s3Endpoint: exportCfg.s3Endpoint,
+            codeLanguage: exportCfg.codeLanguage,
+            projectUrl: exportCfg.projectUrl,
+            version: libraryVersion(),
+            mapEmbed: buildMapEmbedHtml(mapState, { filename: this._exportFilename() }),
+            basename: this._exportFilename().replace(/\.html$/, ''),
+            datasets: this._exportDatasets(sessionDatasets),
+        });
+
+        try {
+            const blob = new Blob([html], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = this._exportFilename();
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error('[ChatUI] Export failed:', err);
+            this.addMessage('error',
+                "couldn't generate download — your browser may not support file downloads");
+        }
     }
 
     /**
      * The datasets the session used, for the report's Data sources section.
      * Guarded like the map: a failure costs the citations, not the export.
      */
+    _exportDatasets(sessionDatasets) {
+        try {
+            const entries = this.catalog?.getAll?.() || [];
+            const onMap = [...(this.mapManager?.layers?.values?.() || [])]
+                .filter(s => s.visible && s.datasetId).map(s => s.datasetId);
+            return sessionDatasets(this._session(), entries, onMap);
+        } catch (err) {
+            console.warn('[ChatUI] data-source capture for export failed:', err);
+            return [];
+        }
+    }
+
+    _exportFilename() {
+        const d = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+                      `-${pad(d.getHours())}${pad(d.getMinutes())}`;
+        return `glen-session-${stamp}.html`;
+    }
+
+    _exportTitle() {
+        const d = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        return `${document.title || 'GLEN'} — session report, ${stamp}`;
+    }
+
     /* ------------------------------------------------------------------ */
     /*  Message rendering                                                  */
     /* ------------------------------------------------------------------ */
