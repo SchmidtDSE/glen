@@ -66,7 +66,7 @@ A collection can be named by URL or, when `catalog` is set, by id. With `catalog
 - The geometry type and attribute names come from the PMTiles archive's own metadata, so filters and styles use the names in the tiles.
 - Styles come from assets with the `style` role. Each is converted to the one MapLibre layer the core draws for that geometry. The default style sets the starting paint, and the others are offered to the agent by name through `apply_style`. The prompt lists the categories or range each style colours by, so the model filters and restyles on real values.
 - A colour ramp cannot interpolate a missing value and paints it black. The core sets the opacity to zero for features without a number in that property, and leaves the colour expression whole so the legend still reads it.
-- Rasters are COG assets with the `data` role. The starting display range comes from the band statistics Portolan requires, capped at the mean plus two standard deviations for skewed data. Tiles come from TiTiler.
+- Rasters are COG assets with the `data` role. The starting display range comes from the band statistics Portolan requires, capped at the mean plus two standard deviations for skewed data. Tiles come from TiTiler, by default the NRP server at `titiler.nrp-nautilus.io`; `titiler_url` points an app at another.
 - Assets with the `source` role are the publisher's upstream originals and are never drawn.
 
 ## Plugins
@@ -112,7 +112,6 @@ The core reuses these modules from `app/` unchanged: `map-manager.js` (layers, f
 
 ## Limitations
 
-- Raster tiles need a TiTiler server. Rendering COGs in the browser would remove it, at the cost of decoding in the page; a plugin could add that as a second renderer.
 - Multi-scene raster collections, with one COG per item, are not drawn yet; only collection-level COGs are.
 - Style layers of type `symbol` (labels) are skipped, because labels need a glyph server.
 - `map-manager.js` still loads the hex-layer helpers it imports, though the core never adds a hex layer.

@@ -101,6 +101,16 @@ jobs:
             fi
             test ! -e "$dest/config.json"
 
+            # glen core (core/) imports ../app/, so it is staged with a copy
+            # of app/ beside it and opens at /preview/<branch>/core/.
+            if [ -d "$work/core" ]; then
+              cp -R "$work/core" "$dest/core"
+              mkdir -p "$dest/app"
+              cp -R "$work/app/." "$dest/app/"
+              rm -f "$dest/app/index.html" "$dest/app/config.json"
+              echo "  /preview/$slug/core/"
+            fi
+
             # Variants: preview/variants/<name>.json is a shallow patch over
             # the fixture, published beside it so two configurations can be
             # compared side by side without duplicating the whole file.
