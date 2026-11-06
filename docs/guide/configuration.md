@@ -602,15 +602,15 @@ in `layers-input.json`.
 ```html
 <head>
   <!-- ... other tags ... -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.32.0/app/style.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.32.0/app/chat.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.32.0/app/sidebar.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.39.0/app/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.39.0/app/chat.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.39.0/app/sidebar.css">
 </head>
 <body>
   <div id="map"></div>
   <div id="menu"></div>
   <script type="module"
-    src="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.32.0/app/main.js">
+    src="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.39.0/app/main.js">
   </script>
 </body>
 ```
@@ -1226,6 +1226,20 @@ To customise, pass an object instead of `true`:
 ```
 
 A file holds either polygons (Polygon, MultiPolygon) or points (Point, MultiPoint), not both. Lines and larger data are out of scope by design; the error message points to `ingest_url`.
+
+### Boundaries
+
+For an uploaded boundary, `get_uploaded_dataset` tells the agent to convert it once to H3 cells with `h3_polygon_wkt_to_cells` and join those cells to a hex dataset, on `h0` as well so DuckDB reads only the partitions the boundary covers. An exact geometry test (`ST_Within`) is offered only for data without H3 columns, because the hex join is much faster:
+
+```sql
+WITH aoi AS (SELECT ST_AsText(ST_Union_Agg(geom)) AS wkt FROM ST_Read('<url>')),
+cells AS (SELECT UNNEST(h3_polygon_wkt_to_cells(aoi.wkt, 8)) AS cell FROM aoi)
+SELECT d.*
+FROM cells JOIN read_parquet('s3://…/hex/h0=*/data_0.parquet', hive_partitioning = true) d
+  ON d.h8 = cells.cell AND d.h0 = h3_cell_to_parent(cells.cell, 0)
+```
+
+The agent picks a coarser resolution for a large area to keep the number of cells reasonable.
 
 ### Points
 
