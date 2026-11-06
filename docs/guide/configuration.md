@@ -1231,14 +1231,16 @@ A file holds either polygons (Polygon, MultiPolygon) or points (Point, MultiPoin
 
 Points are drawn as circles and uploaded as GeoJSON, like polygons. A MultiPoint is split into one point per coordinate first, keeping its properties. A point outside the longitude and latitude range is refused, since that usually means swapped or projected coordinates.
 
-For each point upload, `get_uploaded_dataset` gives the agent a ready SQL source that adds H3 cell columns `h10` … `h0` (#435). It computes each point's resolution-10 cell and derives every coarser cell from it with `h3_cell_to_parent`, the way cng-datasets builds the catalog's hex data, so the points join to any H3-indexed dataset on a shared column such as `h8`. Joining on `h0` as well lets DuckDB read only the partitions the points fall in:
+For each point upload, `get_uploaded_dataset` gives the agent a ready SQL source that adds H3 cell columns `h10` … `h0` (#435). It computes each point's resolution-10 cell and derives every coarser cell from it with `h3_cell_to_parent`, the way cng-datasets builds the catalog's hex data, so the points join to any H3-indexed dataset on a shared column such as `h10`. Joining on `h0` as well lets DuckDB read only the partitions the points fall in:
 
 ```sql
 WITH pts AS (SELECT * FROM <sql_source>)
 SELECT d.*, pts.species
 FROM pts JOIN read_parquet('s3://…/hex/h0=*/data_0.parquet', hive_partitioning = true) d
-  ON d.h8 = pts.h8 AND d.h0 = pts.h0
+  ON d.h10 = pts.h10 AND d.h0 = pts.h0
 ```
+
+The hint tells the agent to join at the finest resolution both sides have and to prefer this join to an exact geometry test. On 1,001 points against PAD-US fee lands (hex at resolution 10), the `h10` join found 438 points in 3.5 s, and `ST_Within` against the polygon GeoParquet found 439 in 7.8 s. An `h8` join found 517, because a point matches whenever anything in its larger cell does.
 
 The cells are computed when the agent queries rather than stored in the file. Parsing the GeoJSON dominates the cost of a query, and storing the cells made the file up to 2.8 times larger and slower to read; #435 has the benchmark.
 

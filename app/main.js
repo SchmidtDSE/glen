@@ -354,7 +354,7 @@ async function main() {
                 'occurrence records. Returns public GeoJSON URL(s); the agent does NOT receive the geometry. ' +
                 'Read a boundary server-side in the query tool with ST_Read(url) and use it as an area-of-interest mask. ' +
                 'A point upload comes with a ready `sql_source` that adds H3 cell columns h10…h0 (UBIGINT, like the ' +
-                'catalog\'s hex columns), so the points join to any H3-indexed dataset on a shared column such as h8. ' +
+                'catalog\'s hex columns), so the points join to any H3-indexed dataset on a shared column such as h10. ' +
                 'Call this when the user refers to "the uploaded file", "my boundary", "my points", "my observations", ' +
                 '"the shape I added", "this area", or asks a question about uploaded data. Returns success:false if nothing is uploaded.',
             inputSchema: { type: 'object', properties: {} },
@@ -379,9 +379,12 @@ async function main() {
                     hints.push(
                         "Points: use the dataset's sql_source exactly as given, as a table in FROM or a CTE; " +
                         "do not recompute the cells yourself. " +
-                        "WITH pts AS (SELECT * FROM <sql_source>) SELECT ... FROM pts JOIN data d ON d.h8 = pts.h8 AND d.h0 = pts.h0. " +
-                        "Join on the finest resolution both sides have, and always on h0 too, which catalog hex data is " +
-                        "partitioned by, so only the partitions the points fall in are read. " +
+                        "WITH pts AS (SELECT * FROM <sql_source>) SELECT ... FROM pts JOIN data d ON d.h10 = pts.h10 AND d.h0 = pts.h0. " +
+                        "Join on the finest resolution both sides have (h10 for catalog hex data at resolution 10), and always on h0 too, " +
+                        "which catalog hex data is partitioned by, so only the partitions the points fall in are read. " +
+                        "A coarser join overcounts: a point matches if anything in its larger cell does. " +
+                        "Use this hex join, not an exact geometry test (ST_Within against a polygon file): at h10 it gives the same answer " +
+                        "in a fraction of the time. " +
                         "To map counts, aggregate by a cell column, e.g. SELECT h8, count(*) AS n FROM <sql_source> GROUP BY h8.",
                     );
                 }
