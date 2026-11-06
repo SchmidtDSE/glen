@@ -15,7 +15,7 @@ A downstream app serves `index.html`, `layers-input.json` and, optionally, `conf
 <script type="module" src="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/core/main.js"></script>
 ```
 
-The page also needs MapLibre, PMTiles, marked and DOMPurify. `core/index.html` lists them with their integrity hashes; it does not load h3-js or highlight.js, which the core does not use. [glen-portolan](https://github.com/SchmidtDSE/glen-portolan) is a complete example.
+The page also needs MapLibre, PMTiles, marked and DOMPurify. `core/index.html` lists them with their integrity hashes; it does not load h3-js or highlight.js, which the core does not use. [glen-portolan-template](https://github.com/SchmidtDSE/glen-portolan-template) is a complete example and the starting point for a new app.
 
 Run it locally from the repository root with `python -m http.server 8000` and open `http://localhost:8000/core/`. The example configuration shows Jamaica after Hurricane Melissa.
 
