@@ -80,6 +80,8 @@ A plugin is an ES module whose default export is `{ name, setup(ctx, options) }`
 ]
 ```
 
+`plugins/mcp.js` takes one server as above or several as `"servers": [{ "url": …, "headers": …, "prompt": … }, …]`; when two servers list a tool of the same name, the one listed first keeps it. Each server entry can also take `include` or `exclude`, a list of tool names, to register only some of its tools. MCP gives a client no way to ask a server for part of its tool list, so the filter runs here, and the server still offers every tool to other clients. For example, `"exclude": ["browse_stac_catalog", "get_stac_details", "get_collection"]` keeps DuckDB's `query` and hex tools and leaves catalog questions to the map tools. A server that cannot be reached is skipped.
+
 `setup` runs after the map and the map tools exist and before the agent is built. It receives:
 
 | Field | What it is |
@@ -95,7 +97,7 @@ A plugin that throws is logged and skipped, and the map and its tools keep worki
 
 ## Harness
 
-The agent loop, tool registry and chat come from [glen-harness](https://github.com/SchmidtDSE/glen-harness). `main.js` imports them from jsDelivr at a release tag, the same way apps load glen, so glen keeps no copy. It imports the `src/core.js` entry, which leaves out the MCP client, and turns the session export off unless the config sets `export`; the harness loads the export only if it runs. To move to a new harness release, change the tag in both import URLs in `main.js`.
+The agent loop, tool registry and chat come from [glen-harness](https://github.com/SchmidtDSE/glen-harness). `main.js` imports them from jsDelivr at a release tag, the same way apps load glen, so glen keeps no copy. It imports the `src/core.js` entry, which leaves out the MCP client, and turns the session export off unless the config sets `export`; the harness loads the export only if it runs. To move to a new harness release, change the tag in both import URLs in `main.js` and in `HARNESS_MCP_CLIENT` in `plugins/mcp.js`; a test checks that the three agree.
 
 ## Modules
 
@@ -106,7 +108,7 @@ The agent loop, tool registry and chat come from [glen-harness](https://github.c
 | `portolan-catalog.js` | Fetches collections, styles and PMTiles metadata; builds layer configs and the prompt |
 | `map-tools.js` | The shared map-control tools from `app/map-control-tools.js`, with Portolan wording, plus `apply_style`, `set_raster_colormap` and `describe_layer` |
 | `system-prompt.md` | The base prompt; an app can replace it with `system_prompt_url` |
-| `plugins/mcp.js` | Example plugin that adds an MCP server's tools and the collections' GeoParquet URLs |
+| `plugins/mcp.js` | Plugin that adds the tools of one or more MCP servers, filtered by `include` or `exclude`, and the collections' GeoParquet URLs |
 
 The core reuses these modules from `app/` unchanged: `map-control-tools.js` (the map tools both apps share), `map-manager.js` (layers, filters, styles, legend, tooltips), `layout-manager.js` with the header, theme and mobile sheet, `geocoder.js` and `data-page.js`.
 

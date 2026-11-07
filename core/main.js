@@ -28,8 +28,8 @@ import { mountDataPage } from '../app/data-page.js';
 // glen-harness, loaded from jsDelivr at a release tag, as apps load glen
 // itself. Its ./core entry is the agent loop and tool registry without the MCP
 // client. Both URLs name the same tag; bump them together.
-import { Agent, ToolRegistry } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.2.0/src/core.js';
-import { ChatUI } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.2.0/ui/chat-ui.js';
+import { Agent, ToolRegistry } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.3.0/src/core.js';
+import { ChatUI } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.3.0/ui/chat-ui.js';
 import { PortolanCatalog } from './portolan-catalog.js';
 import { createCoreMapTools } from './map-tools.js';
 
