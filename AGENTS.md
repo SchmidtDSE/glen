@@ -31,6 +31,15 @@ Core library for map-based applications with LLM-powered data analysis. Interact
 - `data-page.js` — The data sources page (#433): every dataset the app loads with its citation, a `<dialog>` opened on the `#data` fragment and linked by default from the header nav and chat footer.
 - `export-report.js` — The exported session report: builds a Quarto-style HTML document from the session record ChatUI keeps (no DOM). Also holds the export helpers (setup block, R/Python wrappers, credential scrub, map embed).
 
+## glen core (core/)
+
+`core/` is a smaller app built from the same pieces: a map of the layers in [Portolan](https://www.portolan-sdi.org/) collections and an agent whose tools act only on the map. It assumes no MCP server or SQL engine; those return as plugins (`core/plugins/mcp.js`). It reuses `app/map-manager.js`, `app/layout-manager.js`, `app/geocoder.js` and `app/data-page.js` unchanged, and loads glen-harness from jsDelivr at a release tag for the agent and chat. Its map tools come from `app/map-control-tools.js`, which the full app's `map-tools.js` also uses, so a map tool is defined once. See `core/README.md`. Changes to the shared `app/` modules reach both apps, so check a core app too when they touch layer registration, styling or the layout.
+
+- `core/main.js` — Bootstrap: config → Portolan catalog + map → map tools → plugins → agent → chat
+- `core/portolan.js` — Pure rules for reading a Portolan collection (PMTiles links, style assets, COG band statistics)
+- `core/portolan-catalog.js` — Fetches collections, styles and PMTiles metadata; builds MapManager layer configs and the prompt
+- `core/map-tools.js` — The core's map tools, including `apply_style` (published styles) and `set_raster_colormap`
+
 ## Design decisions
 
 Settled architectural calls are recorded in `docs/design/` so they aren't re-litigated. Read the relevant note before reopening one of these questions.
@@ -159,6 +168,8 @@ to change. CI installs with `--frozen-lockfile`.
 
 ### Vendored dependencies
 
+glen core imports glen-harness from `cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@<tag>` in `core/main.js`; there is no copy here. Change glen-harness, tag a release, and bump both URLs together.
+
 `app/vendor/mcp-sdk.js` is a **committed build artifact** — the MCP SDK,
 pre-bundled with esbuild so the app has no runtime dependency on a third-party
 ESM host (#343). Rebuild with `pnpm run build:vendor`; CI fails if the committed
@@ -216,6 +227,11 @@ When a PR touches a covered module, expect tests to change too. When it touches 
 | `app/export-report.js` | 99% | `test/export-report.test.js`, `test/chat-export*.test.js` — step classification, report shape, disclosure, the ChatUI session record. Regenerate `preview/sample-export.html` after a change. |
 | `app/dataset-catalog.js` | 89% | `test/dataset-catalog.test.js` — STAC parsing, layer config shape, prompt rendering |
 | `app/agent.js` | 48% | `test/agent-retry.test.js` — retry / abort / timeout. The conversation loop is uncovered (tested manually). |
+| `core/portolan.js`, `core/portolan-catalog.js` | covered | `test/core-portolan.test.js` — tile, style and raster discovery, style conversion, the missing-value guard, catalog walk, prompt |
+| `core/map-tools.js` | covered | `test/core-map-tools.test.js` — published styles and their filters, raster recolouring, fly_to forms. Rendering is browser-bound; verify at `/core/`. |
+| `core/main.js` | 0% | Bootstrap — verify by loading `/core/` locally. `test/core-module-graph.test.js` checks that it loads no MCP, SQL or export code. |
+| `core/plugins/mcp.js` | covered | `test/core-mcp-plugin.test.js` — server list resolution, rank and filters per server, per-server reconnect, unreachable servers, prompt order, and the harness tag matching `core/main.js`. |
+| `app/map-control-tools.js` | covered | `test/map-control-tools.test.js` — default and SQL hint text, fly_to with and without layer extents, the reset_style hook. The full app's tool text must not change; compare `createMapTools` output before and after. |
 | `app/main.js` | 0% | Bootstrap — verify by loading the app locally. |
 | `app/animation-manager.js` | partial | `test/animation-manager.test.js` — the pure sampling helpers (`sampleTrack`, `cellBoundary`). MapLibre sublayers and the controls panel are browser-bound; verify visually. |
 | `app/chat-ui.js`, `app/map-manager.js`, `app/layout-manager.js`, `app/map-draw.js`, `app/h3geo.js`, `app/voice-input.js` | 0% | Browser-bound (DOM, MapLibre, MediaRecorder). Verify visually in a deployed app — no harness yet. |
