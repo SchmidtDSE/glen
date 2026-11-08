@@ -23,7 +23,7 @@ Core library for map-based applications with LLM-powered data analysis. Interact
 - `raster-frames.js` / `frame-player.js` — Raster time series (#421): find a series' dated COGs (STAC frame-list asset or bucket listing) and play them, preloading the next frames
 - `tool-registry.js` — Unified dispatch for local + remote (MCP) tools
 - `mcp-client.js` — MCP transport wrapper (connect once, lazy reconnect)
-- `mcp-servers.js` — Resolves which MCP servers an app connects to (`mcp_url` shorthand or `mcp_servers` list; the first is primary)
+- `mcp-servers.js` — Resolves which MCP servers an app connects to (`mcp_url` shorthand or `mcp_servers` list; the first is primary), and whether a visitor's own MCP token may be sent to the primary (#442)
 - `agent.js` — LLM orchestration loop (agentic tool-use cycle)
 - `llm-auth.js` — The `Authorization` header for LLM requests: none when `api_key` is unset, so basic-auth deployments keep working
 - `llm-models.js` — Which models the picker offers: the open-llm-proxy's tier list when the app is served through it (#444), and a bring-your-own-key user's own model id (#443)
@@ -220,7 +220,7 @@ When a PR touches a covered module, expect tests to change too. When it touches 
 | `app/theme.js` | 100% | `test/theme.test.js` — theme resolution, fallback, body class application |
 | `app/mobile-sheet.js` | partial | `test/mobile-sheet.test.js` — the pure detent maths (`detentHeights`, `nearestDetent`, `stepDetent`). Drag, tabs and the media-query switch are browser-bound; verify on a phone. |
 | `app/mcp-client.js` | 99% | `test/mcp-client.test.js` — connect / reconnect / callTool retry / resources / prompts |
-| `app/mcp-servers.js` | 100% | `test/mcp-servers.test.js` — `mcp_url` / `mcp_servers` resolution, primary override, optional flag |
+| `app/mcp-servers.js` | 100% | `test/mcp-servers.test.js` — `mcp_url` / `mcp_servers` resolution, primary override, optional flag, when a visitor's token applies (#442); `test/chat-ui-mcp-token.test.js` — the token field |
 | `app/tool-registry.js` | 98% | `test/tool-registry.test.js` — registration, dispatch, argsRewriter, schema cleaning, per-server clear and collisions |
 | `app/raster-frames.js` | 100% | `test/raster-frames.test.js` — frame lists, bucket listing, date windows and steps |
 | `app/frame-player.js` | partial | `test/frame-player.test.js` — playback, waiting for frames to load, preloading, ranges; `test/map-manager.time-series.test.js` — the frame layers on the map. The panel is browser-bound; verify on a preview. |

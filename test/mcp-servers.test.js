@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { resolveMcpServers, DEFAULT_MCP_URL } from '../app/mcp-servers.js';
+import { resolveMcpServers, DEFAULT_MCP_URL, userTokenApplies, userTokenAllowed, isMcpAuthError } from '../app/mcp-servers.js';
 
 const DUCK = 'https://duckdb-mcp.nrp-nautilus.io/mcp';
 const SDM = 'https://sdm-mcp.nrp-nautilus.io/mcp';
@@ -56,5 +56,54 @@ describe('resolveMcpServers', () => {
         const cfg = { mcp_url: 'https://x/mcp', mcp_servers: [{ url: DUCK }] };
         resolveMcpServers(cfg);
         expect(cfg.mcp_servers).toEqual([{ url: DUCK }]);
+    });
+});
+
+describe('a visitor\'s MCP token (#442)', () => {
+    const PAGES = 'https://schmidtdse.github.io';
+
+    it('goes to a cross-origin primary the deployment gave no token', () => {
+        const [p, sdm] = resolveMcpServers({ mcp_servers: [{ url: DUCK }, { url: SDM }] }, { userToken: ' t1 ', pageOrigin: PAGES });
+        expect(p.headers).toEqual({ Authorization: 'Bearer t1' });
+        expect(sdm.headers).toEqual({});
+    });
+
+    it('never replaces a deployment\'s own token', () => {
+        const [p] = resolveMcpServers({ mcp_url: DUCK, mcp_auth_token: 'ops' }, { userToken: 'mine', pageOrigin: PAGES });
+        expect(p.headers).toEqual({ Authorization: 'Bearer ops' });
+        expect(userTokenAllowed({ mcp_url: DUCK, mcp_auth_token: 'ops' }, PAGES)).toBe(false);
+        expect(userTokenAllowed({ mcp_servers: [{ url: DUCK, auth_token: 'ops' }] }, PAGES)).toBe(false);
+    });
+
+    it('is not sent to a same-origin relay such as /api/mcp (#420)', () => {
+        const [p] = resolveMcpServers({ mcp_url: '/api/mcp' }, { userToken: 'mine', pageOrigin: 'https://app.example' });
+        expect(p.headers).toEqual({});
+        expect(userTokenAllowed({ mcp_url: '/api/mcp' }, 'https://app.example')).toBe(false);
+        expect(userTokenAllowed({ mcp_url: 'https://app.example/api/mcp' }, 'https://app.example')).toBe(false);
+    });
+
+    it('is allowed for the default server from a static site', () => {
+        expect(userTokenAllowed({}, PAGES)).toBe(true);
+        expect(userTokenAllowed({ mcp_url: DUCK }, 'http://localhost:8000')).toBe(true);
+    });
+
+    it('ignores a blank token', () => {
+        expect(resolveMcpServers({}, { userToken: '  ', pageOrigin: PAGES })[0].headers).toEqual({});
+    });
+
+    it('userTokenApplies rejects a missing or unparseable url', () => {
+        expect(userTokenApplies({}, PAGES)).toBe(false);
+        expect(userTokenApplies(null, PAGES)).toBe(false);
+        expect(userTokenApplies({ url: 'http://[bad' }, PAGES)).toBe(false);
+    });
+});
+
+describe('isMcpAuthError', () => {
+    it('recognises the SDK\'s 401 and 403 POST errors only', () => {
+        expect(isMcpAuthError(new Error('Error POSTing to endpoint (HTTP 401): Unauthorized'))).toBe(true);
+        expect(isMcpAuthError(new Error('Error POSTing to endpoint (HTTP 403): Forbidden'))).toBe(true);
+        expect(isMcpAuthError(new Error('Error POSTing to endpoint (HTTP 503): down'))).toBe(false);
+        expect(isMcpAuthError(new Error('Failed to fetch'))).toBe(false);
+        expect(isMcpAuthError(undefined)).toBe(false);
     });
 });
