@@ -26,6 +26,7 @@ Core library for map-based applications with LLM-powered data analysis. Interact
 - `mcp-servers.js` — Resolves which MCP servers an app connects to (`mcp_url` shorthand or `mcp_servers` list; the first is primary)
 - `agent.js` — LLM orchestration loop (agentic tool-use cycle)
 - `llm-auth.js` — The `Authorization` header for LLM requests: none when `api_key` is unset, so basic-auth deployments keep working
+- `llm-models.js` — Which models the picker offers: the open-llm-proxy's tier list when the app is served through it (#444), and a bring-your-own-key user's own model id (#443)
 - `chat-ui.js` — Chat UI with collapsible tool-call blocks
 - `dataset-citations.js` — How a dataset is cited, from its STAC record. Shared by the export's Data sources section and the data page, so the two cannot drift.
 - `data-page.js` — The data sources page (#433): every dataset the app loads with its citation, a `<dialog>` opened on the `#data` fragment and linked by default from the header nav and chat footer.
@@ -212,6 +213,7 @@ When a PR touches a covered module, expect tests to change too. When it touches 
 | Module | Coverage | What changes here should be tested |
 |---|---:|---|
 | `app/llm-auth.js` | 100% | `test/llm-auth.test.js` — no `Authorization` header without a key (basic-auth deployments, #420) |
+| `app/llm-models.js` | 100% | `test/llm-models.test.js` — tier list vs config, fallbacks, BYOK model id; `test/chat-ui-model-settings.test.js` — the settings panel field |
 | `app/transcriber.js` | 100% | `test/transcriber.test.js` — endpoint resolution, error paths, abort signal |
 | `app/overlay-rail.js` | 100% | `test/overlay-rail.test.js` — rail creation, slot ordering, mount/remove, per-document mounting |
 | `app/app-header.js` | 100% | `test/app-header.test.js` — config resolution, nav derivation from `links`, logo slots, mobile takeover |
