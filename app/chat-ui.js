@@ -10,6 +10,10 @@ import { ensurePanelActions } from './panel-actions.js';
 import { sqlArg } from './tool-registry.js';
 import { resolveDataLink } from './data-page.js';
 import { githubIcon, leafIcon, micIcon, stopIcon } from './icons.js';
+import {
+    DEFAULT_USER_ENDPOINT, STORAGE_KEY_API, STORAGE_KEY_ENDPOINT, STORAGE_KEY_MODEL,
+    buildUserModels, fetchModelIds, loadUserSettings,
+} from './llm-models.js';
 
 import {
     PUBLIC_S3_ENDPOINT,
@@ -438,37 +442,56 @@ export class ChatUI {
         document.getElementById('api-settings-panel')?.remove();
 
         const llmConfig = this.config.llm || {};
-        const savedKey = localStorage.getItem('geo-agent-api-key') || '';
-        const savedEndpoint = localStorage.getItem('geo-agent-endpoint')
-            || llmConfig.default_endpoint || 'https://openrouter.ai/api/v1';
+        const saved = loadUserSettings();
+        const savedKey = saved.apiKey;
+        const savedEndpoint = saved.endpoint
+            || llmConfig.default_endpoint || DEFAULT_USER_ENDPOINT;
 
         const panel = document.createElement('div');
         panel.id = 'api-settings-panel';
         panel.innerHTML = `
             <div class="settings-title">API Settings</div>
             <label class="settings-label" for="settings-endpoint">Endpoint</label>
-            <input id="settings-endpoint" type="url" value="${this.escapeHtml(savedEndpoint)}" 
+            <input id="settings-endpoint" type="url"
                    placeholder="https://openrouter.ai/api/v1" spellcheck="false">
             <label class="settings-label" for="settings-api-key">API Key</label>
             <input id="settings-api-key" type="password" value="${savedKey ? '••••••••' : ''}" 
                    placeholder="sk-..." spellcheck="false"
                    onfocus="if(this.value.startsWith('••'))this.value=''">
+            <label class="settings-label" for="settings-model">Model (optional)</label>
+            <input id="settings-model" type="text" list="settings-model-options"
+                   placeholder="any model id your endpoint serves" spellcheck="false" autocomplete="off">
+            <datalist id="settings-model-options"></datalist>
             <div class="settings-actions">
                 <button id="settings-save" class="settings-save-btn">Save</button>
                 <button id="settings-cancel" class="settings-cancel-btn">Cancel</button>
             </div>
             <div class="settings-hint">
                 Keys are stored in your browser only and never sent to this server.
+                Leave the model empty to choose from this app's list.
             </div>
         `;
+
+        // Saved values go in as properties, not markup: escapeHtml leaves
+        // quotes alone, so it cannot guard an attribute.
+        panel.querySelector('#settings-endpoint').value = savedEndpoint;
+        panel.querySelector('#settings-model').value = saved.model;
 
         // Insert before messages area
         this.messagesEl.parentNode.insertBefore(panel, this.messagesEl);
 
+        // Suggest the endpoint's own models (OpenRouter's catalog is public).
+        // Typing any other id still works; a failed fetch leaves no suggestions.
+        const endpointInput = panel.querySelector('#settings-endpoint');
+        const suggest = () => this._suggestModels(panel, endpointInput.value.trim(), savedKey);
+        endpointInput.addEventListener('change', suggest);
+        suggest();
+
         // Wire buttons
         panel.querySelector('#settings-save').addEventListener('click', () => {
-            const endpoint = panel.querySelector('#settings-endpoint').value.trim();
+            const endpoint = endpointInput.value.trim();
             const apiKey = panel.querySelector('#settings-api-key').value.trim();
+            const model = panel.querySelector('#settings-model').value.trim();
 
             if (!apiKey || apiKey.startsWith('\u2022')) {
                 // No change to key if user didn't type a new one
@@ -477,11 +500,13 @@ export class ChatUI {
                     return;
                 }
             } else {
-                localStorage.setItem('geo-agent-api-key', apiKey);
+                localStorage.setItem(STORAGE_KEY_API, apiKey);
             }
             if (endpoint) {
-                localStorage.setItem('geo-agent-endpoint', endpoint);
+                localStorage.setItem(STORAGE_KEY_ENDPOINT, endpoint);
             }
+            if (model) localStorage.setItem(STORAGE_KEY_MODEL, model);
+            else localStorage.removeItem(STORAGE_KEY_MODEL);
 
             // Rebuild LLM models from new settings
             this.applyUserLLMConfig();
@@ -494,31 +519,35 @@ export class ChatUI {
     }
 
     /**
+     * Fill the settings panel's model suggestions from `<endpoint>/models`.
+     * The key is sent only to the endpoint the user typed, where it goes anyway.
+     */
+    async _suggestModels(panel, endpoint, apiKey) {
+        const list = panel.querySelector('#settings-model-options');
+        if (!list) return;
+        const token = (this._suggestToken = (this._suggestToken || 0) + 1);
+        const ids = endpoint ? await fetchModelIds(endpoint, { apiKey }) : [];
+        if (token !== this._suggestToken) return;   // a newer endpoint was typed
+        list.replaceChildren(...ids.map(id => {
+            const opt = document.createElement('option');
+            opt.value = id;
+            return opt;
+        }));
+    }
+
+    /**
      * Rebuild llm_models from localStorage and update the agent.
      */
     applyUserLLMConfig() {
-        const llmConfig = this.config.llm || {};
-        const apiKey = localStorage.getItem('geo-agent-api-key');
-        const endpoint = localStorage.getItem('geo-agent-endpoint')
-            || llmConfig.default_endpoint || 'https://openrouter.ai/api/v1';
+        const built = buildUserModels(this.config.llm || {}, loadUserSettings());
+        if (!built) return;
 
-        if (!apiKey) return;
-
-        const models = (llmConfig.models || []).map(m => ({
-            ...m,
-            endpoint,
-            api_key: apiKey,
-        }));
-
-        if (models.length === 0) {
-            models.push({ value: 'auto', label: 'Auto', endpoint, api_key: apiKey });
-        }
-
-        this.config.llm_models = models;
-        this.config.llm_model = models[0]?.value;
+        this.config.llm_models = built.llm_models;
+        this.config.llm_model = built.llm_model;
         this.agent.config = this.config;
-        this.agent.selectedModel = this.config.llm_model;
+        this.agent.setModel(this.config.llm_model);
         this.populateModelSelector();
+        this.syncReasoningToggle();
     }
 
     /* ------------------------------------------------------------------ */
@@ -659,7 +688,7 @@ export class ChatUI {
         }
 
         // In user-provided mode, check for API key before sending
-        if (this.config._userProvidedMode && !localStorage.getItem('geo-agent-api-key')) {
+        if (this.config._userProvidedMode && !localStorage.getItem(STORAGE_KEY_API)) {
             this.showSettingsPanel();
             return;
         }

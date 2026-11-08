@@ -977,6 +977,12 @@ The `llm` section controls how the chat agent connects to a language model. Two 
 
 **Server-provided** (default — omit `llm`): a `config.json` on the same server provides model endpoints and API keys (e.g., injected by Kubernetes at deploy time). See [Deployment](./deployment).
 
+When every model in `config.json` uses one endpoint and that endpoint is the [open-llm-proxy](https://github.com/boettiger-lab/open-llm-proxy) (`/api/llm` in a deployed app), the app asks the proxy which models to offer (#444). Each app's proxy key carries a tier, public or private, and `GET /api/llm/models` returns that tier's models and its default. The picker then shows the proxy's list in its order:
+
+- `llm_models` only supplies per-model settings, matched by `value`: `label`, `reasoning_toggle`, sampling and the like. A model the proxy does not list is left out, since the proxy would refuse it with a 403.
+- The picker starts on the app's `llm_model` when the tier contains it, otherwise on the proxy's default.
+- If the request fails, or the endpoint is not the proxy (its `/models` has no `tier`), the picker uses `llm_models` as before.
+
 **User-provided** (`"user_provided": true`): no `config.json` needed. A ⚙ button appears in the chat footer; visitors enter their own API key, stored in `localStorage` (never sent to the server). Ideal for static-site deployments.
 
 | Field | Description |
@@ -984,6 +990,8 @@ The `llm` section controls how the chat agent connects to a language model. Two 
 | `user_provided` | `true` to enable browser-side API key entry. |
 | `default_endpoint` | Pre-filled endpoint URL shown in the settings panel. [OpenRouter](https://openrouter.ai) gives access to many models via one key. |
 | `models` | Array of `{ "value": "<model-id>", "label": "<display name>" }` entries in the model selector. |
+
+The settings panel also has an optional model field (#443). The visitor's own key pays, so they can name any model their endpoint serves; it is saved in `localStorage` next to the key, listed first in the picker and selected. The field suggests the ids the endpoint's `/models` lists (OpenRouter's catalog is public). Left empty, the picker offers `models`, which are suggestions rather than a limit.
 
 ### Sampling parameters (optional)
 

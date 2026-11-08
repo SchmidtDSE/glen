@@ -13,6 +13,7 @@ import { createMapTools, createRenderChartTool, createSetTimeTool } from './map-
 import { createGeocoder } from './geocoder.js';
 import { Agent } from './agent.js';
 import { ChatUI } from './chat-ui.js';
+import { applyProxyModelList, buildUserModels, loadUserSettings } from './llm-models.js';
 import { mountDataPage } from './data-page.js';
 import { buildLayout, sidebarHooks } from './layout-manager.js';
 import { mountOverlay, SLOT } from './overlay-rail.js';
@@ -48,15 +49,22 @@ async function main() {
 
     // If no server-provided LLM config, check for user-provided key mode
     if (!appConfig.llm_models && appConfig.llm?.user_provided) {
-        const saved = loadUserLLMConfig(appConfig.llm);
+        const saved = buildUserModels(appConfig.llm, loadUserSettings());
         if (saved) {
             appConfig.llm_models = saved.llm_models;
-            appConfig.llm_model = saved.llm_models[0]?.value;
+            appConfig.llm_model = saved.llm_model;
             if (saved.transcription_model) appConfig.transcription_model = saved.transcription_model;
         }
         // Flag for ChatUI to show settings button
         appConfig._userProvidedMode = true;
     }
+
+    // Served through the open-llm-proxy, the proxy's tier list decides which
+    // models the picker offers (#444); llm_models keeps per-model settings.
+    // Overlaps the rest of boot and falls back to llm_models on any failure.
+    const modelListP = appConfig._userProvidedMode
+        ? Promise.resolve(null)
+        : applyProxyModelList(appConfig).catch(() => null);
     console.log('[main] Config loaded');
 
     /* ── 1b. Build UI chrome (layout-manager owns floating vs sidebar) ─── */
@@ -563,6 +571,8 @@ async function main() {
     }
 
     /* ── 7. Create agent ──────────────────────────────────────────────── */
+    const tier = await modelListP;
+    if (tier) console.log(`[main] Model list from the LLM proxy (${tier} tier):`, appConfig.llm_models.map(m => m.value));
     const agent = new Agent(appConfig, toolRegistry);
     agent.setSystemPrompt(systemPrompt);
     console.log('[main] Agent ready');
@@ -668,52 +678,6 @@ function showAssistantUnavailable(mount, error) {
     }
     if (mount.send) mount.send.disabled = true;
     if (mount.mic) mount.mic.disabled = true;
-}
-
-const STORAGE_KEY_API = 'geo-agent-api-key';
-const STORAGE_KEY_ENDPOINT = 'geo-agent-endpoint';
-
-/**
- * Build llm_models array (and optionally transcription_model) from
- * localStorage + app llm config. Returns null if no saved API key.
- */
-function loadUserLLMConfig(llmConfig) {
-    const apiKey = localStorage.getItem(STORAGE_KEY_API);
-    if (!apiKey) return null;
-
-    const endpoint = localStorage.getItem(STORAGE_KEY_ENDPOINT)
-        || llmConfig.default_endpoint
-        || 'https://openrouter.ai/api/v1';
-
-    const models = (llmConfig.models || []).map(m => ({
-        ...m,
-        endpoint,
-        api_key: apiKey,
-    }));
-
-    // If no models configured, create a generic one
-    if (models.length === 0) {
-        models.push({
-            value: 'auto',
-            label: 'Auto',
-            endpoint,
-            api_key: apiKey,
-        });
-    }
-
-    const result = { llm_models: models };
-
-    // Transcription model for voice input — inherits the user's key and
-    // (by default) the same endpoint. Either can be overridden per entry.
-    if (llmConfig.transcription_model?.value) {
-        result.transcription_model = {
-            ...llmConfig.transcription_model,
-            endpoint: llmConfig.transcription_model.endpoint || endpoint,
-            api_key: llmConfig.transcription_model.api_key || apiKey,
-        };
-    }
-
-    return result;
 }
 
 async function fetchJson(url) {
