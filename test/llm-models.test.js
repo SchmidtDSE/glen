@@ -90,10 +90,8 @@ describe('modelsFromTierList (#444)', () => {
         expect(models.find(m => m.value === 'gpt-paid')).toBeUndefined();
     });
 
-    it('starts on default_model, or the app\'s llm_model when the tier has it', () => {
+    it('starts on the proxy\'s default_model', () => {
         expect(modelsFromTierList(tierList(), config, { endpoint: '/api/llm' }).selected).toBe('deepseek-v4-flash');
-        expect(modelsFromTierList(tierList(), config, { endpoint: '/api/llm', preferred: 'kimi' }).selected).toBe('kimi');
-        expect(modelsFromTierList(tierList(), config, { endpoint: '/api/llm', preferred: 'gpt-paid' }).selected).toBe('deepseek-v4-flash');
     });
 
     it('falls back to the flagged default, then the first model', () => {
@@ -122,12 +120,12 @@ describe('modelsFromTierList (#444)', () => {
 });
 
 describe('applyProxyModelList', () => {
-    it('replaces llm_models and llm_model from the tier list', async () => {
+    it('replaces llm_models and llm_model from the tier list; the proxy default beats the app\'s llm_model', async () => {
         const config = { llm_models: [{ value: 'kimi', endpoint: '/api/llm' }], llm_model: 'kimi' };
         const tier = await applyProxyModelList(config, { fetchImpl: okFetch(tierList()) });
         expect(tier).toBe('public');
         expect(config.llm_models.map(m => m.value)).toEqual(['glm-5', 'deepseek-v4-flash', 'kimi']);
-        expect(config.llm_model).toBe('kimi');
+        expect(config.llm_model).toBe('deepseek-v4-flash');
     });
 
     it('leaves the config alone when the fetch fails or the endpoint is not the proxy', async () => {

@@ -76,12 +76,10 @@ export function sharedEndpoint(models) {
  * @param {Object} opts
  * @param {string} opts.endpoint - the endpoint the list came from
  * @param {string} [opts.apiKey]  - the key used to fetch it, if any
- * @param {string} [opts.preferred] - the app's configured `llm_model`; kept as
- *   the starting model when the tier contains it
  * @returns {{models: Array, selected: string}|null} null when the response is
  *   not a proxy tier list or lists nothing.
  */
-export function modelsFromTierList(list, configModels, { endpoint, apiKey, preferred } = {}) {
+export function modelsFromTierList(list, configModels, { endpoint, apiKey } = {}) {
     // Only the proxy's tier list replaces the config. A plain OpenAI-style
     // /models (vLLM, OpenRouter) has no `tier` and may list hundreds of models.
     if (!list || typeof list.tier !== 'string' || !Array.isArray(list.data)) return null;
@@ -101,7 +99,9 @@ export function modelsFromTierList(list, configModels, { endpoint, apiKey, prefe
     if (models.length === 0) return null;
     const ids = new Set(models.map(m => m.value));
     const flagged = list.data.find(e => e?.default === true)?.id;
-    const selected = [preferred, list.default_model, flagged].find(id => ids.has(id)) || models[0].value;
+    // The proxy owns one default per tier, so the app's llm_model does not
+    // override it; llm_model applies only when the list cannot be fetched.
+    const selected = [list.default_model, flagged].find(id => ids.has(id)) || models[0].value;
     return { models, selected };
 }
 
@@ -118,7 +118,6 @@ export async function applyProxyModelList(config, { fetchImpl } = {}) {
     const result = modelsFromTierList(list, config.llm_models, {
         endpoint: shared.endpoint,
         apiKey: shared.apiKey,
-        preferred: config.llm_model,
     });
     if (!result) return null;
     config.llm_models = result.models;
