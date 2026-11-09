@@ -28,16 +28,15 @@ import { mountDataPage } from '../app/data-page.js';
 // glen-harness, loaded from jsDelivr at a release tag, as apps load glen
 // itself. Its ./core entry is the agent loop and tool registry without the MCP
 // client. Both URLs name the same tag; bump them together.
-import { Agent, ToolRegistry } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.3.0/src/core.js';
-import { ChatUI } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.3.0/ui/chat-ui.js';
+import {
+    Agent, ToolRegistry, applyProxyModelList, buildUserModels, loadUserSettings,
+} from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.4.0/src/core.js';
+import { ChatUI } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.4.0/ui/chat-ui.js';
 import { PortolanCatalog } from './portolan-catalog.js';
 import { createCoreMapTools } from './map-tools.js';
 
 /** The ref this module was loaded at (a tag or SHA on jsDelivr), or 'dev'. */
 export const CORE_VERSION = import.meta.url.match(/glen@([^/]+)/)?.[1] || 'dev';
-
-const STORAGE_KEY_API = 'geo-agent-api-key';
-const STORAGE_KEY_ENDPOINT = 'geo-agent-endpoint';
 
 /**
  * Start a glen core app.
@@ -53,13 +52,20 @@ export async function start({ plugins: extraPlugins = [] } = {}) {
         fetchJson('config.json').catch(() => null),
     ]);
     mergeRuntimeConfig(appConfig, runtimeConfig);
+    // A user-provided key builds the model list from what this browser saved
+    // (glen#443). Otherwise, behind open-llm-proxy, the picker shows the
+    // models the app's key may use (glen#444); this runs beside the catalog
+    // and map, and the agent waits for it.
+    let modelListP = null;
     if (!appConfig.llm_models && appConfig.llm?.user_provided) {
-        const saved = loadUserLLMConfig(appConfig.llm);
-        if (saved) {
-            appConfig.llm_models = saved.llm_models;
-            appConfig.llm_model = saved.llm_models[0]?.value;
-        }
+        const saved = buildUserModels(appConfig.llm, loadUserSettings());
+        if (saved) Object.assign(appConfig, saved);
         appConfig._userProvidedMode = true;
+    } else {
+        modelListP = applyProxyModelList(appConfig).catch((err) => {
+            console.warn('[core] Model list unavailable; using llm_models:', err.message);
+            return null;
+        });
     }
 
     /* ── 2. Chrome, catalog and map (catalog and map load in parallel) ── */
@@ -132,6 +138,8 @@ export async function start({ plugins: extraPlugins = [] } = {}) {
 
     /* ── 5. Agent and chat ─────────────────────────────────────────────── */
     const systemPrompt = [await promptP, catalog.generatePrompt(), ...promptParts].join('\n\n');
+    const tier = await modelListP;
+    if (tier) console.log(`[core] Models from the proxy (${tier} tier): ${appConfig.llm_models.length}`);
     const agent = new Agent(appConfig, tools, { clientName: `glen-core/${CORE_VERSION}` });
     agent.setSystemPrompt(systemPrompt);
     // The session export documents SQL sessions; a map-only app leaves it off
@@ -157,21 +165,6 @@ export function mergeRuntimeConfig(appConfig, runtimeConfig) {
         if (runtimeConfig[k] != null) appConfig[k] = runtimeConfig[k];
     }
     return appConfig;
-}
-
-/**
- * Build llm_models from a key the user saved in this browser (the
- * user-provided key mode, e.g. an OpenRouter key). Shares geo-agent's
- * localStorage names, so a key saved in one GLEN app works in the others on
- * the same site.
- */
-export function loadUserLLMConfig(llmConfig, storage = globalThis.localStorage) {
-    const apiKey = storage?.getItem(STORAGE_KEY_API);
-    if (!apiKey) return null;
-    const endpoint = storage.getItem(STORAGE_KEY_ENDPOINT) || llmConfig.default_endpoint || 'https://openrouter.ai/api/v1';
-    const models = (llmConfig.models || []).map(m => ({ ...m, endpoint, api_key: apiKey }));
-    if (!models.length) models.push({ value: 'auto', label: 'Auto', endpoint, api_key: apiKey });
-    return { llm_models: models };
 }
 
 /** The base prompt: the app's own file if it names one, else the core's. */
