@@ -5,6 +5,25 @@ data outside its own `layers-input.json`.
 **Tracking issue:** #354 (client half, shipped v3.28.1). Server half:
 [mcp-data-server#420](https://github.com/boettiger-lab/mcp-data-server/issues/420) / PR #421.
 
+## Update (2026-11-09): the catalog tools moved into the app
+
+Since v3.44 (#441, Phase B) the app answers `get_schema` and `get_stac_details`
+itself, from the STAC it loaded (`app/catalog-tools.js`, rendering with
+`app/stac-details.js`, a port of the MCP server's renderer). It registers none of
+the MCP server's catalog tools — `browse_stac_catalog`, `get_stac_details`,
+`get_collection` — from any server. So:
+
+- Scope is now enforced where the data is read: the tools resolve only the
+  configured collections and the collections below them. There is no discovery
+  tool to derive a flag from, and the prompt always carries the closed-door note.
+- `injectInlineStac` and the argsRewriter that carried it are gone; nothing
+  forwards STAC to the server any more.
+- The six in-app jobs of `get_stac_details` listed below are still done, by the
+  local tool.
+
+The sections below record the reasoning as it stood before; the "query escape
+hatch" section still holds.
+
 ## The recurring question
 
 "The agent answered about a dataset this app doesn't configure — can we stop that?"

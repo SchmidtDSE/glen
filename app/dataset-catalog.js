@@ -12,6 +12,8 @@
  * and is injected into both the system prompt and the map layer setup.
  */
 
+import { findCollections, childLinks as stacChildLinks, resolveHref } from './catalog-tree.js';
+
 /**
  * Normalize a vector layer's `legend_classes` config into the internal
  * categorical-legend shape (`{ name, 'color-hint' }`) the legend renderer
@@ -125,17 +127,20 @@ export class DatasetCatalog {
         /** @type {Map<string, DatasetEntry>} keyed by collection ID */
         this.datasets = new Map();
         /**
-         * Raw STAC of one-level sub-collections, keyed by *child* ID. Children
-         * are not datasets (they stay out of `datasets`, the layer panel and
+         * Raw STAC of sub-collections, keyed by *child* ID. Children are not
+         * datasets (they stay out of `datasets`, the layer panel and
          * `list_datasets`), but the prompt tells the model to call
-         * `get_stac_details` with a child ID — so `toStacDict` must resolve
-         * them too, or the call forwards no inline content and MCP falls back
-         * to its own default catalog (a #187-class miss, scoped to children).
+         * `get_stac_details` with a child ID, so `resolveStac` answers for
+         * them too. Read at boot one level down, deeper on demand.
          * @type {Map<string, Object>}
          */
         this.childCollections = new Map();
         this.catalogUrl = null;
         this.titilerUrl = null;
+        /** @type {Map<string, string>} collection id → the URL it was read from */
+        this.stacUrls = new Map();
+        /** @type {Map<string, Promise<Object>>} URL → its JSON, read once */
+        this._docs = new Map();
         /**
          * True when the root catalog was configured but unreachable, so the
          * catalog loaded without it. Boot continues either way (#335); this is
@@ -187,11 +192,15 @@ export class DatasetCatalog {
 
         console.log(`[Catalog] Looking for ${requestedIds.size} collections: ${[...requestedIds].join(', ')}`);
 
-        // Fetch the root catalog only when something actually needs traversing.
+        // Walk the catalog only when something actually needs resolving by id.
         // `collections: []` and configs where every entry carries its own
         // `collection_url` resolve without the root, so an app that declared it
         // needs nothing from that document shouldn't boot-fail when it's down.
-        let childLinks = [];
+        //
+        // The walk goes through Catalogs and Collections to any depth (#441),
+        // so ids resolve under today's bucket-level Collections and under the
+        // Portolan layout alike. It stops once every id is found.
+        let found = new Map();
         if (catalogIds.size === 0) {
             console.log('[Catalog] No collections require catalog traversal — skipping root fetch');
         } else if (!this.catalogUrl) {
@@ -200,52 +209,45 @@ export class DatasetCatalog {
         } else {
             console.log('[Catalog] Loading STAC catalog:', this.catalogUrl);
             try {
-                const catalog = await this.fetchJson(this.catalogUrl);
-                childLinks = (catalog.links || []).filter(l => l.rel === 'child');
+                found = await findCollections(this.catalogUrl, catalogIds, {
+                    fetchJson: (u) => this.readJson(u),
+                    onError: (u, e) => console.warn(`[Catalog] Failed to fetch child: ${u}`, e.message),
+                });
             } catch (error) {
                 // Degrade rather than throw. fetchJson has already exhausted its
-                // retry budget, so this is a sustained outage, not a blip — but
-                // the agent can still reach data through the MCP server's own
-                // STAC tools (browse_stac_catalog / get_stac_details), which is
-                // a working answer path. A degraded app beats a blank page, so
-                // callers get an empty catalog instead of a rejected promise.
+                // retry budget, so this is a sustained outage, not a blip. A
+                // degraded app beats a blank page, so callers get an empty
+                // catalog instead of a rejected promise.
                 this.degraded = true;
-                console.warn(`[Catalog] Root catalog unavailable after retries: ${error.message}. Continuing with a degraded catalog — map layers from this catalog will be missing; the agent can still reach data via the MCP STAC tools.`);
+                console.warn(`[Catalog] Root catalog unavailable after retries: ${error.message}. Continuing with a degraded catalog — map layers from this catalog will be missing.`);
             }
         }
 
         const directFetches = directEntries
             .map(async (c) => {
                 try {
-                    const collection = await this.fetchJson(c.collection_url);
+                    const collection = await this.readJson(c.collection_url);
                     const options = optionsMap.get(c.collection_id) || {};
-                    return this.processCollection(collection, options);
+                    return this.processCollection(collection, options, c.collection_url);
                 } catch (error) {
                     console.warn(`[Catalog] Failed to fetch direct collection: ${c.collection_url}`, error.message);
                 }
                 return null;
             });
 
-        // Remaining collections are resolved by scanning the root catalog's child
-        // links (empty when the root was skipped or unavailable, above).
-        // When child links carry an `id` field (see boettiger-lab/data-workflows#105),
-        // filter before fetching so we only request the collections we need.
-        // Falls back to fetching all children for catalogs without IDs.
-        const linksToFetch = childLinks.filter(link =>
-            !link.id || catalogIds.has(link.id)
-        );
+        // A collection below the root's children costs a walk on every boot.
+        for (const [id, { url, depth }] of found) {
+            if (depth > 1) {
+                console.warn(`[Catalog] "${id}" is ${depth} levels below the catalog root, so finding it reads much of the catalog on every load. `
+                    + `Add "collection_url": "${url}" to its entry in layers-input.json.`);
+            }
+        }
 
-        // Fetch matching child collections in parallel
-        const fetchPromises = linksToFetch.map(async (link) => {
+        const fetchPromises = [...found.entries()].map(async ([id, { url, doc }]) => {
             try {
-                const url = new URL(link.href, this.catalogUrl).href;
-                const collection = await this.fetchJson(url);
-                if (catalogIds.has(collection.id)) {
-                    const options = optionsMap.get(collection.id) || {};
-                    return this.processCollection(collection, options);
-                }
+                return await this.processCollection(doc, optionsMap.get(id) || {}, url);
             } catch (error) {
-                console.warn(`[Catalog] Failed to fetch child: ${link.href}`, error.message);
+                console.warn(`[Catalog] Failed to process collection: ${url}`, error.message);
             }
             return null;
         });
@@ -265,7 +267,12 @@ export class DatasetCatalog {
     /**
      * Process a single STAC collection into a DatasetEntry.
      */
-    async processCollection(collection, options = {}) {
+    /**
+     * @param {Object} collection - STAC collection JSON
+     * @param {Object} [options] - the collection's entry in layers-input.json
+     * @param {string} [url] - where it was read; its child hrefs resolve against it
+     */
+    async processCollection(collection, options = {}, url = null) {
         // Build ordered asset config list.
         // Using an array (not a Map) so the same STAC asset can appear multiple times
         // under different aliases — e.g. one PMTiles split into "fee" and "easement" layers
@@ -298,8 +305,10 @@ export class DatasetCatalog {
             const childResults = await Promise.allSettled(
                 childLinks.map(async (link) => {
                     try {
-                        const url = new URL(link.href, this.catalogUrl).href;
-                        return await this.fetchJson(url);
+                        const childUrl = resolveHref(link.href, url || this.catalogUrl);
+                        const child = await this.readJson(childUrl);
+                        if (child?.id) this.stacUrls.set(child.id, childUrl);
+                        return child;
                     } catch (e) {
                         console.warn(`[Catalog] Failed to fetch sub-collection: ${link.href}`, e.message);
                         return null;
@@ -367,11 +376,12 @@ export class DatasetCatalog {
             extent: collection.extent,
             summaries: collection.summaries || {},
 
-            // Raw STAC kept for inline forwarding to MCP (avoids a re-fetch).
+            // Raw STAC, for get_schema / get_stac_details and the data page.
             _rawStac: collection,
             _rawChildren: rawChildren.length > 0 ? rawChildren : null,
         };
 
+        if (url) this.stacUrls.set(collection.id, url);
         this.datasets.set(collection.id, entry);
         console.log(`[Catalog] Registered: ${entry.id} (${entry.mapLayers.length} map layers, ${entry.parquetAssets.length} parquet assets)`);
         return entry;
@@ -836,27 +846,69 @@ export class DatasetCatalog {
     }
 
     /**
-     * Build a STAC collection dict for inline forwarding to MCP.
+     * Find the STAC for a collection the app may read: a configured dataset,
+     * or any collection below one. Children read at boot answer at once;
+     * deeper ones are read on demand and kept. Nothing outside the configured
+     * collections is ever searched (#441: an app knows only the collections
+     * its layers-input.json lists).
      *
-     * Returns the raw STAC JSON received during load(), with one level of
-     * resolved sub-collections embedded as `children: [...]` per the contract
-     * in mcp-data-server PR #107.
+     * An id that matches no collection exactly is matched without regard to
+     * case, as the MCP server did.
      *
-     * Also resolves a *child* ID to that sub-collection's own STAC, since the
-     * prompt directs the model at child IDs (see `childCollections`). Returns
-     * null if the ID is neither a configured dataset nor one of their children.
-     *
-     * @param {string} id - Collection ID, or the ID of a resolved sub-collection
-     * @returns {Object|null}
+     * @param {string} id
+     * @returns {Promise<{doc: Object, url: string|null, children: Object[]}|null>}
      */
-    toStacDict(id) {
-        const ds = this.datasets.get(id);
-        if (!ds || !ds._rawStac) return this.childCollections.get(id) || null;
-        const out = { ...ds._rawStac };
-        if (ds._rawChildren && ds._rawChildren.length > 0) {
-            out.children = ds._rawChildren;
+    async resolveStac(id) {
+        if (!id) return null;
+        let doc = this.datasets.get(id)?._rawStac || this.childCollections.get(id) || null;
+        if (!doc) {
+            const lower = String(id).toLowerCase();
+            const known = [...this.datasets.keys(), ...this.childCollections.keys()].find(k => k.toLowerCase() === lower);
+            if (known) return this.resolveStac(known);
+            doc = await this._findBelowDatasets(id);
         }
-        return out;
+        if (!doc) return null;
+        const url = this.stacUrls.get(doc.id) || null;
+        return { doc, url, children: await this._readChildren(doc, url) };
+    }
+
+    /** Search below each configured collection for an id, deepest last. @private */
+    async _findBelowDatasets(id) {
+        for (const ds of this.datasets.values()) {
+            const url = this.stacUrls.get(ds.id);
+            if (!url || !(ds._rawStac.links || []).some(l => l.rel === 'child')) continue;
+            let hit;
+            try {
+                hit = (await findCollections(url, [id], { fetchJson: (u) => this.readJson(u) })).get(id);
+            } catch { continue; }
+            if (hit) {
+                this.stacUrls.set(id, hit.url);
+                this.childCollections.set(id, hit.doc);
+                return hit.doc;
+            }
+        }
+        return null;
+    }
+
+    /** A collection's sub-collections and sub-catalogs, read once. @private */
+    async _readChildren(doc, url) {
+        const held = this.datasets.get(doc.id)?._rawChildren;
+        if (held) return held;
+        const links = stacChildLinks(doc, url || this.catalogUrl);
+        const read = await Promise.all(links.map(async (l) => {
+            try {
+                const child = await this.readJson(l.href);
+                if (child?.id) {
+                    this.stacUrls.set(child.id, l.href);
+                    if (!this.childCollections.has(child.id)) this.childCollections.set(child.id, child);
+                }
+                return child;
+            } catch (e) {
+                console.warn(`[Catalog] Failed to fetch sub-collection: ${l.href}`, e.message);
+                return null;
+            }
+        }));
+        return read.filter(Boolean);
     }
 
     /**
@@ -1219,6 +1271,20 @@ export class DatasetCatalog {
     }
 
     // ---- Utilities ----
+
+    /**
+     * fetchJson, once per URL. The boot walk, the child expansion and later
+     * lookups share it, so no STAC document is read twice. A failed read is
+     * forgotten, so a later call tries again.
+     */
+    readJson(url) {
+        if (!this._docs.has(url)) {
+            const p = this.fetchJson(url);
+            this._docs.set(url, p);
+            p.catch(() => this._docs.delete(url));
+        }
+        return this._docs.get(url);
+    }
 
     async fetchJson(url, { attempts = 3, baseDelayMs = 300 } = {}) {
         // The catalog fetch is on the boot critical path, so a single transient

@@ -191,7 +191,7 @@ describe('DatasetCatalog extractors', () => {
     });
 });
 
-describe('DatasetCatalog public getters and toStacDict', () => {
+describe('DatasetCatalog public getters', () => {
     let cat;
     beforeEach(() => {
         cat = new DatasetCatalog();
@@ -218,31 +218,10 @@ describe('DatasetCatalog public getters and toStacDict', () => {
         expect(cat.getAll().map(e => e.id)).toEqual(['a', 'b', 'c']);
     });
 
-    it('toStacDict returns _rawStac when present, with children embedded if any', () => {
-        expect(cat.toStacDict('a')).toEqual({ id: 'a', stac_version: '1.0.0' });
-        expect(cat.toStacDict('b')).toEqual({
-            id: 'b',
-            stac_version: '1.0.0',
-            children: [{ id: 'b-child-1' }, { id: 'b-child-2' }],
-        });
-    });
 
-    it('toStacDict returns null when entry missing or has no _rawStac', () => {
-        expect(cat.toStacDict('missing')).toBeNull();
-        expect(cat.toStacDict('c')).toBeNull();
-    });
-
-    it('toStacDict resolves a child ID to that sub-collection', () => {
-        // The prompt points the model at child IDs, which are not datasets.
-        // Without this the call forwards no inline STAC and MCP falls back to
-        // its own default catalog.
-        cat.childCollections.set('b-child-1', { id: 'b-child-1', stac_version: '1.0.0' });
-        expect(cat.toStacDict('b-child-1')).toEqual({ id: 'b-child-1', stac_version: '1.0.0' });
-    });
-
-    it('toStacDict prefers a dataset over a same-named child', () => {
+    it('resolveStac prefers a dataset over a same-named child', async () => {
         cat.childCollections.set('a', { id: 'a', from: 'child' });
-        expect(cat.toStacDict('a')).toEqual({ id: 'a', stac_version: '1.0.0' });
+        expect((await cat.resolveStac('a')).doc).toEqual({ id: 'a', stac_version: '1.0.0' });
     });
 });
 
@@ -1036,7 +1015,7 @@ describe('DatasetCatalog.processCollection one-level child expansion', () => {
     beforeEach(() => { originalFetch = global.fetch; });
     afterEach(() => { global.fetch = originalFetch; });
 
-    it('captures childIds and rawChildren for inline forwarding', async () => {
+    it('captures childIds and rawChildren, and resolves child ids', async () => {
         const child1 = stacCollection({ id: 'c1', 'table:columns': [{ name: 'a', type: 'string' }] });
         const child2 = stacCollection({ id: 'c2', 'table:columns': [{ name: 'b', type: 'int' }] });
         global.fetch = mockFetchJson(new Map([
@@ -1063,10 +1042,10 @@ describe('DatasetCatalog.processCollection one-level child expansion', () => {
         // Parent has no columns of its own → first non-empty child columns are used
         expect(entry.columns.length).toBeGreaterThan(0);
 
-        // Children are indexed for inline forwarding, but are not datasets:
+        // Children answer get_stac_details, but are not datasets:
         // they stay out of the layer panel and list_datasets.
-        expect(cat.toStacDict('c1').id).toBe('c1');
-        expect(cat.toStacDict('c2').id).toBe('c2');
+        expect((await cat.resolveStac('c1')).doc.id).toBe('c1');
+        expect((await cat.resolveStac('c2')).doc.id).toBe('c2');
         expect(cat.get('c1')).toBeNull();
     });
 });
