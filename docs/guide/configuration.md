@@ -67,7 +67,7 @@ Each entry in `collections` is either a **bare string** (loads all visual assets
 | Field | Type | Description |
 |---|---|---|
 | `collection_id` | string | STAC collection ID to load. |
-| `collection_url` | string | Direct URL to the STAC collection JSON. **Required** for any collection that is not a direct child of the root catalog — see [Nested collections](#nested-collections). Also needed for private or external catalogs, and recommended even for top-level collections since it skips the (slow) catalog walk. |
+| `collection_url` | string | Direct URL to the STAC collection JSON. Recommended for any collection that is not a direct child of the root catalog, since finding it by id reads much of the catalog on every load — see [Nested collections](#nested-collections). Also needed for private or external catalogs. |
 | `group` | string or object | Group label shown in the layer toggle panel. Use an object `{ "name": "...", "collapsed": true }` to start the group folded — see [Collapsed groups](#collapsed-groups). |
 | `sidebar` | boolean | Whether this collection's layers get rows in the layer panel. Default: `true`. Set `false` to keep the layers configured and agent-addressable but out of the panel — see [Layers outside the panel](#layers-outside-the-panel). |
 | `assets` | array | Asset selector — see below. Omit to load all visual assets. |
@@ -76,13 +76,13 @@ Each entry in `collections` is either a **bare string** (loads all visual assets
 
 ### Nested collections
 
-The framework resolves bare `collection_id`s by scanning **only the direct `child` links of the root catalog** (`appConfig.catalog`). It does **not** recurse into parent/container collections. So any collection nested under a parent — *even within the same public catalog* — must specify an explicit `collection_url`, or its layer **silently never appears** (the miss is only a `console.warn`, not a user-visible error).
+A bare `collection_id` is looked up under the root catalog (`appConfig.catalog`) at any depth, through sub-catalogs and parent collections alike. Since v3.41 this covers both our current layout (bucket-level collections with collections below them) and the Portolan layout (`catalog.json` nodes holding `collection.json` nodes). Earlier versions looked only at the root's direct children, so a nested collection never appeared.
 
-This bites when a collection shows up in the flat `list_datasets` output (so it looks loadable by ID) but actually lives under a container collection rather than directly under the root.
+The lookup reads the links that name the id first and stops once every id is found, so a collection directly under the root costs one read. A collection further down costs a walk through much of the catalog, several hundred reads on our public catalog, on every page load. The browser console then names the URL to use:
 
-**How to tell whether a collection is nested:** fetch the root catalog JSON and inspect its `links[rel=child]`. If your `collection_id` isn't among those direct children, it's nested under one of them and needs a `collection_url`.
-
-**How to find the URL:** open the collection's own JSON and copy its `self` href (typically the `stac-collection.json` path in object storage, e.g. `https://.../<collection_id>/stac-collection.json`).
+```
+[Catalog] "megamove" is 2 levels below the catalog root, so finding it reads much of the catalog on every load. Add "collection_url": "https://…/megamove/stac-collection.json" to its entry in layers-input.json.
+```
 
 ```json
 {
@@ -91,9 +91,19 @@ This bites when a collection shows up in the flat `list_datasets` output (so it 
 }
 ```
 
-**Trade-off:** a hardcoded `collection_url` breaks if the bucket/path is renamed or moved, so prefer it only where the catalog walk can't reach the collection (or where skipping the walk is a deliberate perf choice).
+**Trade-off:** a `collection_url` breaks if the collection moves, while an id keeps working at the cost of the walk.
 
-> **Troubleshooting:** *a layer never appears and its `collection_id` is correct* → it is probably nested under a parent collection. Set `collection_url`.
+## Dataset metadata tools
+
+The agent's `get_schema` and `get_stac_details` tools are answered in the browser from the STAC the app loaded (v3.41, #441). They cover the configured collections and every collection below them, read on demand, and nothing else: an id outside them gets an error listing the app's datasets. The MCP server's catalog tools (`browse_stac_catalog`, `get_stac_details`, `get_collection`) are never registered, so the agent cannot browse the rest of the catalog.
+
+Both tools print `read_parquet()` paths. An HTTPS asset href becomes an `s3://` path by the same rules as the MCP server's built-in sources (`https://s3-west.nrp-nautilus.io/` → `s3://`, `https://data.source.coop/` → `s3://us-west-2.opendata.source.coop/`). For another host the tools print the path-style `s3://` form with the `s3_endpoint` and `s3_scope` to pass to `query`. An app whose MCP server reads another host by default names it in `s3_sources`, tried before the built-ins:
+
+```json
+"s3_sources": [
+  { "https_prefix": "https://minio.example.org/", "s3_prefix": "s3://" }
+]
+```
 
 ## Asset config — vector (PMTiles)
 
@@ -1287,7 +1297,7 @@ The browser writes the file directly, so the bucket needs anonymous `PUT` **and*
 | `auth_token` | Optional. Sent to this server only, as `Authorization: Bearer …`. |
 | `optional` | `true`: if the server can't be reached, its tools are left out and the app boots normally. Its connection does not hold up boot either; its tools join when it connects. Default `false`. |
 
-**The first entry is the primary server**, the data engine (duckdb-mcp). Only the primary gets the inline STAC lookup for `get_stac_details` / `get_collection`, the fallback `query` tool if it is slow to connect, and the server's `geospatial-analyst` prompt; `get_schema` and `render_chart` query it too.
+**The first entry is the primary server**, the data engine (duckdb-mcp). Only the primary gets the fallback `query` tool if it is slow to connect, and the server's `geospatial-analyst` prompt; `get_schema` and `render_chart` query it too.
 
 **The single-server keys address the primary only.** `mcp_url` replaces the first entry's URL, and `mcp_auth_token` its token. The same holds for `mcp_server_url` and `mcp_auth_token` in the deploy-time `config.json`, so a deployment can inject the duckdb-mcp URL there while the other servers stay listed in `layers-input.json`.
 
@@ -1347,7 +1357,7 @@ The checkpoint is the only per-turn cap on tool use. Setting a value to `0` remo
 
 ## Read-tool memo
 
-Catalog and schema reads (`get_schema`, `get_stac_details`, `get_collection`, `browse_stac_catalog`) are memoized per session. A repeated identical call returns the earlier result instead of another MCP round trip, which saves time and prompt tokens when a model re-reads a schema it already has. It is on by default. Turn it off, for example to debug duplicate MCP traffic, with:
+Catalog and schema reads (`get_schema`, `get_stac_details`) are memoized per session. A repeated identical call returns the earlier result, which saves time and prompt tokens when a model re-reads a schema it already has. It is on by default. Turn it off, for example to debug duplicate MCP traffic, with:
 
 ```json
 { "tool_memo": false }

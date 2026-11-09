@@ -28,6 +28,7 @@ import {
     defaultRescale, styleToLayer, describeColor, pmtilesLayerInfo,
     agentsLink, providerSummary, portolanVersion,
 } from './portolan.js';
+import { findCollections } from '../app/catalog-tree.js';
 
 const DEFAULT_TITILER = 'https://titiler.nrp-nautilus.io';
 const DEFAULT_FILL = { 'fill-color': '#2E7D32', 'fill-opacity': 0.5 };
@@ -121,6 +122,21 @@ export class PortolanCatalog {
      * @returns {Promise<Map<string, string>>} id → collection URL
      */
     async _walk(rootUrl, limit, wanted) {
+        // Ids are found at any depth, through Catalogs and Collections alike,
+        // so they resolve under our bucket-level Collections as well as the
+        // Portolan layout (#441).
+        if (wanted) {
+            try {
+                const found = await findCollections(rootUrl, wanted, {
+                    fetchJson: this.fetchJson,
+                    onError: (u, e) => console.warn(`[Portolan] Could not read ${u}: ${e.message}`),
+                });
+                return new Map([...found].map(([id, hit]) => [id, hit.url]));
+            } catch (e) {
+                console.warn(`[Portolan] Could not read ${rootUrl}: ${e.message}`);
+                return new Map();
+            }
+        }
         const out = new Map();
         const queue = [rootUrl];
         const seen = new Set();
@@ -134,8 +150,7 @@ export class PortolanCatalog {
                 continue;
             }
             if (doc.type === 'Collection') {
-                if (!wanted || wanted.has(doc.id)) out.set(doc.id, url);
-                if (wanted && [...wanted].every(id => out.has(id))) break;
+                out.set(doc.id, url);
                 continue;
             }
             for (const l of doc.links || []) {

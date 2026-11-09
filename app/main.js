@@ -10,6 +10,7 @@ import { MapManager } from './map-manager.js';
 import { ToolRegistry } from './tool-registry.js';
 import { resolveMcpServers, userTokenAllowed, isMcpAuthError, STORAGE_KEY_MCP_TOKEN } from './mcp-servers.js';
 import { createMapTools, createRenderChartTool, createSetTimeTool } from './map-tools.js';
+import { createCatalogTools, MCP_CATALOG_TOOLS } from './catalog-tools.js';
 import { createGeocoder } from './geocoder.js';
 import { Agent } from './agent.js';
 import { ChatUI } from './chat-ui.js';
@@ -311,6 +312,10 @@ async function main() {
     for (const tool of createMapTools(mapManager, catalog, mcp, geocodeToolEnabled ? geocoder : null, { geolocateTool: !!geoLocCfg.agent_tool })) {
         toolRegistry.registerLocal(tool);
     }
+    // get_schema and get_stac_details, answered from the STAC loaded above (#441).
+    for (const tool of createCatalogTools(catalog, { s3Sources: appConfig.s3_sources })) {
+        toolRegistry.registerLocal(tool);
+    }
 
     // Raster time series (#421): the set_time tool exists only in apps that
     // configure one, so other apps' prompts are unchanged.
@@ -436,26 +441,6 @@ async function main() {
         }
     }
 
-    // Inline cached STAC content on LLM-issued direct calls to in-app data,
-    // mirroring what the local get_schema delegate does (see #192). Skips an
-    // upstream fetch on the MCP side.
-    //
-    // No longer short-circuits on a model-supplied `catalog_url` (#354): for an
-    // ID we hold, our cached STAC is the answer whatever catalog the model
-    // names, and inline wins MCP's resolution order anyway. An ID we don't hold
-    // still passes through — closing that is mcp-data-server#420's job, not a
-    // client-side guard's.
-    const injectInlineStac = (toolName, args) => {
-        if (!args) return args;
-        let id = null;
-        if (toolName === 'get_stac_details') id = args.dataset_id;
-        else if (toolName === 'get_collection') id = args.collection_id;
-        if (!id) return args;
-        const collection = catalog.toStacDict(id);
-        if (!collection) return args;
-        return { ...args, collection };
-    };
-
     // Register remote MCP tools, one server at a time. The initial
     // listTools() can time out when an MCP pod is cold-starting; retry a few
     // times before falling back to a minimal hardcoded `query` tool (primary
@@ -488,11 +473,11 @@ async function main() {
         throw lastErr;
     };
 
-    // The inline-STAC rewriter only knows the primary (duckdb-mcp) server's
-    // STAC tools; other servers' arguments pass through untouched.
-    const rewriterFor = (s) => s.primary ? injectInlineStac : null;
+    // The app answers catalog questions itself (catalog-tools.js), so no
+    // server's catalog tools are registered: they could read collections this
+    // app does not list (#441).
     const registerServer = (s, rank, tools) =>
-        toolRegistry.registerRemote(tools, s.client, rewriterFor(s), { rank });
+        toolRegistry.registerRemote(tools.filter(t => !MCP_CATALOG_TOOLS.includes(t.name)), s.client, null, { rank });
 
     // Per-server reconnect: a server that reconnects refreshes only its own
     // tools, so one flapping server can't drop another's.
@@ -547,12 +532,11 @@ async function main() {
     const basePrompt = await basePromptP;   // fetch was kicked off at step 1c
     // Large catalogs (#294) switch to a compact index to shrink the cold prompt;
     // tune or disable the threshold with `catalog_index_threshold` (Infinity = always full).
-    // `discovery` is read off the live registry rather than config: remote tools
-    // were registered at step 5, so this reflects what the model actually has,
-    // and it stays correct on its own if a deployment drops the discovery tool.
+    // No discovery tool is ever registered (#441), so the prompt says the
+    // list below is all the data the app can reach.
     const catalogText = catalog.generatePromptCatalog({
         compactAbove: appConfig.catalog_index_threshold ?? 8,
-        discovery: toolRegistry.has('browse_stac_catalog'),
+        discovery: false,
     });
     let systemPrompt = basePrompt + '\n\n' + catalogText;
 

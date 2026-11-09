@@ -89,8 +89,7 @@ async function resolveHexMetadata(args) {
  *     - get_map_state
  *     - fly_to
  *   Dataset knowledge:
- *     - get_schema
- *     - list_datasets
+ *     - list_datasets (get_schema and get_stac_details are in catalog-tools.js)
  */
 
 /**
@@ -317,46 +316,7 @@ ${pickLayerNudge}`,
         }] : []),
 
         // ---- Dataset Knowledge Tools ----
-        {
-            name: 'get_schema',
-            description: 'Get column names, types, sample values, and coded value lists for a dataset — formatted like SELECT * LIMIT 1 output. Also includes the read_parquet() path. **Call this before your first SQL query against a dataset.**',
-            inputSchema: {
-                type: 'object',
-                properties: {
-                    dataset_id: { type: 'string', description: 'Collection ID of the dataset' }
-                },
-                required: ['dataset_id']
-            },
-            execute: async (args) => {
-                if (!catalog.get(args.dataset_id)) {
-                    return JSON.stringify({
-                        success: false,
-                        error: `Dataset not found: ${args.dataset_id}. Available: ${catalog.getIds().join(', ')}.`
-                    });
-                }
-                if (!mcpClient) {
-                    return JSON.stringify({
-                        success: false,
-                        error: 'Schema service unavailable: MCP client not configured.'
-                    });
-                }
-                try {
-                    // Forward the cached STAC content inline so MCP doesn't re-fetch
-                    // the catalog (matters for OAuth-walled deployments and saves a
-                    // round-trip in the common case). Requires mcp-data-server >= PR #107.
-                    const collection = catalog.toStacDict(args.dataset_id);
-                    const mcpArgs = { dataset_id: args.dataset_id, collection };
-                    const raw = await mcpClient.callTool('get_stac_details', mcpArgs);
-                    return typeof raw === 'string' ? raw : JSON.stringify(raw);
-                } catch (err) {
-                    return JSON.stringify({
-                        success: false,
-                        error: `Schema service unavailable: ${err.message || err}. Try again, or call get_stac_details directly.`
-                    });
-                }
-            },
-        },
-
+        // get_schema and get_stac_details live in catalog-tools.js (#441).
         {
             name: 'list_datasets',
             description: 'List all dataset IDs and titles pre-loaded for this app. Paths are in your system prompt; call `get_schema` for column details.',
