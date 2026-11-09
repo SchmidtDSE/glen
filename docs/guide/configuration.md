@@ -76,7 +76,7 @@ Each entry in `collections` is either a **bare string** (loads all visual assets
 
 ### Nested collections
 
-A bare `collection_id` is looked up under the root catalog (`appConfig.catalog`) at any depth, through sub-catalogs and parent collections alike. Since v3.41 this covers both our current layout (bucket-level collections with collections below them) and the Portolan layout (`catalog.json` nodes holding `collection.json` nodes). Earlier versions looked only at the root's direct children, so a nested collection never appeared.
+A bare `collection_id` is looked up under the root catalog (`appConfig.catalog`) at any depth, through sub-catalogs and parent collections alike. Since v3.44 this covers both our current layout (bucket-level collections with collections below them) and the Portolan layout (`catalog.json` nodes holding `collection.json` nodes). Earlier versions looked only at the root's direct children, so a nested collection never appeared.
 
 The lookup reads the links that name the id first and stops once every id is found, so a collection directly under the root costs one read. A collection further down costs a walk through much of the catalog, several hundred reads on our public catalog, on every page load. The browser console then names the URL to use:
 
@@ -95,7 +95,7 @@ The lookup reads the links that name the id first and stops once every id is fou
 
 ## Dataset metadata tools
 
-The agent's `get_schema` and `get_stac_details` tools are answered in the browser from the STAC the app loaded (v3.41, #441). They cover the configured collections and every collection below them, read on demand, and nothing else: an id outside them gets an error listing the app's datasets. The MCP server's catalog tools (`browse_stac_catalog`, `get_stac_details`, `get_collection`) are never registered, so the agent cannot browse the rest of the catalog.
+The agent's `get_schema` and `get_stac_details` tools are answered in the browser from the STAC the app loaded (v3.44, #441). They cover the configured collections and every collection below them, read on demand, and nothing else: an id outside them gets an error listing the app's datasets. The MCP server's catalog tools (`browse_stac_catalog`, `get_stac_details`, `get_collection`) are never registered, so the agent cannot browse the rest of the catalog.
 
 Both tools print `read_parquet()` paths. An HTTPS asset href becomes an `s3://` path by the same rules as the MCP server's built-in sources (`https://s3-west.nrp-nautilus.io/` → `s3://`, `https://data.source.coop/` → `s3://us-west-2.opendata.source.coop/`). For another host the tools print the path-style `s3://` form with the `s3_endpoint` and `s3_scope` to pass to `query`. An app whose MCP server reads another host by default names it in `s3_sources`, tried before the built-ins:
 

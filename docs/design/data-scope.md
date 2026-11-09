@@ -7,7 +7,7 @@ data outside its own `layers-input.json`.
 
 ## Update (2026-11-09): the catalog tools moved into the app
 
-Since v3.41 (#441, Phase B) the app answers `get_schema` and `get_stac_details`
+Since v3.44 (#441, Phase B) the app answers `get_schema` and `get_stac_details`
 itself, from the STAC it loaded (`app/catalog-tools.js`, rendering with
 `app/stac-details.js`, a port of the MCP server's renderer). It registers none of
 the MCP server's catalog tools — `browse_stac_catalog`, `get_stac_details`,

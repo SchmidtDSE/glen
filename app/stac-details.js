@@ -2,7 +2,7 @@
  * stac-details.js — Render a STAC collection for the agent, in the browser.
  *
  * The app answers `get_stac_details` and `get_schema` itself, from the STAC it
- * loaded at boot (#441, Phase B). Until v3.41 those calls went to the MCP
+ * loaded at boot (#441, Phase B). Until v3.44 those calls went to the MCP
  * server, which rendered the same markdown from the same JSON; this is a port
  * of that renderer (geo-query `stac.py`: `_format_collection`,
  * `_extract_parquet_assets`, `_format_columns`) so the model sees the text it
