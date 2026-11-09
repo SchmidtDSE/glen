@@ -112,7 +112,7 @@ The agent loop, tool registry and chat come from [glen-harness](https://github.c
 | `system-prompt.md` | The base prompt; an app can replace it with `system_prompt_url` |
 | `plugins/mcp.js` | Plugin that adds the tools of one or more MCP servers, filtered by `include` or `exclude`, and the collections' GeoParquet URLs |
 
-The core reuses these modules from `app/` unchanged: `map-control-tools.js` (the map tools both apps share), `map-manager.js` (layers, filters, styles, legend, tooltips), `layout-manager.js` with the header, theme and mobile sheet, `geocoder.js` and `data-page.js`.
+The core reuses these modules from `app/` unchanged: `map-control-tools.js` (the map tools both apps share), `catalog-tree.js` (finding collections by id at any depth, in our current STAC and the Portolan layout), `map-manager.js` (layers, filters, styles, legend, tooltips), `layout-manager.js` with the header, theme and mobile sheet, `geocoder.js` and `data-page.js`.
 
 ## Limitations
 

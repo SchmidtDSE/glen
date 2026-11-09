@@ -53,4 +53,9 @@ describe('glen core module graph', () => {
         expect(graph).toContain('app/map-control-tools.js');
         expect(staticGraph('app/map-tools.js')).toContain('app/map-control-tools.js');
     });
+
+    it('shares the catalog walk with the full app', () => {
+        expect(graph).toContain('app/catalog-tree.js');
+        expect(staticGraph('app/dataset-catalog.js')).toContain('app/catalog-tree.js');
+    });
 });
