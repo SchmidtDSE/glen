@@ -1291,6 +1291,19 @@ The browser writes the file directly, so the bucket needs anonymous `PUT` **and*
 
 **The single-server keys address the primary only.** `mcp_url` replaces the first entry's URL, and `mcp_auth_token` its token. The same holds for `mcp_server_url` and `mcp_auth_token` in the deploy-time `config.json`, so a deployment can inject the duckdb-mcp URL there while the other servers stay listed in `layers-input.json`.
 
+### A visitor's MCP token
+
+The shared MCP servers (duckdb-mcp and its replicas) require a bearer token. A Kubernetes deployment adds it in its own nginx relay (`/api/mcp`), so the browser never holds it. A static deployment, such as a GitHub Pages app made from glen-template or a local copy, has no relay, so its queries are refused (HTTP 401).
+
+There a visitor can enter the token themselves (#442). When the primary server refuses the app at startup, the chat says the data server needs a token and opens the ⚙ settings panel with a "Data server token" field. The token is kept in the browser's `localStorage` and sent only to the primary server. Saving it reloads the page so the app connects normally; changing it later reconnects without losing the conversation. Clearing the field removes it.
+
+The field is offered only when a visitor's token would be used:
+
+- The deployment set no token for the primary (`mcp_auth_token`, or `auth_token` on the first `mcp_servers` entry). A deployment's own token always wins.
+- The primary is on another origin than the page. A same-origin URL such as `/api/mcp` is the deployment's own relay, and a header set by the page there would also replace the browser's saved basic-auth credentials.
+
+The token comes from the server's operator. In user-provided mode the field sits beside the LLM key in the same panel.
+
 **Each server reconnects on its own.** A server that drops and reconnects refreshes only its own tools.
 
 **Tool-name collisions:** the server listed first wins. A later server's tool with the same name is skipped, with a console warning.

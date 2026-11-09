@@ -43,6 +43,23 @@ export class MCPClient {
     }
 
     /**
+     * Replace the request headers (a new auth token, #442). Drops the current
+     * connection and resets the retry budget, so the next connect() or
+     * reconnect() uses the new headers straight away.
+     */
+    async setHeaders(headers = {}) {
+        this.headers = headers;
+        this.connected = false;
+        this.reconnectAttempts = 0;
+        this.lastReconnectTime = 0;
+        const old = this.client;
+        this.client = null;
+        if (old) {
+            try { await old.close(); } catch { /* ignore */ }
+        }
+    }
+
+    /**
      * Connect to the MCP server. Safe to call multiple times.
      */
     async connect() {

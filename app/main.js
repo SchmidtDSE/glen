@@ -8,7 +8,7 @@
 import { DatasetCatalog } from './dataset-catalog.js';
 import { MapManager } from './map-manager.js';
 import { ToolRegistry } from './tool-registry.js';
-import { resolveMcpServers } from './mcp-servers.js';
+import { resolveMcpServers, userTokenAllowed, isMcpAuthError, STORAGE_KEY_MCP_TOKEN } from './mcp-servers.js';
 import { createMapTools, createRenderChartTool, createSetTimeTool } from './map-tools.js';
 import { createGeocoder } from './geocoder.js';
 import { Agent } from './agent.js';
@@ -76,7 +76,11 @@ async function main() {
      * await them together below, instead of serializing each round trip. */
     // One entry per MCP server (#338); the first is the primary data engine.
     // See mcp-servers.js for how `mcp_url` and `mcp_servers` combine.
-    const mcpServers = resolveMcpServers(appConfig);
+    // A static deployment has no relay to add the server's token, so a
+    // visitor may save their own (#442); a deployment's own token wins.
+    const pageOrigin = window.location.origin;
+    const savedMcpToken = readStorage(STORAGE_KEY_MCP_TOKEN);
+    const mcpServers = resolveMcpServers(appConfig, { userToken: savedMcpToken, pageOrigin });
     for (const s of mcpServers) {
         console.log('[main] MCP server:', s.url, s.primary ? '(primary)' : '',
             s.optional ? '(optional)' : '', 'auth token present:', !!s.headers.Authorization);
@@ -92,6 +96,7 @@ async function main() {
     // Still fired here rather than at step 7 so the connect keeps overlapping
     // the catalog walk and map style load (#265).
     let mcp = null;   // the primary server's client
+    let primaryAuthError = null;   // the primary refused our token (or the lack of one)
     let mcpLoadError = null;
     try {
         const { MCPClient } = await import('./mcp-client.js');
@@ -473,6 +478,8 @@ async function main() {
                 return tools;
             } catch (err) {
                 lastErr = err;
+                // A refused token won't change between attempts.
+                if (isMcpAuthError(err)) break;
                 const delay = Math.min(2000 * Math.pow(2, i), 8000);
                 console.warn(`[main] MCP connect attempt ${i + 1}/${attempts} failed: ${err.message}`);
                 if (i < attempts - 1) await new Promise(r => setTimeout(r, delay));
@@ -516,6 +523,7 @@ async function main() {
         } catch (err) {
             console.warn(`[main] Could not list MCP tools from ${s.url} after retries (will refresh on reconnect):`, err.message);
             if (!s.primary) return;
+            if (isMcpAuthError(err)) primaryAuthError = err;
             // Hardcoded fallback so the LLM always has at least the query tool.
             // The onReconnect hook replaces this entry once the transport connects.
             registerServer(s, rank, [{
@@ -581,6 +589,26 @@ async function main() {
     const ui = new ChatUI(agent, appConfig, layoutRefs.chatMount, mapManager, chartRenderer);
     // The export's Data sources section cites from the catalog's STAC records.
     ui.catalog = catalog;
+
+    // MCP token field (#442), offered only where a visitor's token would be
+    // sent: a cross-origin primary the deployment gave no token. A token saved
+    // after the server refused us at boot reloads the page, so the tools and
+    // the analyst prompt load as in a normal boot; a changed token later in a
+    // session reconnects in place and keeps the conversation.
+    if (userTokenAllowed(appConfig, pageOrigin)) {
+        ui.enableMcpToken({
+            authFailed: !!primaryAuthError,
+            apply: async (token) => {
+                if (primaryAuthError) {
+                    window.location.reload();
+                    return;
+                }
+                const [primary] = resolveMcpServers(appConfig, { userToken: token, pageOrigin });
+                await mcp.setHeaders(primary.headers);
+                await mcp.reconnect();   // onReconnect refreshes the primary's tools
+            },
+        });
+    }
 
     // Draw event → chat notifications.
     // Replace (not append) synthetic draw messages so repeated draw/clear
@@ -678,6 +706,10 @@ function showAssistantUnavailable(mount, error) {
     }
     if (mount.send) mount.send.disabled = true;
     if (mount.mic) mount.mic.disabled = true;
+}
+
+function readStorage(key) {
+    try { return localStorage.getItem(key) || ''; } catch { return ''; }
 }
 
 async function fetchJson(url) {
