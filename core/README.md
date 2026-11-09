@@ -21,7 +21,7 @@ Run it locally from the repository root with `python -m http.server 8000` and op
 
 ## Configuration
 
-`layers-input.json` takes the same chrome, model and welcome settings as the full app (`sidebar`, `header`, `theme`, `llm`, `llm_models`, `welcome`, `view`, `default_basemap`, `geocoder`, `auto_approve`). Data comes from Portolan collections:
+`layers-input.json` takes the same chrome, model and welcome settings as the full app (`sidebar`, `header`, `theme`, `llm`, `llm_models`, `welcome`, `view`, `default_basemap`, `geocoder`, `auto_approve`). As in the full app, when every model is served by open-llm-proxy the model picker shows the models the app's key may use, and a user who brings their own key can name any model. Data comes from Portolan collections:
 
 ```json
 {
@@ -81,6 +81,8 @@ A plugin is an ES module whose default export is `{ name, setup(ctx, options) }`
 ```
 
 `plugins/mcp.js` takes one server as above or several as `"servers": [{ "url": …, "headers": …, "prompt": … }, …]`; when two servers list a tool of the same name, the one listed first keeps it. Each server entry can also take `include` or `exclude`, a list of tool names, to register only some of its tools. MCP gives a client no way to ask a server for part of its tool list, so the filter runs here, and the server still offers every tool to other clients. For example, `"exclude": ["browse_stac_catalog", "get_stac_details", "get_collection"]` keeps DuckDB's `query` and hex tools and leaves catalog questions to the map tools. A server that cannot be reached is skipped.
+
+When the first server is on another origin from the page and its entry sets no `Authorization` header, a visitor can enter their own token for it under ⚙ in the chat, as in the full app ([configuration guide](../docs/guide/configuration.md#a-visitor-s-mcp-token)). If the server refuses the connection at start, the chat says so and opens the settings.
 
 `setup` runs after the map and the map tools exist and before the agent is built. It receives:
 

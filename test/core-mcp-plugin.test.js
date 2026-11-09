@@ -32,6 +32,8 @@ describe('mcp plugin setup', () => {
     };
     let clients;
     let warn;
+    let refuse;
+    let savedToken;
 
     class FakeClient {
         constructor(url, headers) {
@@ -40,8 +42,13 @@ describe('mcp plugin setup', () => {
             clients.push(this);
         }
         async connect() {
+            if (refuse.has(this.url) && this.headers.Authorization !== 'Bearer good') {
+                throw new Error('Error POSTing to endpoint (HTTP 401): Unauthorized');
+            }
             if (!listings[this.url]) throw new Error('unreachable');
         }
+        async setHeaders(h) { this.headers = h; }
+        async reconnect() { this.reconnected = true; }
         getTools() { return listings[this.url].map(tool); }
         setOnReconnect(fn) { this.onReconnect = fn; }
         async getPrompt(name) { return `prompt ${name} from ${this.url}`; }
@@ -54,13 +61,28 @@ describe('mcp plugin setup', () => {
                 list.filter((t) => (!include || include.includes(t.name)) && !(exclude || []).includes(t.name)).length),
             clearRemote: vi.fn(),
         };
-        return { prompts, tools, ctx: { config: {}, catalog: { getAll: () => [] }, tools, addPrompt: (t) => t && prompts.push(t) } };
+        const ready = [];
+        return { prompts, tools, ready, ctx: {
+            config: {}, catalog: { getAll: () => [] }, tools,
+            addPrompt: (t) => t && prompts.push(t), onReady: (fn) => ready.push(fn),
+        } };
     }
 
-    const plugin = { ...mcpPlugin, loadClient: async () => FakeClient };
+    // The harness's token helpers, as in glen-harness src/mcp-token.js, for a
+    // page on https://app.example.
+    const PAGE = 'https://app.example';
+    const tokenHelpers = {
+        userTokenApplies: (s) => !!s?.url && !s.headers?.Authorization && new URL(s.url, PAGE).origin !== PAGE,
+        withUserToken: (h = {}, t) => (t ? { ...h, Authorization: `Bearer ${t}` } : { ...h }),
+        isMcpAuthError: (e) => /\(HTTP 40[13]\)/.test(String(e?.message || '')),
+        loadMcpToken: () => savedToken,
+    };
+    const plugin = { ...mcpPlugin, loadClient: async () => FakeClient, loadTokenHelpers: async () => tokenHelpers };
 
     beforeEach(() => {
         clients = [];
+        refuse = new Set();
+        savedToken = '';
         warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
         vi.spyOn(console, 'log').mockImplementation(() => {});
     });
@@ -99,6 +121,50 @@ describe('mcp plugin setup', () => {
     it('fails when no server can be reached, so the app logs the plugin as failed', async () => {
         const { ctx } = context();
         await expect(plugin.setup(ctx, { url: 'https://down/mcp' })).rejects.toThrow(/no MCP server/);
+    });
+
+    it('sends a saved visitor token to the first server only (glen#442)', async () => {
+        savedToken = 'tok';
+        const { ctx, ready } = context();
+        await plugin.setup(ctx, { servers: [{ url: 'https://a/mcp' }, { url: 'https://b/mcp' }] });
+        expect(clients[0].headers).toEqual({ Authorization: 'Bearer tok' });
+        expect(clients[1].headers).toEqual({});
+        expect(ready).toHaveLength(1);
+    });
+
+    it("offers no token field when the app sets the server's Authorization header", async () => {
+        savedToken = 'tok';
+        const { ctx, ready } = context();
+        await plugin.setup(ctx, { url: 'https://a/mcp', headers: { Authorization: 'Bearer app' } });
+        expect(clients[0].headers).toEqual({ Authorization: 'Bearer app' });
+        expect(ready).toHaveLength(0);
+    });
+
+    it('opens the token field when the server refuses us at start', async () => {
+        refuse.add('https://a/mcp');
+        const { ctx, ready } = context();
+        await expect(plugin.setup(ctx, { url: 'https://a/mcp' })).rejects.toThrow(/no MCP server/);
+        const ui = { enableMcpToken: vi.fn() };
+        await ready[0]({ ui });
+        expect(ui.enableMcpToken).toHaveBeenCalledWith(expect.objectContaining({ authFailed: true }));
+    });
+
+    it('does not report an unreachable server as a token problem', async () => {
+        const { ctx, ready } = context();
+        await plugin.setup(ctx, { servers: [{ url: 'https://down/mcp' }, { url: 'https://b/mcp' }] });
+        const ui = { enableMcpToken: vi.fn() };
+        await ready[0]({ ui });
+        expect(ui.enableMcpToken.mock.calls[0][0].authFailed).toBe(false);
+    });
+
+    it('reconnects the first server with a token saved later', async () => {
+        const { ctx, ready } = context();
+        await plugin.setup(ctx, { url: 'https://a/mcp', headers: { 'X-A': '1' } });
+        const ui = { enableMcpToken: vi.fn() };
+        await ready[0]({ ui });
+        await ui.enableMcpToken.mock.calls[0][0].apply('new');
+        expect(clients[0].headers).toEqual({ 'X-A': '1', Authorization: 'Bearer new' });
+        expect(clients[0].reconnected).toBe(true);
     });
 
     it('adds each server\'s prompt after the data-file section', async () => {

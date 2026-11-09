@@ -30,12 +30,18 @@
  *
  * A server that cannot be reached leaves the map tools and the other
  * servers' tools working; the plugin logs the failure and goes on.
+ *
+ * When the first server is on another origin and its entry has no
+ * Authorization header, a visitor can enter their own token for it in the
+ * chat's settings (glen#442). It is saved in their browser and sent to that
+ * server only. If the server refuses the connection at start, the chat says
+ * so and opens the settings.
  */
 
 import { resolveHref } from '../portolan.js';
 
 // The same glen-harness tag as the imports in core/main.js; a test checks.
-export const HARNESS_MCP_CLIENT = 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.3.0/src/mcp-client.js';
+export const HARNESS_MCP_CLIENT = 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.4.0/src/mcp-client.js';
 
 /**
  * The servers to connect to, in rank order, from the plugin options. The
@@ -68,20 +74,47 @@ export default {
         return (await import(HARNESS_MCP_CLIENT)).MCPClient;
     },
 
+    /** The harness's token helpers (glen#442), from the same module. Tests replace this. */
+    async loadTokenHelpers() {
+        const { userTokenApplies, withUserToken, isMcpAuthError, loadMcpToken } = await import(HARNESS_MCP_CLIENT);
+        return { userTokenApplies, withUserToken, isMcpAuthError, loadMcpToken };
+    },
+
     async setup(ctx, options = {}) {
         const servers = resolveServers(options, ctx.config);
         const MCPClient = await this.loadClient();
+        const token = await this.loadTokenHelpers();
+        // Only the first server takes a visitor's token.
+        const offerToken = token.userTokenApplies(servers[0]);
+        const primary = { client: null, authFailed: false };
+        if (offerToken) {
+            ctx.onReady(({ ui }) => ui.enableMcpToken?.({
+                authFailed: primary.authFailed,
+                apply: async (value) => {
+                    // A server that refused us at start has no tools here yet;
+                    // starting over registers them with the new token.
+                    if (!primary.client) { window.location.reload(); return; }
+                    await primary.client.setHeaders(token.withUserToken(servers[0].headers, value));
+                    await primary.client.reconnect();
+                },
+            }));
+        }
         const prompts = [];
         let connected = 0;
         for (const [rank, server] of servers.entries()) {
             const filters = { rank, include: server.include, exclude: server.exclude };
-            const client = new MCPClient(server.url, server.headers);
+            const headers = rank === 0 && offerToken
+                ? token.withUserToken(server.headers, token.loadMcpToken())
+                : server.headers;
+            const client = new MCPClient(server.url, headers);
             try {
                 await client.connect();
             } catch (err) {
+                if (rank === 0 && offerToken && token.isMcpAuthError(err)) primary.authFailed = true;
                 console.warn(`[mcp plugin] ${server.url} unavailable; continuing without its tools:`, err.message);
                 continue;
             }
+            if (rank === 0) primary.client = client;
             const count = ctx.tools.registerRemote(client.getTools(), client, null, filters);
             client.setOnReconnect((tools) => {
                 ctx.tools.clearRemote(client);
