@@ -70,9 +70,19 @@ describe('formatCollection', () => {
         expect(md).not.toContain('Key columns');
     });
 
-    it('falls back to collection-level columns when no table describes its own', () => {
+    it('describes a table without its own columns by the collection\'s, once (#441)', () => {
         const md = formatCollection({
             id: 'c', assets: { p: { href: 'https://s3-west.nrp-nautilus.io/b/x.parquet' } },
+            'table:columns': [{ name: 'GEOID', type: 'string', description: 'Census GEOID' }],
+        });
+        expect(md).toContain("  - p: `read_parquet('s3://b/x.parquet')`\n    - columns: `GEOID` (string)");
+        expect(md.match(/Census GEOID/g)).toHaveLength(1);
+        expect(md).not.toContain('Key columns');
+    });
+
+    it('lists the collection\'s columns as Key columns when it has no tables', () => {
+        const md = formatCollection({
+            id: 'c', assets: { cog: { href: 'https://s3-west.nrp-nautilus.io/b/x.tif', type: 'image/tiff' } },
             'table:columns': [{ name: 'GEOID', type: 'string' }],
         });
         expect(md).toContain('\nKey columns:\n    - `GEOID` (string)');
