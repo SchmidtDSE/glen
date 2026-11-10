@@ -127,7 +127,10 @@ export function formatParquetAssets(col, { compact = false, sources = DEFAULT_S3
             if (asset[k] != null) lines.push(`    - ${k}: ${pyStr(asset[k])}`);
         }
         if (compact) continue;
-        const cols = Array.isArray(asset['table:columns']) ? asset['table:columns'] : [];
+        // An asset without its own list is described by the collection's
+        // (Portolan: per-asset lists only where a schema differs, #441).
+        const cols = Array.isArray(asset['table:columns']) ? asset['table:columns']
+            : Array.isArray(col?.['table:columns']) ? col['table:columns'] : [];
         const summary = assetColumnSummary(cols);
         if (summary) lines.push(`    - columns: ${summary}`);
         for (const c of cols) {
