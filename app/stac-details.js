@@ -127,7 +127,10 @@ export function formatParquetAssets(col, { compact = false, sources = DEFAULT_S3
             if (asset[k] != null) lines.push(`    - ${k}: ${pyStr(asset[k])}`);
         }
         if (compact) continue;
-        const cols = Array.isArray(asset['table:columns']) ? asset['table:columns'] : [];
+        // An asset without its own list is described by the collection's
+        // (Portolan: per-asset lists only where a schema differs, #441).
+        const cols = Array.isArray(asset['table:columns']) ? asset['table:columns']
+            : Array.isArray(col?.['table:columns']) ? col['table:columns'] : [];
         const summary = assetColumnSummary(cols);
         if (summary) lines.push(`    - columns: ${summary}`);
         for (const c of cols) {
@@ -140,10 +143,32 @@ export function formatParquetAssets(col, { compact = false, sources = DEFAULT_S3
         }
     }
     if (!compact) {
+        // A Portolan collection describes its columns once, on the collection
+        // (PORTO-FMT-046); an asset may then list only names and types. Fill
+        // what the assets leave out from the collection's dictionary (#441).
+        fillFromDictionary(shared, col?.['table:columns']);
         const block = formatColumns([...shared.values()]);
         if (block.length) lines.push('\nColumn descriptions (shared across the assets above):', ...block);
     }
     return lines;
+}
+
+/**
+ * Fill each column's missing description, values and type from a
+ * `table:columns` list, matching by name.
+ * @param {Map<string, Object>} byName - column name → column, filled in place
+ * @param {Array<Object>} dictionary
+ */
+export function fillFromDictionary(byName, dictionary) {
+    if (!Array.isArray(dictionary)) return byName;
+    for (const d of dictionary) {
+        const held = d?.name && byName.get(d.name);
+        if (!held) continue;
+        for (const k of ['description', 'values', 'type']) {
+            if (!held[k] && d[k]) held[k] = d[k];
+        }
+    }
+    return byName;
 }
 
 function anyQueryableAssetHasColumns(col) {

@@ -91,6 +91,31 @@ describe('formatCollection', () => {
         expect(md).not.toContain('`x`');
     });
 
+    it('takes descriptions from the collection when the assets list only names and types (#441)', () => {
+        const md = formatCollection({
+            id: 'fee', 'table:columns': [{ name: 'GAP_Sts', type: 'string', description: 'GAP status', values: ['1', '2'] }],
+            assets: {
+                parquet: { href: 'https://s3-west.nrp-nautilus.io/b/fee.parquet', 'table:columns': [{ name: 'GAP_Sts', type: 'string' }] },
+                hex: { href: 'https://s3-west.nrp-nautilus.io/b/hex/', 'table:columns': [{ name: 'GAP_Sts', type: 'string' }, { name: 'h8', type: 'string' }] },
+            },
+        });
+        expect(md).toContain('    - `GAP_Sts` (string) — GAP status');
+        expect(md).toContain("      values: ['1', '2']");
+        expect(md).not.toContain('Key columns');
+    });
+
+    it('describes an asset without its own list by the collection\'s (#441)', () => {
+        const md = formatCollection({
+            id: 'wcb', 'table:columns': [{ name: 'ProjectID', type: 'string', description: 'WCB project id' }, { name: 'Acres', type: 'double', description: 'Project acres' }],
+            assets: {
+                parquet: { href: 'https://s3-west.nrp-nautilus.io/b/wcb.parquet', type: 'application/vnd.apache.parquet' },
+                hex: { href: 'https://s3-west.nrp-nautilus.io/b/hex/', 'table:columns': [{ name: 'ProjectID', type: 'string' }, { name: 'h8', type: 'string' }] },
+            },
+        });
+        expect(md).toContain("  - parquet: `read_parquet('s3://b/wcb.parquet')`\n    - columns: `ProjectID` (string), `Acres` (double)");
+        expect(md).toContain('    - `Acres` (double) — Project acres');
+    });
+
     it('formatColumns hides geometry columns', () => {
         expect(formatColumns([{ name: 'geom' }, { name: 'BBOX' }, { name: 'n', type: 'int' }])).toEqual(['    - `n` (int)']);
     });
