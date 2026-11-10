@@ -116,6 +116,7 @@ Each entry in `assets` may be a **bare string** (the STAC asset key, loaded with
 | `display_name` | string | Label in the layer toggle UI. Falls back to the STAC asset title. |
 | `visible` | boolean | Default visibility on load. Default: `false`. |
 | `default_style` | object | MapLibre **fill** paint properties for polygon layers (e.g., `fill-color`, `fill-opacity`). |
+| `style` | string | Since v3.46: the name of one of the collection's published styles to start from, when the layer sets no `default_style` (see [Styles from the catalog](#styles-from-the-catalog)). |
 | `outline_style` | object | MapLibre **line** paint for an auto-added outline on top of the fill. Use this — not `layer_type` — to draw polygon borders. |
 | `layer_type` | `"line"` or `"circle"` | `"line"` for LineString/MultiLineString features; `"circle"` for Point/MultiPoint features. |
 | `default_filter` | array | MapLibre filter expression applied at load time. |
@@ -128,6 +129,16 @@ Each entry in `assets` may be a **bare string** (the STAC asset key, loaded with
 | `legend_label` | string | Unit/axis label shown next to the colorbar end values (e.g. `"species"`). Applies to `"continuous"` legends. |
 | `legend_range` | `[min, max]` | Override the colorbar's value-axis labels. Optional — derived from the `default_style` color stops when omitted. |
 | `legend_gradient` | array | Override the colorbar colors, low→high (e.g. `["#edf8e9", "#005a32"]`). Optional — derived from the `default_style` color stops when omitted. |
+
+### Styles from the catalog
+
+Since v3.46, a PMTiles layer without `default_style` starts from a MapLibre style the collection publishes (STAC assets with the `style` role). It takes the collection's default style, or the one named by `style`, either by its short name (`"fee-gap-sts"`) or by its asset key (`"style-fee-gap-sts"`). The style also supplies the outline, any filter, and a legend read from its colours: swatches for a `match` expression, a colorbar for a ramp. `outline_style`, `layer_type`, `default_filter` and the `legend_*` keys still win where set, and a layer with `default_style` reads no style at all, so existing configs draw as before.
+
+```json
+{ "id": "fee-pmtiles", "display_name": "Fee lands", "style": "fee-gap-sts" }
+```
+
+An app on an earlier release ignores the catalog's styles, so remove a layer's `default_style` only in the change that moves the app to v3.46 or later.
 
 ### Continuous (graduated) vector legends
 
