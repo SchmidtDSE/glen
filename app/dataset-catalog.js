@@ -14,6 +14,8 @@
 
 import { findCollections, childLinks as stacChildLinks, resolveHref } from './catalog-tree.js';
 import { normalizeLegendClasses, resolveRasterBand, cogTileUrl } from './cog-tiles.js';
+import { findStyleAssets, styleToLayer } from '../core/portolan.js';
+import { deriveCategoricalLegend, deriveContinuousLegend } from './legend-helpers.js';
 
 export { resolveRasterBand, cogTileUrl };
 
@@ -314,6 +316,8 @@ export class DatasetCatalog {
             _rawChildren: rawChildren.length > 0 ? rawChildren : null,
         };
 
+        await this._applyCatalogStyles(entry.mapLayers, collection, url);
+
         if (url) this.stacUrls.set(collection.id, url);
         this.datasets.set(collection.id, entry);
         console.log(`[Catalog] Registered: ${entry.id} (${entry.mapLayers.length} map layers, ${entry.parquetAssets.length} parquet assets)`);
@@ -483,6 +487,7 @@ export class DatasetCatalog {
                         assetId: key,
                         sourceAssetId: assetId,  // original STAC key — used to share one MapLibre source across aliases
                         layerType: 'vector',
+                        styleName: typeof config.style === 'string' ? config.style : null,
                         group: assetGroup,
                         sidebar: assetSidebar,
                         toggleGroup,
@@ -616,6 +621,69 @@ export class DatasetCatalog {
         }
 
         return layers;
+    }
+
+    /**
+     * Start a PMTiles layer from the collection's published MapLibre style
+     * when its config gives no paint (#440).
+     *
+     * The catalog publishes style assets (Portolan `style` role; data-workflows
+     * #881/#887). A layer whose config sets `default_style` keeps it, so apps
+     * that style their layers change nothing and read nothing more. A layer
+     * without one takes the collection's default style, or the published style
+     * its config names with `"style": "<name>"`; the name may be the style's
+     * short name (`fee-gap-sts`) or its asset key (`style-fee-gap-sts`). The
+     * style also gives the outline, the filter and, unless config declares a
+     * legend, a categorical or continuous legend read from its paint. Config
+     * keys (`outline_style`, `layer_type`, `default_filter`, `legend_*`) still
+     * win where set. The conversion is glen core's (`styleToLayer`), so a style
+     * draws the same in both apps.
+     *
+     * @param {Array<Object>} mapLayers - this collection's layers, changed in place
+     * @param {Object} collection - STAC collection JSON
+     * @param {string|null} url - where it was read, to resolve style hrefs
+     */
+    async _applyCatalogStyles(mapLayers, collection, url) {
+        const wanting = mapLayers.filter(ml => ml.layerType === 'vector' && ml.sourceType !== 'geojson' && !ml.defaultStyle);
+        if (!wanting.length) return;
+        const styles = findStyleAssets(collection, url || this.catalogUrl);
+        if (!styles.length) return;
+        const GEOMETRY = { line: 'LineString', circle: 'Point', fill: 'Polygon' };
+        await Promise.all(wanting.map(async (ml) => {
+            const named = ml.styleName
+                ? styles.find(st => st.name === ml.styleName || st.key === ml.styleName)
+                : null;
+            if (ml.styleName && !named) {
+                console.warn(`[Catalog] ${collection.id}/${ml.assetId}: no published style "${ml.styleName}"; `
+                    + `using the default. Published: ${styles.map(st => st.name).join(', ')}`);
+            }
+            const pick = named || styles[0];
+            let layer = null;
+            try {
+                layer = styleToLayer(await this.readJson(pick.url), GEOMETRY[ml.renderType] || null);
+            } catch (err) {
+                console.warn(`[Catalog] Style ${pick.url} unreadable: ${err.message}`);
+            }
+            if (!layer) return;
+            ml.defaultStyle = layer.paint;
+            ml.catalogStyle = pick.name;
+            if (!ml.renderType && layer.renderType !== 'fill') ml.renderType = layer.renderType;
+            if (!ml.outlineStyle && layer.outlinePaint) ml.outlineStyle = layer.outlinePaint;
+            if (!ml.defaultFilter && layer.filter) ml.defaultFilter = layer.filter;
+            if (!ml.legendType) {
+                const cat = deriveCategoricalLegend(layer.paint);
+                if (cat) {
+                    ml.legendType = 'categorical';
+                    ml.legendClasses = normalizeLegendClasses(cat.classes.map(c => ({
+                        value: Array.isArray(c.value) ? c.value[0] : c.value,
+                        name: Array.isArray(c.value) ? c.value.join(', ') : String(c.value),
+                        color: c.color,
+                    })));
+                } else if (deriveContinuousLegend(layer.paint)) {
+                    ml.legendType = 'continuous';
+                }
+            }
+        }));
     }
 
     /**

@@ -415,6 +415,86 @@ describe('DatasetCatalog.generatePromptCatalog compact index (#294)', () => {
     });
 });
 
+describe('styles from the catalog (#440)', () => {
+    const URL_ = 'https://x.example/fee/stac-collection.json';
+    const gapStyle = {
+        version: 8, sources: { data: { type: 'vector', url: 'pmtiles://fee.pmtiles' } },
+        layers: [
+            { id: 'fill', type: 'fill', source: 'data', 'source-layer': 'fee',
+                paint: { 'fill-color': ['match', ['get', 'GAP_Sts'], '1', '#26633A', '2', '#3E9C47', '#888888'], 'fill-opacity': 0.7 } },
+            { id: 'line', type: 'line', source: 'data', 'source-layer': 'fee', paint: { 'line-color': '#333333', 'line-width': 0.5 } },
+        ],
+    };
+    const plainStyle = {
+        version: 8, sources: {}, layers: [{ id: 'fill', type: 'fill', source: 'data', 'source-layer': 'fee', paint: { 'fill-color': '#2E7D32', 'fill-opacity': 0.5 } }],
+    };
+    const fee = {
+        type: 'Collection', id: 'fee', title: 'Fee', description: 'd', links: [],
+        assets: {
+            'fee-pmtiles': { href: 'https://x.example/fee.pmtiles', type: 'application/vnd.pmtiles', 'vector:layers': ['fee'] },
+            'style-fee-gap-sts': { href: './style-gap.json', type: 'application/vnd.mapbox.style+json', roles: ['style', 'default'] },
+            'style-fee': { href: './style-plain.json', type: 'application/vnd.mapbox.style+json', roles: ['style'] },
+        },
+    };
+    const docs = new Map([
+        [URL_, fee],
+        ['https://x.example/fee/style-gap.json', gapStyle],
+        ['https://x.example/fee/style-plain.json', plainStyle],
+    ]);
+    let originalFetch;
+    beforeEach(() => {
+        originalFetch = global.fetch;
+        global.fetch = mockFetchJson(docs);
+        vi.spyOn(console, 'log').mockImplementation(() => {});
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+    afterEach(() => { global.fetch = originalFetch; vi.restoreAllMocks(); });
+
+    const load = async (asset) => {
+        const cat = new DatasetCatalog();
+        await cat.load({ collections: [{ collection_id: 'fee', collection_url: URL_, assets: [asset] }] });
+        return { cat, layer: cat.get('fee').mapLayers[0] };
+    };
+
+    it('starts a layer with no paint from the default style, with its outline and legend', async () => {
+        const { layer } = await load({ id: 'fee-pmtiles', display_name: 'Fee' });
+        expect(layer.defaultStyle['fill-color'][0]).toBe('match');
+        expect(layer.outlineStyle).toEqual({ 'line-color': '#333333', 'line-width': 0.5 });
+        expect(layer.catalogStyle).toBe('fee-gap-sts');
+        expect(layer.legendType).toBe('categorical');
+        expect(layer.legendClasses).toEqual([
+            { name: '1', 'color-hint': '#26633A', value: '1' },
+            { name: '2', 'color-hint': '#3E9C47', value: '2' },
+        ]);
+    });
+
+    it('takes the published style the config names', async () => {
+        const { layer } = await load({ id: 'fee-pmtiles', style: 'fee' });
+        expect(layer.defaultStyle['fill-color']).toBe('#2E7D32');
+        expect(layer.legendType).toBe(null);
+        expect((await load({ id: 'fee-pmtiles', style: 'style-fee' })).layer.catalogStyle).toBe('fee');
+    });
+
+    it('falls back to the default style for an unknown name, and says so', async () => {
+        const { layer } = await load({ id: 'fee-pmtiles', style: 'nope' });
+        expect(layer.catalogStyle).toBe('fee-gap-sts');
+        expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('no published style "nope"'));
+    });
+
+    it('leaves a layer with config paint alone and reads no style', async () => {
+        const { layer } = await load({ id: 'fee-pmtiles', default_style: { 'fill-color': '#000000' } });
+        expect(layer.defaultStyle).toEqual({ 'fill-color': '#000000' });
+        expect(layer.catalogStyle).toBeUndefined();
+        expect(global.fetch.mock.calls.map(c => c[0])).toEqual([URL_]);
+    });
+
+    it('keeps config outline, filter and legend over the style\'s', async () => {
+        const { layer } = await load({ id: 'fee-pmtiles', outline_style: { 'line-color': '#ff0000' }, legend_type: 'continuous' });
+        expect(layer.outlineStyle).toEqual({ 'line-color': '#ff0000' });
+        expect(layer.legendType).toBe('continuous');
+    });
+});
+
 describe('DatasetCatalog.load (mocked fetch)', () => {
     let originalFetch;
     beforeEach(() => {
