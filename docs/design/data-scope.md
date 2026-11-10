@@ -21,6 +21,10 @@ the MCP server's catalog tools — `browse_stac_catalog`, `get_stac_details`,
 - The six in-app jobs of `get_stac_details` listed below are still done, by the
   local tool.
 
+glen core follows the same rule: its MCP plugin (`core/plugins/mcp.js`) answers
+`get_schema` and `get_stac_details` from the Portolan collections the app loaded
+and drops the servers' catalog tools.
+
 The sections below record the reasoning as it stood before; the "query escape
 hatch" section still holds.
 
