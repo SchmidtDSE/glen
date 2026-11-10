@@ -14,7 +14,7 @@
 
 import { findCollections, childLinks as stacChildLinks, resolveHref } from './catalog-tree.js';
 import { normalizeLegendClasses, resolveRasterBand, cogTileUrl } from './cog-tiles.js';
-import { findStyleAssets, styleToLayer } from '../core/portolan.js';
+import { findStyleAssets, styleToLayer, stylesForFile } from '../core/portolan.js';
 import { deriveCategoricalLegend, deriveContinuousLegend } from './legend-helpers.js';
 
 export { resolveRasterBand, cogTileUrl };
@@ -630,8 +630,10 @@ export class DatasetCatalog {
      * The catalog publishes style assets (Portolan `style` role; data-workflows
      * #881/#887). A layer whose config sets `default_style` keeps it, so apps
      * that style their layers change nothing and read nothing more. A layer
-     * without one takes the collection's default style, or the published style
-     * its config names with `"style": "<name>"`; the name may be the style's
+     * without one takes its PMTiles file's default style, or the published style
+     * its config names with `"style": "<name>"`. A collection with several
+     * archives publishes styles per archive, matched to a layer by the file its
+     * style's source names (a versioned layer by its starting version's); the name may be the style's
      * short name (`fee-gap-sts`) or its asset key (`style-fee-gap-sts`). The
      * style also gives the outline, the filter and, unless config declares a
      * legend, a categorical or continuous legend read from its paint. Config
@@ -646,25 +648,32 @@ export class DatasetCatalog {
     async _applyCatalogStyles(mapLayers, collection, url) {
         const wanting = mapLayers.filter(ml => ml.layerType === 'vector' && ml.sourceType !== 'geojson' && !ml.defaultStyle);
         if (!wanting.length) return;
-        const styles = findStyleAssets(collection, url || this.catalogUrl);
-        if (!styles.length) return;
+        const found = findStyleAssets(collection, url || this.catalogUrl);
+        if (!found.length) return;
+        // Read every style once: a collection with several PMTiles archives
+        // publishes a style per archive, and the source each style names is
+        // what says which layer it belongs to.
+        const styles = (await Promise.all(found.map(async (st) => {
+            try { return { ...st, doc: await this.readJson(st.url) }; } catch (err) {
+                console.warn(`[Catalog] Style ${st.url} unreadable: ${err.message}`);
+                return null;
+            }
+        }))).filter(Boolean);
         const GEOMETRY = { line: 'LineString', circle: 'Point', fill: 'Polygon' };
-        await Promise.all(wanting.map(async (ml) => {
+        for (const ml of wanting) {
+            const fileUrl = ml.url || ml.versions?.[ml.defaultVersionIndex || 0]?.url;
+            const own = stylesForFile(styles, fileUrl);
+            if (!own.length) continue;
             const named = ml.styleName
-                ? styles.find(st => st.name === ml.styleName || st.key === ml.styleName)
+                ? own.find(st => st.name === ml.styleName || st.key === ml.styleName)
                 : null;
             if (ml.styleName && !named) {
                 console.warn(`[Catalog] ${collection.id}/${ml.assetId}: no published style "${ml.styleName}"; `
-                    + `using the default. Published: ${styles.map(st => st.name).join(', ')}`);
+                    + `using the default. Published: ${own.map(st => st.name).join(', ')}`);
             }
-            const pick = named || styles[0];
-            let layer = null;
-            try {
-                layer = styleToLayer(await this.readJson(pick.url), GEOMETRY[ml.renderType] || null);
-            } catch (err) {
-                console.warn(`[Catalog] Style ${pick.url} unreadable: ${err.message}`);
-            }
-            if (!layer) return;
+            const pick = named || own.find(st => st.isDefault) || own[0];
+            const layer = styleToLayer(pick.doc, GEOMETRY[ml.renderType] || null);
+            if (!layer) continue;
             ml.defaultStyle = layer.paint;
             ml.catalogStyle = pick.name;
             if (!ml.renderType && layer.renderType !== 'fill') ml.renderType = layer.renderType;
@@ -683,7 +692,7 @@ export class DatasetCatalog {
                     ml.legendType = 'continuous';
                 }
             }
-        }));
+        }
     }
 
     /**

@@ -475,6 +475,33 @@ describe('styles from the catalog (#440)', () => {
         expect((await load({ id: 'fee-pmtiles', style: 'style-fee' })).layer.catalogStyle).toBe('fee');
     });
 
+    it("takes the style of the layer's own PMTiles file in a collection with several", async () => {
+        const SVI = 'https://x.example/svi/stac-collection.json';
+        const style = (colour, file) => ({
+            version: 8, sources: { data: { type: 'vector', url: `pmtiles://../${file}` } },
+            layers: [{ id: 'fill', type: 'fill', source: 'data', 'source-layer': 'svi', paint: { 'fill-color': colour } }],
+        });
+        const svi = {
+            type: 'Collection', id: 'svi', title: 'SVI', description: 'd', links: [],
+            assets: {
+                'county-pmtiles': { href: 'https://x.example/svi/SVI2022_US_county.pmtiles', type: 'application/vnd.pmtiles' },
+                'tract-pmtiles': { href: 'https://x.example/svi/SVI2022_US_tract.pmtiles', type: 'application/vnd.pmtiles' },
+                'style-county': { href: './styles/county.json', type: 'application/vnd.mapbox.style+json', roles: ['style', 'default'] },
+                'style-tract': { href: './styles/tract.json', type: 'application/vnd.mapbox.style+json', roles: ['style'] },
+            },
+        };
+        global.fetch = mockFetchJson(new Map([
+            [SVI, svi],
+            ['https://x.example/svi/styles/county.json', style('#111111', 'SVI2022_US_county.pmtiles')],
+            ['https://x.example/svi/styles/tract.json', style('#222222', 'SVI2022_US_tract.pmtiles')],
+        ]));
+        const cat = new DatasetCatalog();
+        await cat.load({ collections: [{ collection_id: 'svi', collection_url: SVI, assets: ['county-pmtiles', 'tract-pmtiles'] }] });
+        const [county, tract] = cat.get('svi').mapLayers;
+        expect([county.catalogStyle, county.defaultStyle['fill-color']]).toEqual(['county', '#111111']);
+        expect([tract.catalogStyle, tract.defaultStyle['fill-color']]).toEqual(['tract', '#222222']);
+    });
+
     it('falls back to the default style for an unknown name, and says so', async () => {
         const { layer } = await load({ id: 'fee-pmtiles', style: 'nope' });
         expect(layer.catalogStyle).toBe('fee-gap-sts');

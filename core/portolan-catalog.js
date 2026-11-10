@@ -25,7 +25,7 @@
 
 import {
     resolveHref, findVectorSources, findStyleAssets, findRasterAssets,
-    defaultRescale, styleToLayer, describeColor, pmtilesLayerInfo,
+    defaultRescale, styleToLayer, describeColor, pmtilesLayerInfo, stylesForFile,
     agentsLink, providerSummary, portolanVersion, collectionColumns,
 } from './portolan.js';
 import { findCollections } from '../app/catalog-tree.js';
@@ -202,7 +202,8 @@ export class PortolanCatalog {
             }
             // The style names the source layer too; prefer the catalog's
             // pmtiles:layers, then the style, then the archive itself.
-            const defaultStyleDoc = usableStyles.find(s => s.isDefault)?.doc;
+            const ownStyles = stylesForFile(usableStyles, v.url);
+            const defaultStyleDoc = ownStyles.find(s => s.isDefault)?.doc;
             const styleSourceLayer = defaultStyleDoc?.layers?.find(l => l['source-layer'])?.['source-layer'];
             const info = pmtilesLayerInfo(meta, v.layers[0] || styleSourceLayer || null);
             // Without the archive's own field list, the asset's table:columns
@@ -216,7 +217,7 @@ export class PortolanCatalog {
 
             // Every style converted for this geometry, keyed by name.
             const namedStyles = new Map();
-            for (const s of usableStyles) {
+            for (const s of ownStyles) {
                 const converted = styleToLayer(s.doc, info.geometryType);
                 if (converted) namedStyles.set(s.name, { ...converted, title: s.title || s.doc?.name || s.name, isDefault: s.isDefault });
             }
