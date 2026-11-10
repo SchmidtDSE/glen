@@ -25,7 +25,7 @@
 
 import {
     resolveHref, findVectorSources, findStyleAssets, findRasterAssets,
-    defaultRescale, styleToLayer, describeColor, pmtilesLayerInfo, stylesForFile,
+    defaultRescale, styleToLayer, describeColor, describeStyleColours, pmtilesLayerInfo, stylesForFile,
     agentsLink, providerSummary, portolanVersion, collectionColumns,
 } from './portolan.js';
 import { findCollections } from '../app/catalog-tree.js';
@@ -392,11 +392,7 @@ export class PortolanCatalog {
                     if (l.styles.size) {
                         lines.push('  Published styles (apply with apply_style):');
                         for (const [name, s] of l.styles) {
-                            const c = describeColor(s.paint);
-                            let what = 'single colour';
-                            if (c?.kind === 'categorical') what = `colours by \`${c.property}\`, values: ${c.values.slice(0, 15).map(v => JSON.stringify(v)).join(', ')}${c.values.length > 15 ? ', …' : ''}`;
-                            else if (c?.kind === 'continuous') what = `colour ramp on \`${c.property}\` from ${c.range[0]} to ${c.range[1]}`;
-                            lines.push(`  - \`${name}\`${name === l.defaultStyle ? ' (current at start)' : ''}: ${what}`);
+                            lines.push(`  - \`${name}\`${name === l.defaultStyle ? ' (current at start)' : ''}: ${describeStyleColours(s.paint)}`);
                         }
                     }
                 } else {

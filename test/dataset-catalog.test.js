@@ -508,11 +508,49 @@ describe('styles from the catalog (#440)', () => {
         expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('no published style "nope"'));
     });
 
-    it('leaves a layer with config paint alone and reads no style', async () => {
+    it('leaves a layer with config paint drawn as config says, with the published styles on offer', async () => {
         const { layer } = await load({ id: 'fee-pmtiles', default_style: { 'fill-color': '#000000' } });
         expect(layer.defaultStyle).toEqual({ 'fill-color': '#000000' });
         expect(layer.catalogStyle).toBeUndefined();
-        expect(global.fetch.mock.calls.map(c => c[0])).toEqual([URL_]);
+        expect(layer.outlineStyle ?? null).toBe(null);
+        expect(layer.legendType ?? null).toBe(null);
+        expect(layer.publishedStyles.map(st => [st.name, st.isDefault])).toEqual([['fee-gap-sts', true], ['fee', false]]);
+    });
+
+    it('lists the published styles on offer in both prompt forms', async () => {
+        const configured = await load({ id: 'fee-pmtiles', default_style: { 'fill-color': '#000000' } });
+        const full = configured.cat.generatePromptCatalog({ compactAbove: 8 });
+        expect(full).toContain('**Published styles (apply with apply_style) for this layer:**\n'
+            + '- `fee-gap-sts`: colours by `GAP_Sts`, values: "1", "2"\n'
+            + '- `fee`: single colour\n');
+        const compact = configured.cat.generatePromptCatalog({ compactAbove: 0 });
+        expect(compact).toContain('map layers: `fee/fee-pmtiles` (vector; published styles: `fee-gap-sts`, `fee`)');
+
+        const fromCatalog = await load({ id: 'fee-pmtiles' });
+        expect(fromCatalog.cat.generatePromptCatalog({ compactAbove: 0 }))
+            .toContain('`fee/fee-pmtiles` (vector; published styles: `fee-gap-sts` (on at start), `fee`)');
+        expect(fromCatalog.cat.generatePromptCatalog({ compactAbove: 8 }))
+            .toContain('(vector) [starts as published style `fee-gap-sts`]');
+    });
+
+    it('lists the styles once for alias layers that share them', async () => {
+        const cat = new DatasetCatalog();
+        await cat.load({ collections: [{ collection_id: 'fee', collection_url: URL_, assets: [
+            { id: 'fee-pmtiles', alias: 'a', default_style: { 'fill-color': '#000000' } },
+            { id: 'fee-pmtiles', alias: 'b', default_style: { 'fill-color': '#ffffff' } },
+        ] }] });
+        const compact = cat.generatePromptCatalog({ compactAbove: 0 });
+        expect(compact.match(/published styles/g)).toHaveLength(1);
+        expect(compact).toContain('published styles for each layer above (apply_style)');
+    });
+
+    it('lists nothing when the only published style is already on the map', async () => {
+        const one = structuredClone(fee);
+        delete one.assets['style-fee'];
+        global.fetch = mockFetchJson(new Map([...docs, [URL_, one]]));
+        const { cat } = await load({ id: 'fee-pmtiles' });
+        expect(cat.generatePromptCatalog({ compactAbove: 8 })).not.toContain('Published styles');
+        expect(cat.generatePromptCatalog({ compactAbove: 0 })).toContain('`fee/fee-pmtiles` (vector)');
     });
 
     it('keeps config outline, filter and legend over the style\'s', async () => {

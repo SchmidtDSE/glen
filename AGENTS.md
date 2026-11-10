@@ -227,7 +227,7 @@ When a PR touches a covered module, expect tests to change too. When it touches 
 | `app/tool-registry.js` | 98% | `test/tool-registry.test.js` — registration, dispatch, argsRewriter, schema cleaning, per-server clear and collisions |
 | `app/raster-frames.js` | 100% | `test/raster-frames.test.js` — frame lists, bucket listing, date windows and steps |
 | `app/frame-player.js` | partial | `test/frame-player.test.js` — playback, waiting for frames to load, preloading, ranges; `test/map-manager.time-series.test.js` — the frame layers on the map. The panel is browser-bound; verify on a preview. |
-| `app/map-tools.js` | 98% | `test/map-tools.test.js` — local-tool execute paths |
+| `app/map-tools.js` | 98% | `test/map-tools.test.js` — local-tool execute paths, `apply_style` (#440) |
 | `app/catalog-tree.js`, `app/stac-details.js`, `app/catalog-tools.js` | covered | `test/catalog-tree.test.js`, `test/stac-details.test.js`, `test/catalog-tools.test.js` — both catalog layouts, depth, scope (no collection outside the config), S3 path rules. The renderer must match the MCP server's text; recheck against geo-query `stac.py` after a change there. |
 | `app/dataset-citations.js`, `app/data-page.js` | 100% | `test/data-page.test.js` — the default link and its opt-out, the catalog list with sub-collections, escaping, opening and closing on `#data`. The page's look is browser-bound; verify on a preview. |
 | `app/export-report.js` | 99% | `test/export-report.test.js`, `test/chat-export*.test.js` — step classification, report shape, disclosure, the ChatUI session record. Regenerate `preview/sample-export.html` after a change. |
@@ -241,6 +241,7 @@ When a PR touches a covered module, expect tests to change too. When it touches 
 | `app/map-control-tools.js` | covered | `test/map-control-tools.test.js` — default and SQL hint text, fly_to with and without layer extents, the reset_style hook. The full app's tool text must not change; compare `createMapTools` output before and after. |
 | `app/main.js` | 0% | Bootstrap — verify by loading the app locally. |
 | `app/animation-manager.js` | partial | `test/animation-manager.test.js` — the pure sampling helpers (`sampleTrack`, `cellBoundary`). MapLibre sublayers and the controls panel are browser-bound; verify visually. |
+| `app/map-manager.js` published styles | partial | `test/map-manager.published-style.test.js` — `applyPublishedStyle` swaps paint, outline, filter and legend, and `resetStyle` restores them. The rest of map-manager is in the row below. |
 | `app/chat-ui.js`, `app/map-manager.js`, `app/layout-manager.js`, `app/map-draw.js`, `app/h3geo.js`, `app/voice-input.js` | 0% | Browser-bound (DOM, MapLibre, MediaRecorder). Verify visually in a deployed app — no harness yet. |
 
 Overall line coverage is reported on each PR via the coverage workflow.

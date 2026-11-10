@@ -63,6 +63,9 @@ const BASEMAPS = {
     }
 };
 
+/** A fill's outline when config and style give none. */
+const DEFAULT_OUTLINE = Object.freeze({ 'line-color': 'rgba(0,0,0,0.4)', 'line-width': 0.5 });
+
 export class MapManager {
     /**
      * @param {string} containerId - DOM element ID for the map
@@ -265,7 +268,7 @@ export class MapManager {
                         type: 'line',
                         source: v.sourceId,
                         layout: { visibility: vis },
-                        paint: outlinePaint || { 'line-color': 'rgba(0,0,0,0.4)', 'line-width': 0.5 },
+                        paint: outlinePaint || { ...DEFAULT_OUTLINE },
                     };
                     if (v.sourceLayer) outlineDef['source-layer'] = v.sourceLayer;
                     this.map.addLayer(outlineDef);
@@ -313,6 +316,9 @@ export class MapManager {
                 visible: defaultVisible || false,
                 filter: defaultFilter || null,
                 defaultFilter: defaultFilter || null,
+                // The published style's own filter, if the starting paint came from one (#440).
+                styleFilter: config.styleFilter || null,
+                defaultOutlinePaint: outlinePaint || DEFAULT_OUTLINE,
                 columns: columns || [],
                 defaultPaint: { ...(paint || {}) },
                 tooltipFields: tooltipFields ? [...tooltipFields] : null,
@@ -380,10 +386,7 @@ export class MapManager {
                 type: 'line',
                 source: sourceId,
                 layout: { visibility: defaultVisible ? 'visible' : 'none' },
-                paint: outlinePaint || {
-                    'line-color': 'rgba(0,0,0,0.4)',
-                    'line-width': 0.5,
-                },
+                paint: outlinePaint || { ...DEFAULT_OUTLINE },
             };
             if (sourceLayer) outlineDef['source-layer'] = sourceLayer;
             this.map.addLayer(outlineDef);
@@ -416,6 +419,9 @@ export class MapManager {
             visible: defaultVisible || false,
             filter: defaultFilter || null,
             defaultFilter: defaultFilter || null,
+            // The published style's own filter, if the starting paint came from one (#440).
+            styleFilter: config.styleFilter || null,
+            defaultOutlinePaint: outlinePaint || DEFAULT_OUTLINE,
             columns: columns || [],
             defaultPaint: { ...(paint || {}) },
             tooltipFields: tooltipFields ? [...tooltipFields] : null,
@@ -1640,11 +1646,84 @@ export class MapManager {
     }
 
     /**
+     * Swap in one of the catalog's published styles for a vector layer (#440):
+     * its paint, its outline, its filter and the legend its colours imply,
+     * together. A filter the previous published style brought is dropped
+     * unless the agent has changed it since. reset_style returns to what boot
+     * drew, legend, outline and filter included.
+     *
+     * @param {string} layerId
+     * @param {{paint: Object, outlinePaint?: Object|null, filter?: Array|null,
+     *          legendType?: string|null, legendClasses?: Array|null}} style
+     */
+    applyPublishedStyle(layerId, { paint, outlinePaint = null, filter = null, legendType = null, legendClasses = null }) {
+        const state = this.layers.get(layerId);
+        if (!state) return { success: false, error: `Unknown layer: ${layerId}` };
+        if (state.type !== 'vector') return { success: false, error: `${layerId} is not a vector layer.` };
+
+        if (!state.bootStyle) {
+            state.bootStyle = {
+                legendType: state.legendType, legendTypeAuto: state.legendTypeAuto || false,
+                legendClasses: state.legendClasses, legendRange: state.legendRange, legendGradient: state.legendGradient,
+                styleFilter: state.styleFilter || null,
+            };
+        }
+        // The legend follows the style, declared rather than promoted, so a
+        // later set_style on top leaves it alone as it would a config legend.
+        state.legendType = legendType || null;
+        state.legendTypeAuto = false;
+        state.legendClasses = legendClasses || null;
+        state.legendRange = null;
+        state.legendGradient = null;
+
+        const result = this.setStyle(layerId, paint, { promoteLegend: false });
+        this._setOutlinePaint(state, outlinePaint || state.defaultOutlinePaint);
+        this._swapStyleFilter(layerId, state, filter || null);
+        this._refreshLegend(layerId);
+        return result;
+    }
+
+    /** Set an outline layer's paint, where the layer has one. @private */
+    _setOutlinePaint(state, outlinePaint) {
+        if (!state.outlineLayerId || !outlinePaint) return;
+        for (const [prop, value] of Object.entries(outlinePaint)) {
+            try { this.map.setPaintProperty(state.outlineLayerId, prop, value); } catch (err) {
+                console.warn(`[Map] Outline paint ${prop} on ${state.layerId}: ${err.message}`);
+            }
+        }
+    }
+
+    /**
+     * Replace the filter a published style brought with the next style's.
+     * The previous one goes only if it is still what the layer is filtered by,
+     * so a filter the agent or the visitor set since is kept. @private
+     */
+    _swapStyleFilter(layerId, state, next) {
+        const prev = state.styleFilter || null;
+        if (JSON.stringify(prev) === JSON.stringify(next)) return;
+        if (next) this.setFilter(layerId, next);
+        else if (prev && JSON.stringify(state.filter) === JSON.stringify(prev)) this.clearFilter(layerId);
+        state.styleFilter = next;
+    }
+
+    /**
      * Reset a layer's paint to defaults.
      */
     resetStyle(layerId) {
         const state = this.layers.get(layerId);
         if (!state) return { success: false, error: `Unknown layer: ${layerId}` };
+
+        // Undo a published style (#440): the boot legend, outline and filter.
+        if (state.bootStyle) {
+            const boot = state.bootStyle;
+            delete state.bootStyle;
+            Object.assign(state, {
+                legendType: boot.legendType, legendTypeAuto: boot.legendTypeAuto,
+                legendClasses: boot.legendClasses, legendRange: boot.legendRange, legendGradient: boot.legendGradient,
+            });
+            this._setOutlinePaint(state, state.defaultOutlinePaint);
+            this._swapStyleFilter(layerId, state, boot.styleFilter);
+        }
 
         // Drop any legend a restyle promoted into existence before re-applying,
         // so reset lands back on exactly what boot rendered (#333).

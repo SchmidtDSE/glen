@@ -402,6 +402,20 @@ export function describeColor(paint) {
 }
 
 /**
+ * What a style's paint colours by, in a few words for a prompt:
+ * "colours by `zone`, values: "A", "B"", "colour ramp on `pop` from 0 to 10",
+ * or "single colour". Both apps list published styles with it.
+ */
+export function describeStyleColours(paint, maxValues = 15) {
+    const c = describeColor(paint);
+    if (c?.kind === 'categorical') {
+        return `colours by \`${c.property}\`, values: ${c.values.slice(0, maxValues).map(v => JSON.stringify(v)).join(', ')}${c.values.length > maxValues ? ', …' : ''}`;
+    }
+    if (c?.kind === 'continuous') return `colour ramp on \`${c.property}\` from ${c.range[0]} to ${c.range[1]}`;
+    return 'single colour';
+}
+
+/**
  * Pick the geometry type and attribute fields for one source layer from a
  * PMTiles metadata object (tippecanoe / GDAL layout: `vector_layers` and
  * `tilestats`).
