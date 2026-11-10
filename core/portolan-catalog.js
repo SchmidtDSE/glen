@@ -26,9 +26,10 @@
 import {
     resolveHref, findVectorSources, findStyleAssets, findRasterAssets,
     defaultRescale, styleToLayer, describeColor, pmtilesLayerInfo,
-    agentsLink, providerSummary, portolanVersion,
+    agentsLink, providerSummary, portolanVersion, collectionColumns,
 } from './portolan.js';
 import { findCollections } from '../app/catalog-tree.js';
+import { cogTileUrl } from '../app/cog-tiles.js';
 
 const DEFAULT_TITILER = 'https://titiler.nrp-nautilus.io';
 const DEFAULT_FILL = { 'fill-color': '#2E7D32', 'fill-opacity': 0.5 };
@@ -37,27 +38,18 @@ const DEFAULT_CIRCLE = { 'circle-color': '#C62828', 'circle-radius': 4, 'circle-
 const TOOLTIP_FIELDS = 4;
 
 /**
- * TiTiler tile URL for a single-band COG. Kept here rather than imported from
- * app/dataset-catalog.js so the core does not load the full STAC catalog
- * module; the query parameters match glen's cogTileUrl.
+ * TiTiler tile URL for a single-band COG, built by the full app's
+ * `cogTileUrl` (app/cog-tiles.js) so both apps draw a raster the same way.
  */
-export function titilerTileUrl(titilerUrl, cogUrl, { colormap, rescale, nodata, classes } = {}) {
-    let url = `${titilerUrl}/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=${encodeURIComponent(cogUrl)}`;
-    if (classes?.length) {
-        const cmap = {};
-        for (const c of classes) {
-            const h = String(c.color_hint || c['color-hint'] || '').replace(/^#/, '');
-            if (/^[0-9a-fA-F]{6}$/.test(h) && c.value != null) {
-                cmap[String(c.value)] = [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16), 255];
-            }
-        }
-        url += `&colormap=${encodeURIComponent(JSON.stringify(cmap))}`;
-    } else {
-        url += `&colormap_name=${encodeURIComponent(colormap || 'viridis')}`;
-        if (rescale) url += `&rescale=${encodeURIComponent(rescale)}`;
-    }
-    if (nodata != null) url += `&nodata=${encodeURIComponent(nodata)}`;
-    return url;
+export function titilerTileUrl(titilerUrl, cogUrl, { colormap, rescale, nodata, classes, unscale } = {}) {
+    return cogTileUrl(titilerUrl, cogUrl, {
+        legendType: classes?.length ? 'categorical' : null,
+        legendClasses: classes || null,
+        colormap: colormap || 'viridis',
+        rescale,
+        nodata,
+        unscale,
+    });
 }
 
 /** Read a PMTiles archive's metadata through the page's pmtiles global. */
@@ -185,7 +177,7 @@ export class PortolanCatalog {
             host: providers.host,
             agentsUrl: agentsLink(collection, url),
             bbox: collection.extent?.spatial?.bbox?.[0] || null,
-            columns: Array.isArray(collection['table:columns']) ? collection['table:columns'] : [],
+            columns: collectionColumns(collection),
             layerIds: [],
             stac: collection,
             // glen's data page and citations read the raw record under this name.
@@ -213,6 +205,13 @@ export class PortolanCatalog {
             const defaultStyleDoc = usableStyles.find(s => s.isDefault)?.doc;
             const styleSourceLayer = defaultStyleDoc?.layers?.find(l => l['source-layer'])?.['source-layer'];
             const info = pmtilesLayerInfo(meta, v.layers[0] || styleSourceLayer || null);
+            // Without the archive's own field list, the asset's table:columns
+            // name the feature properties (our current STAC carries them).
+            if (!Object.keys(info.fields).length && v.columns.length) {
+                info.fields = Object.fromEntries(v.columns
+                    .filter(c => !/^(geometry|geom|bbox)$/i.test(c.name))
+                    .map(c => [c.name, c.type || 'unknown']));
+            }
             const sourceLayer = v.layers[0] || styleSourceLayer || info.layerName || v.key;
 
             // Every style converted for this geometry, keyed by name.
@@ -284,6 +283,7 @@ export class PortolanCatalog {
             rescale: overrides.rescale ?? layer.rescale,
             nodata: layer.band?.nodata,
             classes: layer.band?.classes,
+            unscale: layer.band?.unscale,
         });
     }
 

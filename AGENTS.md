@@ -14,6 +14,7 @@ Core library for map-based applications with LLM-powered data analysis. Interact
 - `main.js` — Bootstrap: loads config, initializes catalog → map → tools → agent → UI
 - `dataset-catalog.js` — Fetches STAC collections, builds unified records
 - `catalog-tree.js` — Finds collections by id at any depth, through Catalogs and Collections, so both our current STAC and the Portolan layout resolve (#441). Shared with glen core.
+- `cog-tiles.js` — How a COG is drawn: band settings (`bidx`, nodata, classes, `unscale` for scaled bands) and the TiTiler tile URL. Shared with glen core, so a raster draws the same in both apps.
 - `catalog-tools.js` / `stac-details.js` — `get_schema` and `get_stac_details`, answered in the browser from the loaded STAC (a port of the MCP server's renderer). The MCP server's catalog tools are never registered (#441).
 - `map-manager.js` — Creates MapLibre map, manages layers/filters/styles
 - `overlay-rail.js` — Shared bottom-left rail every map-scoped overlay panel mounts into (legend, sliders, H3 resolution badge). New floating panels go here, not onto `document.body` with their own anchors.
@@ -36,7 +37,7 @@ Core library for map-based applications with LLM-powered data analysis. Interact
 
 ## glen core (core/)
 
-`core/` is a smaller app built from the same pieces: a map of the layers in [Portolan](https://www.portolan-sdi.org/) collections and an agent whose tools act only on the map. It assumes no MCP server or SQL engine; those return as plugins (`core/plugins/mcp.js`). It reuses `app/map-manager.js`, `app/layout-manager.js`, `app/geocoder.js`, `app/data-page.js` and `app/catalog-tree.js` unchanged, and loads glen-harness from jsDelivr at a release tag for the agent and chat. Its map tools come from `app/map-control-tools.js`, which the full app's `map-tools.js` also uses, so a map tool is defined once. See `core/README.md`. Changes to the shared `app/` modules reach both apps, so check a core app too when they touch layer registration, styling or the layout.
+`core/` is a smaller app built from the same pieces: a map of the layers in [Portolan](https://www.portolan-sdi.org/) collections and an agent whose tools act only on the map. It assumes no MCP server or SQL engine; those return as plugins (`core/plugins/mcp.js`). It reuses `app/map-manager.js`, `app/layout-manager.js`, `app/geocoder.js`, `app/data-page.js`, `app/catalog-tree.js` and `app/cog-tiles.js` unchanged, and loads glen-harness from jsDelivr at a release tag for the agent and chat. Its map tools come from `app/map-control-tools.js`, which the full app's `map-tools.js` also uses, so a map tool is defined once. See `core/README.md`. Changes to the shared `app/` modules reach both apps, so check a core app too when they touch layer registration, styling or the layout.
 
 - `core/main.js` — Bootstrap: config → Portolan catalog + map → map tools → plugins → agent → chat
 - `core/portolan.js` — Pure rules for reading a Portolan collection (PMTiles links, style assets, COG band statistics)
@@ -230,6 +231,7 @@ When a PR touches a covered module, expect tests to change too. When it touches 
 | `app/catalog-tree.js`, `app/stac-details.js`, `app/catalog-tools.js` | covered | `test/catalog-tree.test.js`, `test/stac-details.test.js`, `test/catalog-tools.test.js` — both catalog layouts, depth, scope (no collection outside the config), S3 path rules. The renderer must match the MCP server's text; recheck against geo-query `stac.py` after a change there. |
 | `app/dataset-citations.js`, `app/data-page.js` | 100% | `test/data-page.test.js` — the default link and its opt-out, the catalog list with sub-collections, escaping, opening and closing on `#data`. The page's look is browser-bound; verify on a preview. |
 | `app/export-report.js` | 99% | `test/export-report.test.js`, `test/chat-export*.test.js` — step classification, report shape, disclosure, the ChatUI session record. Regenerate `preview/sample-export.html` after a change. |
+| `app/cog-tiles.js` | covered | `test/dataset-catalog.test.js` (band settings, tile URLs) and `test/core-portolan.test.js` (the same rules in glen core). |
 | `app/dataset-catalog.js` | 89% | `test/dataset-catalog.test.js` — STAC parsing, layer config shape, prompt rendering |
 | `app/agent.js` | 48% | `test/agent-retry.test.js` — retry / abort / timeout. The conversation loop is uncovered (tested manually). |
 | `core/portolan.js`, `core/portolan-catalog.js` | covered | `test/core-portolan.test.js` — tile, style and raster discovery, style conversion, the missing-value guard, catalog walk, prompt |

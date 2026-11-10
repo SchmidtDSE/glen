@@ -68,6 +68,8 @@ A collection can be named by URL or, when `catalog` is set, by id. With `catalog
 - A colour ramp cannot interpolate a missing value and paints it black. The core sets the opacity to zero for features without a number in that property, and leaves the colour expression whole so the legend still reads it.
 - Rasters are COG assets with the `data` role. The starting display range comes from the band statistics Portolan requires, capped at the mean plus two standard deviations for skewed data. Tiles come from TiTiler, by default the NRP server at `titiler.nrp-nautilus.io`; `titiler_url` points an app at another.
 - Assets with the `source` role are the publisher's upstream originals and are never drawn.
+- A band with a `scale` or `offset` is drawn in real units: TiTiler applies them (`unscale`), as in the full app. A class whose value is the band's nodata value is never drawn or listed.
+- Column descriptions (`table:columns`) are read from the collection and from each asset. Portolan puts them on the collection; our current STAC puts them on each asset. When a PMTiles archive's metadata cannot be read, the asset's `table:columns` name the feature properties.
 
 ## Plugins
 
@@ -112,7 +114,7 @@ The agent loop, tool registry and chat come from [glen-harness](https://github.c
 | `system-prompt.md` | The base prompt; an app can replace it with `system_prompt_url` |
 | `plugins/mcp.js` | Plugin that adds the tools of one or more MCP servers, filtered by `include` or `exclude`, and the collections' GeoParquet URLs |
 
-The core reuses these modules from `app/` unchanged: `map-control-tools.js` (the map tools both apps share), `catalog-tree.js` (finding collections by id at any depth, in our current STAC and the Portolan layout), `map-manager.js` (layers, filters, styles, legend, tooltips), `layout-manager.js` with the header, theme and mobile sheet, `geocoder.js` and `data-page.js`.
+The core reuses these modules from `app/` unchanged: `map-control-tools.js` (the map tools both apps share), `catalog-tree.js` (finding collections by id at any depth, in our current STAC and the Portolan layout), `cog-tiles.js` (raster band settings and tile URLs), `map-manager.js` (layers, filters, styles, legend, tooltips), `layout-manager.js` with the header, theme and mobile sheet, `geocoder.js` and `data-page.js`.
 
 ## Limitations
 

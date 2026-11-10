@@ -20,6 +20,8 @@
  * Asset keys carry no meaning; everything is found by role and media type.
  */
 
+import { resolveRasterBand } from '../app/cog-tiles.js';
+
 export const PMTILES_TYPE = 'application/vnd.pmtiles';
 
 /** Resolve an href against the document that holds it. */
@@ -53,21 +55,23 @@ export function isCogAsset(asset) {
  *
  * @param {Object} collection - STAC collection
  * @param {string} collectionUrl - URL the collection was fetched from
- * @returns {Array<{key: string, url: string, layers: string[], title: string|null}>}
+ * @returns {Array<{key: string, url: string, layers: string[], title: string|null, columns: Object[]}>}
+ *   `columns` is the asset's own `table:columns`, when it has them
  */
 export function findVectorSources(collection, collectionUrl) {
     const out = [];
     const byUrl = new Map();
-    const add = (key, href, layers, title) => {
+    const add = (key, href, layers, title, columns) => {
         const url = resolveHref(href, collectionUrl);
         if (!url) return;
         const existing = byUrl.get(url);
         if (existing) {
             if (!existing.layers.length && layers?.length) existing.layers = [...layers];
             if (!existing.title && title) existing.title = title;
+            if (!existing.columns.length && columns?.length) existing.columns = columns;
             return;
         }
-        const entry = { key, url, layers: layers ? [...layers] : [], title: title || null };
+        const entry = { key, url, layers: layers ? [...layers] : [], title: title || null, columns: columns || [] };
         byUrl.set(url, entry);
         out.push(entry);
     };
@@ -83,9 +87,32 @@ export function findVectorSources(collection, collectionUrl) {
     for (const [key, asset] of Object.entries(collection?.assets || {})) {
         if (!isPmtilesAsset(asset)) continue;
         const layers = asset['pmtiles:layers'] || asset['vector:layers'];
-        add(key, asset.href, Array.isArray(layers) ? layers : [], asset.title);
+        add(key, asset.href, Array.isArray(layers) ? layers : [], asset.title, tableColumns(asset));
     }
     return out;
+}
+
+const tableColumns = (doc) => (Array.isArray(doc?.['table:columns']) ? doc['table:columns'].filter(c => c?.name) : []);
+
+/**
+ * A collection's column descriptions. Portolan puts `table:columns` on the
+ * collection; our current STAC puts them on each asset, on purpose (#441).
+ * Both are read: the collection's first, then each asset's, the first
+ * description of a name winning.
+ *
+ * @returns {Array<{name: string, type?: string, description?: string}>}
+ */
+export function collectionColumns(collection) {
+    const byName = new Map();
+    const docs = [collection, ...Object.values(collection?.assets || {}).filter(a => !isSource(a))];
+    for (const doc of docs) {
+        for (const c of tableColumns(doc)) {
+            const prev = byName.get(c.name);
+            if (!prev) byName.set(c.name, { ...c });
+            else if (!prev.description && c.description) prev.description = c.description;
+        }
+    }
+    return [...byName.values()];
 }
 
 /**
@@ -138,16 +165,23 @@ export function findRasterAssets(collection, collectionUrl) {
 }
 
 /**
- * Band 1 of a COG asset: nodata, statistics, and categorical classes.
+ * Band 1 of a COG asset: nodata, statistics, categorical classes, and
+ * whether TiTiler should apply the band's scale and offset.
  * Reads STAC 1.1 `bands` first, then the raster extension's `raster:bands`.
+ * nodata, the classes and `unscale` follow the full app's rules
+ * (app/cog-tiles.js), so a class whose value is the nodata value is dropped.
  */
 export function rasterBand(asset) {
     const band = asset?.bands?.[0] || asset?.['raster:bands']?.[0] || {};
     const stats = band.statistics || {};
     const num = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
-    const classes = band['classification:classes'] || asset?.['classification:classes'] || null;
+    const shared = resolveRasterBand(asset);
+    const nodata = shared.nodata ?? asset?.nodata ?? null;
+    let classes = shared.legendClasses || asset?.['classification:classes'] || null;
+    if (Array.isArray(classes) && nodata != null) classes = classes.filter(c => c.value == null || String(c.value) !== String(nodata));
     return {
-        nodata: band.nodata ?? asset?.nodata ?? null,
+        nodata,
+        unscale: shared.unscale,
         min: num(stats.minimum),
         max: num(stats.maximum),
         mean: num(stats.mean),

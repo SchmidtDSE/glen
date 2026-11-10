@@ -3,7 +3,7 @@ import {
     resolveHref, findVectorSources, findStyleAssets, findRasterAssets, rasterBand,
     defaultRescale, styleToLayer, stripGeometryTypeFilter, describeColor,
     pmtilesLayerInfo, normalizeGeometryType, guardMissingValues, styleName,
-    portolanVersion, providerSummary, agentsLink, FAINT_OUTLINE,
+    portolanVersion, providerSummary, agentsLink, FAINT_OUTLINE, collectionColumns,
 } from '../core/portolan.js';
 import { PortolanCatalog, titilerTileUrl, defaultTooltip } from '../core/portolan-catalog.js';
 
@@ -52,7 +52,7 @@ const collection = {
 describe('findVectorSources', () => {
     it('merges the pmtiles link and the visual asset that point at one file', () => {
         const v = findVectorSources(collection, BASE);
-        expect(v).toEqual([{ key: 'data', url: 'https://example.org/cat/roads/data.pmtiles', layers: ['data'], title: null }]);
+        expect(v).toEqual([{ key: 'data', url: 'https://example.org/cat/roads/data.pmtiles', layers: ['data'], title: null, columns: [] }]);
     });
 
     it('ignores source-role archives and keeps several distinct archives', () => {
@@ -123,7 +123,23 @@ describe('rasters', () => {
 
     it('builds TiTiler URLs with the colormap, range and nodata', () => {
         const u = titilerTileUrl('https://t', 'https://h/x.tif', { colormap: 'magma', rescale: '0,4', nodata: -99999 });
-        expect(u).toBe('https://t/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=https%3A%2F%2Fh%2Fx.tif&colormap_name=magma&rescale=0%2C4&nodata=-99999');
+        expect(u).toBe('https://t/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=https%3A%2F%2Fh%2Fx.tif&colormap_name=magma&rescale=0,4&nodata=-99999');
+    });
+
+    it('unscales a scaled band, as the full app does (#441)', () => {
+        const crw = { type: 'image/tiff; application=geotiff', roles: ['data'], href: 'dhw.tif',
+            'raster:bands': [{ data_type: 'int16', nodata: -32768, scale: 0.01, offset: 0, unit: 'Celsius-weeks' }] };
+        const band = rasterBand(crw);
+        expect(band.unscale).toBe(true);
+        expect(rasterBand({ 'raster:bands': [{ scale: 1, offset: 0 }] }).unscale).toBe(false);
+        expect(titilerTileUrl('https://t', 'https://h/x.tif', { colormap: 'ylorrd', rescale: '0,30', unscale: band.unscale })).toContain('&unscale=true');
+    });
+
+    it('drops a class whose value is the nodata value', () => {
+        const band = rasterBand({ 'raster:bands': [{ nodata: 0, 'classification:classes': [
+            { value: 0, description: 'No data', color_hint: '000000' }, { value: 1, description: 'Forest', color_hint: '00FF00' },
+        ] }] });
+        expect(band.classes.map(c => c.value)).toEqual([1]);
     });
 
     it('builds an inline colormap for classified rasters', () => {
@@ -273,3 +289,40 @@ describe('PortolanCatalog', () => {
         expect([...c.datasets.keys()]).toEqual(['roads']);
     });
 });
+
+describe('our current STAC (#441)', () => {
+    const URL_ = 'https://s3.example.org/public-cpad/stac-collection.json';
+    const cpad = {
+        type: 'Collection', id: 'cpad', title: 'CPAD', description: 'Protected areas.',
+        assets: {
+            'cpad-pmtiles': {
+                href: 'https://s3.example.org/public-cpad/cpad.pmtiles', type: 'application/vnd.pmtiles', 'vector:layers': ['cpad'],
+                'table:columns': [{ name: 'ACCESS_TYP', type: 'string' }, { name: 'geometry', type: 'binary' }],
+            },
+            parquet: {
+                href: 'https://s3.example.org/public-cpad/cpad.parquet', type: 'application/vnd.apache.parquet',
+                'table:columns': [{ name: 'ACCESS_TYP', type: 'string', description: 'Public access' }, { name: 'h8', type: 'string' }],
+            },
+        },
+        links: [],
+    };
+
+    it('reads column descriptions from assets as well as the collection', () => {
+        expect(collectionColumns(cpad)).toEqual([
+            { name: 'ACCESS_TYP', type: 'string', description: 'Public access' },
+            { name: 'geometry', type: 'binary' },
+            { name: 'h8', type: 'string' },
+        ]);
+        expect(collectionColumns({ 'table:columns': [{ name: 'a', description: 'x' }], assets: { p: { 'table:columns': [{ name: 'a', description: 'y' }] } } })[0].description).toBe('x');
+    });
+
+    it('names feature properties from the asset when the archive gives none, and describes them in the prompt', async () => {
+        const c = new PortolanCatalog({ fetchJson: async () => null, pmtilesMetadata: async () => null });
+        await c.addCollection(cpad, URL_);
+        const layer = c.layers.get('cpad');
+        expect(layer.sourceLayer).toBe('cpad');
+        expect(layer.fields).toEqual({ ACCESS_TYP: 'string' });
+        expect(c.generatePrompt()).toContain('`ACCESS_TYP` (string): Public access');
+    });
+});
+
