@@ -254,6 +254,23 @@ export class DatasetCatalog {
 
         const results = await Promise.allSettled([...directFetches, ...fetchPromises]);
         const loaded = results.filter(r => r.status === 'fulfilled' && r.value).length;
+
+        // Collections register as their reads finish, which varies from one
+        // load to the next. Put them back in config order, so the prompt's
+        // catalog, list_datasets and the data page are the same on every
+        // load, and the cached prompt prefix stays shared between visitors
+        // (docs/design/prompt-prefix-stability.md).
+        const configOrder = [...requestedIds];
+        const sourceIds = [...directEntries.map(c => c.collection_id), ...found.keys()];
+        const rank = new Map();
+        results.forEach((r, i) => {
+            if (r.status === 'fulfilled' && r.value) rank.set(r.value, configOrder.indexOf(sourceIds[i]));
+        });
+        const last = configOrder.length;
+        this.datasets = new Map([...this.datasets.entries()]
+            .map((e, i) => ({ e, i, pos: rank.get(e[1]) ?? last }))
+            .sort((a, b) => a.pos - b.pos || a.i - b.i)
+            .map(x => x.e));
         console.log(`[Catalog] Loaded ${loaded}/${requestedIds.size} collections`);
 
         // Warn about missing collections

@@ -435,6 +435,45 @@ describe('DatasetCatalog.load (mocked fetch)', () => {
         expect(cat.get('skipped')).toBeNull();
     });
 
+    it('keeps config order however the reads finish, so the prompt is the same on every load', async () => {
+        const root = { type: 'Catalog', id: 'root', links: [{ rel: 'child', href: '/coll/walked.json', id: 'walked' }] };
+        const docs = new Map([
+            ['https://x.example/catalog.json', root],
+            ['https://x.example/coll/walked.json', stacCollection({ id: 'walked', title: 'Walked' })],
+            ['https://x.example/a.json', stacCollection({ id: 'a', title: 'A' })],
+            ['https://x.example/b.json', stacCollection({ id: 'b', title: 'B' })],
+            ['https://x.example/c.json', stacCollection({ id: 'c', title: 'C' })],
+        ]);
+        // The first collection in config is read last.
+        const delay = { 'https://x.example/a.json': 30, 'https://x.example/b.json': 15 };
+        global.fetch = vi.fn(async (url) => {
+            await new Promise(r => setTimeout(r, delay[url] || 0));
+            return docs.has(url)
+                ? { ok: true, status: 200, json: async () => docs.get(url) }
+                : { ok: false, status: 404, json: async () => null };
+        });
+
+        const cat = new DatasetCatalog();
+        await cat.load({
+            catalog: 'https://x.example/catalog.json',
+            collections: [
+                { collection_id: 'a', collection_url: 'https://x.example/a.json' },
+                'walked',
+                { collection_id: 'b', collection_url: 'https://x.example/b.json' },
+                { collection_id: 'c', collection_url: 'https://x.example/c.json' },
+            ],
+        });
+
+        expect(cat.getIds()).toEqual(['a', 'walked', 'b', 'c']);
+        expect(cat.getAll().map(d => d.id)).toEqual(['a', 'walked', 'b', 'c']);
+        const prompt = cat.generatePromptCatalog({ discovery: false });
+        const at = (t) => prompt.indexOf(`### ${t}\n`);
+        expect(at('A')).toBeGreaterThan(-1);
+        expect(at('A')).toBeLessThan(at('Walked'));
+        expect(at('Walked')).toBeLessThan(at('B'));
+        expect(at('B')).toBeLessThan(at('C'));
+    });
+
     it('fetches direct collection_url overrides instead of walking the catalog', async () => {
         const root = { id: 'root', links: [] };  // no children
         const direct = stacCollection({ id: 'direct', title: 'Direct' });
