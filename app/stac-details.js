@@ -171,8 +171,14 @@ export function fillFromDictionary(byName, dictionary) {
     return byName;
 }
 
-function anyQueryableAssetHasColumns(col) {
-    return Object.values(col?.assets || {}).some(a => isQueryableAsset(a) && Array.isArray(a['table:columns']) && a['table:columns'].length);
+/**
+ * True if the collection has a queryable asset. Such an asset is described by
+ * its own `table:columns` or, lacking one, by the collection's, so the shared
+ * block already carries the collection's dictionary and a separate
+ * `Key columns` trailer would print it twice (#441).
+ */
+function hasQueryableAsset(col) {
+    return Object.values(col?.assets || {}).some(a => isQueryableAsset(a));
 }
 
 /**
@@ -192,7 +198,7 @@ export function formatCollection(col, { url = null, children = [], sources = DEF
     if (col.description) lines.push(col.description);
 
     const parquet = formatParquetAssets(col, { sources });
-    const keyColumns = !anyQueryableAssetHasColumns(col) && Array.isArray(col['table:columns']) && col['table:columns'].length
+    const keyColumns = !hasQueryableAsset(col) && Array.isArray(col['table:columns']) && col['table:columns'].length
         ? ['\nKey columns:', ...formatColumns(col['table:columns'])]
         : [];
 
