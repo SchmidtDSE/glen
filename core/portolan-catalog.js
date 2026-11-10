@@ -341,6 +341,27 @@ export class PortolanCatalog {
         return [...this.datasets.values()];
     }
 
+    /** The ids of the loaded collections, in config order. */
+    getIds() {
+        return [...this.datasets.keys()];
+    }
+
+    /**
+     * A loaded collection's STAC by id, for the catalog tools
+     * (app/catalog-tools.js). Only collections the app lists resolve: an app
+     * sees its own data and nothing else (#441, docs/design/data-scope.md).
+     * Portolan has no nested collections, so there are no children to list.
+     * The id match ignores case.
+     *
+     * @returns {Promise<{doc: Object, url: string, children: Array}|null>}
+     */
+    async resolveStac(id) {
+        const want = String(id ?? '').trim();
+        const ds = this.datasets.get(want)
+            || [...this.datasets.values()].find(d => d.id.toLowerCase() === want.toLowerCase());
+        return ds ? { doc: ds.stac, url: ds.url, children: [] } : null;
+    }
+
     /**
      * The catalog section of the system prompt. Static for a deployment, so
      * it can sit in the cached prompt prefix (docs/design/prompt-prefix-stability.md).

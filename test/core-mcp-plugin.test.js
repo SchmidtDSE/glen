@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { PortolanCatalog } from '../core/portolan-catalog.js';
+import { createCatalogTools } from '../app/catalog-tools.js';
 import { readFileSync } from 'node:fs';
 import mcpPlugin, { resolveServers, parquetSection, HARNESS_MCP_CLIENT } from '../core/plugins/mcp.js';
 
@@ -27,7 +29,7 @@ describe('resolveServers', () => {
 describe('mcp plugin setup', () => {
     const tool = (name) => ({ name, description: name, inputSchema: { type: 'object', properties: {} } });
     const listings = {
-        'https://a/mcp': ['query', 'browse_stac_catalog'],
+        'https://a/mcp': ['query', 'browse_stac_catalog', 'get_stac_details', 'get_schema', 'get_collection'],
         'https://b/mcp': ['fit_sdm', 'query'],
     };
     let clients;
@@ -60,6 +62,7 @@ describe('mcp plugin setup', () => {
             registerRemote: vi.fn((list, client, rewriter, { include, exclude } = {}) =>
                 list.filter((t) => (!include || include.includes(t.name)) && !(exclude || []).includes(t.name)).length),
             clearRemote: vi.fn(),
+            registerLocal: vi.fn(),
         };
         const ready = [];
         return { prompts, tools, ready, ctx: {
@@ -99,6 +102,16 @@ describe('mcp plugin setup', () => {
         expect(calls[0][3]).toEqual({ rank: 0, include: undefined, exclude: ['browse_stac_catalog'] });
         expect(calls[1][3]).toEqual({ rank: 1, include: ['fit_sdm'], exclude: undefined });
         expect(clients[1].headers).toEqual({ Authorization: 'Bearer t' });
+    });
+
+    it('answers the catalog tools locally and never registers a server\'s (#441)', async () => {
+        const { ctx, tools } = context();
+        await plugin.setup(ctx, { servers: [{ url: 'https://a/mcp' }, { url: 'https://b/mcp' }] });
+        expect(tools.registerLocal.mock.calls.map(c => c[0].name)).toEqual(['get_schema', 'get_stac_details']);
+        const remote = tools.registerRemote.mock.calls.map(c => c[0].map(t => t.name));
+        expect(remote).toEqual([['query'], ['fit_sdm', 'query']]);
+        clients[0].onReconnect(listings['https://a/mcp'].map(tool));
+        expect(tools.registerRemote.mock.calls.at(-1)[0].map(t => t.name)).toEqual(['query']);
     });
 
     it('re-registers only the reconnecting server, with the same filters', async () => {
@@ -191,3 +204,39 @@ describe('MCP client source', () => {
         expect(HARNESS_MCP_CLIENT).toBe(`https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@${[...tags][0]}/src/mcp-client.js`);
     });
 });
+
+describe('catalog tools over Portolan collections (#441)', () => {
+    const BASE = 'https://storage.example.org/cat/roads/collection.json';
+    const roads = {
+        type: 'Collection', id: 'road-blockages', title: 'Road blockages', description: 'Blocked roads.',
+        'table:columns': [{ name: 'Damage', type: 'string', description: 'Damage class', values: ['Blocked', 'Partial'] }],
+        assets: { data: { href: './data.parquet', type: 'application/vnd.apache.parquet', roles: ['data'] } },
+        links: [],
+    };
+
+    async function catalogWith(...cols) {
+        const c = new PortolanCatalog({ fetchJson: async () => null, pmtilesMetadata: async () => null });
+        for (const [col, url] of cols) await c.addCollection(col, url);
+        return c;
+    }
+
+    beforeEach(() => vi.spyOn(console, 'warn').mockImplementation(() => {}));
+    afterEach(() => vi.restoreAllMocks());
+
+    it('describes a listed collection with resolved paths and its column dictionary', async () => {
+        const [getSchema] = createCatalogTools(await catalogWith([roads, BASE]));
+        const md = await getSchema.execute({ dataset_id: 'Road-Blockages' });
+        expect(md).toContain("read_parquet('s3://cat/roads/data.parquet')");
+        expect(md).toContain("s3_endpoint='storage.example.org', s3_scope='s3://cat'");
+        expect(md).toContain('`Damage` (string) — Damage class');
+        expect(md).toContain("values: ['Blocked', 'Partial']");
+    });
+
+    it('refuses a collection the app does not list', async () => {
+        const [getSchema] = createCatalogTools(await catalogWith([roads, BASE]));
+        const out = JSON.parse(await getSchema.execute({ dataset_id: 'census-tract' }));
+        expect(out.success).toBe(false);
+        expect(out.error).toContain("This app's datasets are: road-blockages.");
+    });
+});
+

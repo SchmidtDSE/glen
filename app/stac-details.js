@@ -13,6 +13,8 @@
  * Pure functions on STAC JSON; no fetching.
  */
 
+import { resolveHref } from './catalog-tree.js';
+
 /**
  * HTTPS prefixes that DuckDB should read as s3:// paths. These match the MCP
  * server's built-in sources (geo-query `s3config.py`); an app adds its own
@@ -108,17 +110,19 @@ function assetColumnSummary(cols) {
  * shared block after the assets. `compact` leaves the columns out, for the
  * list of sub-datasets.
  */
-export function formatParquetAssets(col, { compact = false, sources = DEFAULT_S3_SOURCES } = {}) {
+export function formatParquetAssets(col, { compact = false, sources = DEFAULT_S3_SOURCES, url = null } = {}) {
     const lines = [];
     const shared = new Map();
     for (const [assetId, asset] of Object.entries(col?.assets || {})) {
         if (!isQueryableAsset(asset)) continue;
-        const { path, hint } = parquetPath(asset.href || '', sources);
+        // Portolan writes asset hrefs relative to the collection (./data.parquet).
+        const href = url ? resolveHref(asset.href || '', url) : (asset.href || '');
+        const { path, hint } = parquetPath(href, sources);
         const size = asset['file:size'];
         const sizeNote = size && size > 1024 ** 2 ? ` (${(size / 1024 ** 3).toFixed(2)} GiB)` : '';
         lines.push(`  - ${asset.title || assetId}${sizeNote}: \`read_parquet('${path}')\``);
         if (hint) {
-            lines.push(`    - ⚠️ non-default endpoint (derived from \`${asset.href}\` assuming path-style S3): `
+            lines.push(`    - ⚠️ non-default endpoint (derived from \`${href}\` assuming path-style S3): `
                 + `call \`query\` with s3_endpoint='${hint.endpoint}', s3_scope='${hint.scope}' `
                 + '(anonymous; add s3_key/s3_secret if private)');
         }
@@ -197,7 +201,7 @@ export function formatCollection(col, { url = null, children = [], sources = DEF
     if (self) lines.push(`collection_url: \`${self}\``);
     if (col.description) lines.push(col.description);
 
-    const parquet = formatParquetAssets(col, { sources });
+    const parquet = formatParquetAssets(col, { sources, url: self || null });
     const keyColumns = !hasQueryableAsset(col) && Array.isArray(col['table:columns']) && col['table:columns'].length
         ? ['\nKey columns:', ...formatColumns(col['table:columns'])]
         : [];

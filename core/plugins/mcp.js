@@ -12,14 +12,14 @@
  *       "url": "https://duckdb-mcp.example.org/mcp",
  *       "prompt": "geospatial-analyst",    // optional: an MCP prompt to append
  *       "headers": { "Authorization": "Bearer …" },
- *       "exclude": ["browse_stac_catalog"]  // or "include": ["query"]
+ *       "include": ["query"]               // or "exclude": [...]
  *     }
  *   }]
  *
  * Several servers go in a `servers` list, each entry taking the same keys:
  *
  *   "options": { "servers": [
- *     { "url": "https://duckdb-mcp.example.org/mcp", "exclude": ["browse_stac_catalog"] },
+ *     { "url": "https://duckdb-mcp.example.org/mcp" },
  *     { "url": "https://sdm.example.org/mcp", "include": ["fit_sdm"] }
  *   ] }
  *
@@ -31,6 +31,14 @@
  * A server that cannot be reached leaves the map tools and the other
  * servers' tools working; the plugin logs the failure and goes on.
  *
+ * The agent's catalog tools, `get_schema` and `get_stac_details`, are answered
+ * in the browser from the collections the app loaded: `read_parquet` paths,
+ * hex tables, and each table's columns with descriptions and coded values.
+ * The servers' own catalog tools (`browse_stac_catalog`, `get_stac_details`,
+ * `get_collection`, `get_schema`) are never registered, because they could
+ * read collections the app does not list (glen#441, as in the full app).
+ * `s3_sources` in the app config adds https → s3 path rules, as there.
+ *
  * When the first server is on another origin and its entry has no
  * Authorization header, a visitor can enter their own token for it in the
  * chat's settings (glen#442). It is saved in their browser and sent to that
@@ -39,6 +47,7 @@
  */
 
 import { resolveHref } from '../portolan.js';
+import { createCatalogTools, MCP_CATALOG_TOOLS } from '../../app/catalog-tools.js';
 
 // The same glen-harness tag as the imports in core/main.js; a test checks.
 export const HARNESS_MCP_CLIENT = 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.4.0/src/mcp-client.js';
@@ -99,6 +108,10 @@ export default {
                 },
             }));
         }
+        for (const t of createCatalogTools(ctx.catalog, { s3Sources: ctx.config?.s3_sources })) ctx.tools.registerLocal(t);
+        // A server's own catalog tools would replace the local ones and reach
+        // beyond this app's collections.
+        const computeOnly = (tools) => tools.filter((t) => !MCP_CATALOG_TOOLS.includes(t.name));
         const prompts = [];
         let connected = 0;
         for (const [rank, server] of servers.entries()) {
@@ -115,10 +128,10 @@ export default {
                 continue;
             }
             if (rank === 0) primary.client = client;
-            const count = ctx.tools.registerRemote(client.getTools(), client, null, filters);
+            const count = ctx.tools.registerRemote(computeOnly(client.getTools()), client, null, filters);
             client.setOnReconnect((tools) => {
                 ctx.tools.clearRemote(client);
-                ctx.tools.registerRemote(tools, client, null, filters);
+                ctx.tools.registerRemote(computeOnly(tools), client, null, filters);
             });
             console.log(`[mcp plugin] ${count} tools from ${server.url}`);
             connected++;
@@ -145,7 +158,8 @@ export function parquetSection(catalog) {
     const lines = [
         '## Data files for SQL', '',
         'This app also has SQL tools from an MCP server, so you can compute counts, totals and rankings. '
-        + 'Each map layer\'s full data can be read with read_parquet over https:', '',
+        + 'Each map layer\'s full data can be read with read_parquet over https. '
+        + 'Call get_schema with a collection id before your first query against it, for its columns, coded values and read_parquet paths:', '',
     ];
     let any = false;
     for (const ds of catalog.getAll()) {

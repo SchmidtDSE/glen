@@ -237,7 +237,7 @@ When a PR touches a covered module, expect tests to change too. When it touches 
 | `core/portolan.js`, `core/portolan-catalog.js` | covered | `test/core-portolan.test.js` — tile, style and raster discovery, style conversion, the missing-value guard, catalog walk, prompt |
 | `core/map-tools.js` | covered | `test/core-map-tools.test.js` — published styles and their filters, raster recolouring, fly_to forms. Rendering is browser-bound; verify at `/core/`. |
 | `core/main.js` | 0% | Bootstrap — verify by loading `/core/` locally. `test/core-module-graph.test.js` checks that it loads no MCP, SQL or export code. |
-| `core/plugins/mcp.js` | covered | `test/core-mcp-plugin.test.js` — server list resolution, rank and filters per server, per-server reconnect, unreachable servers, prompt order, and the harness tag matching `core/main.js`. |
+| `core/plugins/mcp.js` | covered | `test/core-mcp-plugin.test.js` — server list resolution, rank and filters per server, per-server reconnect, unreachable servers, prompt order, the harness tag matching `core/main.js`, and the local catalog tools over Portolan collections (relative hrefs, the collection's column dictionary, no server catalog tools). |
 | `app/map-control-tools.js` | covered | `test/map-control-tools.test.js` — default and SQL hint text, fly_to with and without layer extents, the reset_style hook. The full app's tool text must not change; compare `createMapTools` output before and after. |
 | `app/main.js` | 0% | Bootstrap — verify by loading the app locally. |
 | `app/animation-manager.js` | partial | `test/animation-manager.test.js` — the pure sampling helpers (`sampleTrack`, `cellBoundary`). MapLibre sublayers and the controls panel are browser-bound; verify visually. |
