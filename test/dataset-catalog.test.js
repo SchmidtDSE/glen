@@ -47,6 +47,24 @@ describe('DatasetCatalog extractors', () => {
         expect(cols.find(c => c.name === 'state').values).toEqual(['CA', 'NV']);
     });
 
+    it('extractColumns fills descriptions and values from the collection when assets list only names (#441)', () => {
+        const cols = cat.extractColumns({
+            id: 'x',
+            'table:columns': [
+                { name: 'GAP_Sts', type: 'string', description: 'GAP status', values: ['1', '2'] },
+                { name: 'Unit_Nm', type: 'string', description: 'Unit name' },
+            ],
+            assets: {
+                parquet: { href: 'https://h/x.parquet', type: 'application/vnd.apache.parquet',
+                    'table:columns': [{ name: 'GAP_Sts', type: 'string' }, { name: 'Unit_Nm', type: 'string', description: 'Own text' }] },
+            },
+        });
+        expect(cols).toEqual([
+            { name: 'GAP_Sts', type: 'string', description: 'GAP status', values: ['1', '2'] },
+            { name: 'Unit_Nm', type: 'string', description: 'Own text' },
+        ]);
+    });
+
     it('extractColumns returns empty when table:columns missing', () => {
         const cols = cat.extractColumns({ id: 'x' });
         expect(cols).toEqual([]);

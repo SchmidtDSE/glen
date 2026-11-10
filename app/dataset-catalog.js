@@ -739,7 +739,11 @@ export class DatasetCatalog {
      * target per the MCP's query-optimization guidance), then the flat
      * GeoParquet, then the collection-level trailer — so richer per-asset
      * definitions win on name collisions while the trailer fills any gaps.
-     * Geometry columns are dropped; names are deduped.
+     * Geometry columns are dropped; names are deduped. A column's missing
+     * description or coded values are filled by name from the collection's
+     * `table:columns`, then from any asset: under the Portolan layout the
+     * collection holds the one column dictionary (PORTO-FMT-046) and an
+     * asset may list only names and types (PORTO-FMT-048, #441).
      *
      * Why keep the collection-level trailer rather than reading per-asset only:
      * the catalog is mid-migration (data-workflows #404/#369 backfill). Some
@@ -776,6 +780,18 @@ export class DatasetCatalog {
             })
             .sort((a, b) => rank(a) - rank(b));
 
+        // Descriptions and coded values by name, from the collection (where
+        // Portolan puts them, PORTO-FMT-046) and then from any asset. A
+        // per-asset list may carry only names and types (#441).
+        const dictionary = new Map();
+        for (const c of [...(collection['table:columns'] || []), ...Object.values(assets).flatMap(a => a['table:columns'] || [])]) {
+            if (!c?.name) continue;
+            const d = dictionary.get(c.name) || {};
+            if (!d.description && c.description) d.description = c.description;
+            if (!d.values?.length && c.values?.length) d.values = c.values;
+            dictionary.set(c.name, d);
+        }
+
         // Union: per-asset first (canonical), collection-level block as the trailer.
         const raw = [
             ...queryable.flatMap(a => a['table:columns']),
@@ -789,11 +805,12 @@ export class DatasetCatalog {
             if (!name || ['geometry', 'geom'].includes(name.toLowerCase())) continue;
             if (seen.has(name)) continue;
             seen.add(name);
+            const values = col.values?.length ? col.values : dictionary.get(name)?.values;
             columns.push({
                 name,
                 type: col.type || 'string',
-                description: col.description || '',
-                ...(col.values?.length ? { values: col.values } : {}),
+                description: col.description || dictionary.get(name)?.description || '',
+                ...(values?.length ? { values } : {}),
             });
         }
         return columns;

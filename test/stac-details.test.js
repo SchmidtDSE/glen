@@ -91,6 +91,19 @@ describe('formatCollection', () => {
         expect(md).not.toContain('`x`');
     });
 
+    it('takes descriptions from the collection when the assets list only names and types (#441)', () => {
+        const md = formatCollection({
+            id: 'fee', 'table:columns': [{ name: 'GAP_Sts', type: 'string', description: 'GAP status', values: ['1', '2'] }],
+            assets: {
+                parquet: { href: 'https://s3-west.nrp-nautilus.io/b/fee.parquet', 'table:columns': [{ name: 'GAP_Sts', type: 'string' }] },
+                hex: { href: 'https://s3-west.nrp-nautilus.io/b/hex/', 'table:columns': [{ name: 'GAP_Sts', type: 'string' }, { name: 'h8', type: 'string' }] },
+            },
+        });
+        expect(md).toContain('    - `GAP_Sts` (string) — GAP status');
+        expect(md).toContain("      values: ['1', '2']");
+        expect(md).not.toContain('Key columns');
+    });
+
     it('formatColumns hides geometry columns', () => {
         expect(formatColumns([{ name: 'geom' }, { name: 'BBOX' }, { name: 'n', type: 'int' }])).toEqual(['    - `n` (int)']);
     });
