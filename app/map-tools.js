@@ -524,7 +524,7 @@ export function applyPublishedStyle(mapManager, catalog, layerId, name) {
     if (!st) {
         return { success: false, error: `No style "${name}" for ${layerId}. Published styles: ${styles.map(s => s.name).join(', ')}` };
     }
-    const state = mapManager.layers.get(layerId);
+    const state = mapManager.layers?.get?.(layerId);
     const drawnAs = mapManager.map?.getLayer?.(state?.mapLayerId)?.type || hit.layer.renderType || 'fill';
     if (st.renderType !== drawnAs) {
         return { success: false, error: `Style "${st.name}" draws ${st.renderType} layers but ${layerId} is drawn as ${drawnAs}.` };
