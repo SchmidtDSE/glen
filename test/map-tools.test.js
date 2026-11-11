@@ -353,7 +353,7 @@ describe('render_chart (#277)', () => {
         const tool = createRenderChartTool(stubRenderer(), null);
         const result = JSON.parse(await tool.execute({ chart_type: 'bar', x: 'c', y: 'v', sql: 'SELECT 1' }));
         expect(result.success).toBe(false);
-        expect(result.error).toMatch(/MCP client not available/);
+        expect(result.error).toMatch(/No SQL engine available/);
     });
 
     it('reports a render failure instead of throwing', async () => {
@@ -721,5 +721,13 @@ describe('apply_style (#440)', () => {
         expect(JSON.parse(await t.execute({ layer_id: 'fee/fee-pmtiles', style: 'roads' })).error)
             .toBe('Style "roads" draws line layers but fee/fee-pmtiles is drawn as fill.');
         expect(JSON.parse(await t.execute({ layer_id: 'other', style: 'roads' })).error).toBe('Unknown layer: other');
+    });
+});
+
+describe('render_chart endpoint arguments', () => {
+    it('are off in the full app, so its tool is unchanged', () => {
+        const tool = createRenderChartTool({ render: async () => ({ id: 'x' }) }, null);
+        expect(tool.inputSchema.properties).not.toHaveProperty('s3_endpoint');
+        expect(tool.description).not.toContain('s3_endpoint');
     });
 });
