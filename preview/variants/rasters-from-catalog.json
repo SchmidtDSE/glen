@@ -1,5 +1,11 @@
 {
-  "view": { "center": [-30, 30], "zoom": 2 },
+  "view": {
+    "center": [
+      -85,
+      33
+    ],
+    "zoom": 3
+  },
   "collections": [
     {
       "collection_id": "ship-density",
@@ -10,8 +16,14 @@
           "display_name": "Vessel density",
           "visible": true,
           "versions": [
-            { "label": "All", "asset_id": "ship-density-global-cog" },
-            { "label": "Fishing", "asset_id": "ship-density-fishing-cog" }
+            {
+              "label": "All",
+              "asset_id": "ship-density-global-cog"
+            },
+            {
+              "label": "Fishing",
+              "asset_id": "ship-density-fishing-cog"
+            }
           ]
         }
       ]
@@ -19,7 +31,12 @@
     {
       "collection_id": "nlcd",
       "collection_url": "https://s3-west.nrp-nautilus.io/public-land-cover/nlcd/stac-collection.json",
-      "assets": [{ "id": "nlcd-cog-2024", "display_name": "Land Cover (NLCD 2024)" }]
+      "assets": [
+        {
+          "id": "nlcd-cog-2024",
+          "display_name": "Land Cover (NLCD 2024)"
+        }
+      ]
     }
   ]
 }
