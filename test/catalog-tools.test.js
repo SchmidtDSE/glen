@@ -118,3 +118,25 @@ describe('catalog loads by id below the root (#441)', () => {
         expect([...c.datasets.keys()]).toEqual(['megamove-corridors']);
     });
 });
+
+describe('a collection with items (#462)', () => {
+    const URL = 'https://h/cat/heat/collection.json';
+    const doc = { id: 'heat', links: [{ rel: 'item', href: './a/a.json' }], assets: {} };
+    const catalog = { resolveStac: async () => ({ doc, url: URL, children: [] }), getIds: () => ['heat'] };
+
+    it('reads the first item once and lists its assets', async () => {
+        const fetchJson = vi.fn(async () => ({ id: 'a', assets: { data: { href: './a.tif', type: 'image/tiff; application=geotiff' } } }));
+        const [schema, details] = createCatalogTools(catalog, { fetchJson });
+        expect(await schema.execute({ dataset_id: 'heat' })).toContain('  - `data`: COG');
+        await details.execute({ dataset_id: 'heat' });
+        expect(fetchJson).toHaveBeenCalledTimes(1);
+        expect(fetchJson).toHaveBeenCalledWith('https://h/cat/heat/a/a.json');
+    });
+
+    it('still answers when the item cannot be read', async () => {
+        const [schema] = createCatalogTools(catalog, { fetchJson: async () => { throw new Error('404'); } });
+        const text = await schema.execute({ dataset_id: 'heat' });
+        expect(text).toContain('**Items (1)**');
+        expect(text).not.toContain("First item's assets");
+    });
+});

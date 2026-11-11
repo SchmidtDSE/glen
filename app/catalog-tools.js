@@ -14,6 +14,7 @@
  */
 
 import { formatCollection, DEFAULT_S3_SOURCES } from './stac-details.js';
+import { resolveHref } from './catalog-tree.js';
 
 /**
  * The MCP tools these replace. The app does not register them from any
@@ -29,8 +30,19 @@ export const MCP_CATALOG_TOOLS = ['browse_stac_catalog', 'get_stac_details', 'ge
  *   tried before the defaults (layers-input.json `s3_sources`)
  * @returns {Array<Object>} tool definitions for ToolRegistry.registerLocal
  */
-export function createCatalogTools(catalog, { s3Sources = [] } = {}) {
+export function createCatalogTools(catalog, { s3Sources = [], fetchJson = defaultFetchJson } = {}) {
     const sources = [...(Array.isArray(s3Sources) ? s3Sources : []), ...DEFAULT_S3_SOURCES];
+    // One item per collection, read once, to list what its items hold (#462).
+    const samples = new Map();
+    const sampleItem = (doc, url) => {
+        const link = (doc?.links || []).find(l => l?.rel === 'item' && l.href);
+        if (!link) return Promise.resolve(null);
+        const itemUrl = resolveHref(link.href, url || '');
+        if (!samples.has(itemUrl)) {
+            samples.set(itemUrl, fetchJson(itemUrl).then(d => ({ doc: d, url: itemUrl })).catch(() => null));
+        }
+        return samples.get(itemUrl);
+    };
 
     const describe = async (id) => {
         let hit = null;
@@ -46,7 +58,7 @@ export function createCatalogTools(catalog, { s3Sources = [] } = {}) {
                     + 'Sub-datasets are listed by get_stac_details on their parent.',
             });
         }
-        return formatCollection(hit.doc, { url: hit.url, children: hit.children, sources });
+        return formatCollection(hit.doc, { url: hit.url, children: hit.children, sources, sampleItem: await sampleItem(hit.doc, hit.url) });
     };
 
     return [
@@ -75,4 +87,10 @@ export function createCatalogTools(catalog, { s3Sources = [] } = {}) {
             execute: (args) => describe(args?.dataset_id),
         },
     ];
+}
+
+async function defaultFetchJson(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`${res.status} for ${url}`);
+    return res.json();
 }

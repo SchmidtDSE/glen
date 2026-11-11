@@ -185,6 +185,58 @@ function hasQueryableAsset(col) {
     return Object.values(col?.assets || {}).some(a => isQueryableAsset(a));
 }
 
+/** A short name for an asset's media type. */
+function assetKind(asset) {
+    const t = String(asset?.type || '').toLowerCase();
+    const h = String(asset?.href || '').toLowerCase();
+    if (t.includes('geotiff') || t.startsWith('image/tiff') || /\.tiff?$/.test(h)) return 'COG';
+    if (t.includes('parquet') || h.endsWith('.parquet')) return 'GeoParquet';
+    if (t.includes('pmtiles') || h.endsWith('.pmtiles')) return 'PMTiles';
+    return t || 'file';
+}
+
+/**
+ * Lines describing a collection's STAC items (#462): how many, their dates,
+ * and what one item holds. Portolan models a raster series as items, so their
+ * COGs are not collection assets and the lines above would not mention them.
+ *
+ * @param {Object} col - the collection
+ * @param {Object|null} sample - one item's JSON, to list its assets
+ * @param {Object} [options]
+ * @param {string|null} [options.sampleUrl] - where the sample was read from
+ * @returns {string[]} nothing when the collection has no item links
+ */
+export function formatItems(col, sample = null, { sampleUrl = null, sources = DEFAULT_S3_SOURCES } = {}) {
+    const links = (col?.links || []).filter(l => l?.rel === 'item');
+    if (!links.length) return [];
+    const interval = col?.extent?.temporal?.interval?.[0];
+    const day = (v) => (typeof v === 'string' ? v.slice(0, 10) : null);
+    const [from, to] = Array.isArray(interval) ? [day(interval[0]), day(interval[1])] : [null, null];
+    // The extent, not a cadence: the count and the extent cannot show gaps.
+    const dated = from && to ? (from === to ? `, ${from}` : `, ${from} to ${to}`) : '';
+    const lines = [`\n**Items (${links.length})**${dated}.`];
+    const assets = Object.entries(sample?.assets || {});
+    if (assets.length) {
+        lines.push(`First item's assets (\`${sample.id}\`):`);
+        for (const [key, a] of assets) {
+            const bands = a.bands || a['raster:bands'];
+            let note = assetKind(a);
+            if (Array.isArray(bands) && bands.length) {
+                const names = bands.map((b, i) => `\`${b?.name || `band ${i + 1}`}\`${b?.unit ? ` (${b.unit})` : ''}`);
+                note += `, ${bands.length} band${bands.length > 1 ? 's' : ''}: ${names.join(', ')}`;
+            }
+            if (isQueryableAsset(a) && sampleUrl) {
+                const { path } = parquetPath(resolveHref(a.href || '', sampleUrl), sources);
+                note += `, this item's: \`read_parquet('${path}')\``;
+            }
+            lines.push(`  - \`${key}\`: ${note}`);
+        }
+    }
+    const mirror = Object.values(col?.assets || {}).some(a => (Array.isArray(a?.roles) && a.roles.includes('collection-mirror')) && isQueryableAsset(a));
+    if (mirror) lines.push('The item list, with every item\'s dates and asset hrefs, is the items GeoParquet above.');
+    return lines;
+}
+
 /**
  * The markdown `get_stac_details` returns for one collection.
  *
@@ -193,9 +245,10 @@ function hasQueryableAsset(col) {
  * @param {string} [options.url] - where it was read from
  * @param {Array<Object>} [options.children] - its sub-collections, already read
  * @param {Array<Object>} [options.sources] - https → s3 prefixes
+ * @param {Object} [options.sampleItem] - one of its items, read already: `{ doc, url }`
  * @returns {string}
  */
-export function formatCollection(col, { url = null, children = [], sources = DEFAULT_S3_SOURCES } = {}) {
+export function formatCollection(col, { url = null, children = [], sources = DEFAULT_S3_SOURCES, sampleItem = null } = {}) {
     const lines = [`**${col.title || col.id}**`, `Collection ID: \`${col.id}\``];
     const self = url || (col.links || []).find(l => l.rel === 'self')?.href;
     if (self) lines.push(`collection_url: \`${self}\``);
@@ -221,6 +274,7 @@ export function formatCollection(col, { url = null, children = [], sources = DEF
     } else if (keyColumns.length) {
         lines.push(...keyColumns);
     }
+    lines.push(...formatItems(col, sampleItem?.doc || null, { sampleUrl: sampleItem?.url || null, sources }));
     return lines.join('\n');
 }
 
