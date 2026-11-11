@@ -2,7 +2,7 @@
 
 glen core is a small GLEN app: a MapLibre map of the layers in a [Portolan](https://www.portolan-sdi.org/) catalog, and a chat agent that controls the map. It assumes no MCP server and no SQL engine. The agent's tools act on the page: show and hide layers, filter features, apply the publisher's styles or new paint, recolour rasters, label legends, set tooltips and move the view.
 
-Everything else the full app in `app/` does, such as DuckDB queries over MCP, hex layers, charts, drawing, uploads and the session export, is meant to come back as plugins. `plugins/mcp.js` is the first: it adds an MCP server's tools to the map tools.
+Everything else the full app in `app/` does, such as DuckDB queries over MCP, hex layers, charts, drawing, uploads and the session export, is meant to come back as plugins. `plugins/mcp.js` adds MCP servers' tools to the map tools, and `plugins/charts.js` adds charts.
 
 ## Use
 
@@ -128,6 +128,15 @@ The plugin answers the catalog tools itself. `get_schema` and `get_stac_details`
 
 When the first server is on another origin from the page and its entry sets no `Authorization` header, a visitor can enter their own token for it under ⚙ in the chat, as in the full app ([configuration guide](../docs/guide/configuration.md#a-visitor-s-mcp-token)). If the server refuses the connection at start, the chat says so and opens the settings.
 
+`plugins/charts.js` adds the full app's `render_chart` tool: bar, line, scatter and histogram charts in a floating panel. The agent passes rows it has, or a SELECT that the panel runs through the `query` tool of an SQL server added with `plugins/mcp.js`, so the rows never pass through the model. Without such a server, charts from rows still work. Observable Plot loads from jsDelivr the first time a chart is drawn.
+
+```json
+"plugins": [
+  { "url": "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/core/plugins/mcp.js", "options": { "url": "…" } },
+  "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/core/plugins/charts.js"
+]
+```
+
 `setup` runs after the map and the map tools exist and before the agent is built. It receives:
 
 | Field | What it is |
@@ -155,6 +164,7 @@ The agent loop, tool registry and chat come from [glen-harness](https://github.c
 | `map-tools.js` | The shared map-control tools from `app/map-control-tools.js`, with Portolan wording, plus `apply_style`, `set_raster_colormap` and `describe_layer` |
 | `system-prompt.md` | The base prompt; an app can replace it with `system_prompt_url` |
 | `plugins/mcp.js` | Plugin that adds the tools of one or more MCP servers, filtered by `include` or `exclude`, and the collections' GeoParquet URLs |
+| `plugins/charts.js` | Plugin that adds `render_chart`, with SQL run through the registered `query` tool |
 
 The core reuses these modules from `app/` unchanged: `map-control-tools.js` (the map tools both apps share), `catalog-tree.js` (finding collections by id at any depth, in our current STAC and the Portolan layout), `cog-tiles.js` (raster band settings and tile URLs), `map-manager.js` (layers, filters, styles, legend, tooltips), `layout-manager.js` with the header, theme and mobile sheet, `geocoder.js` and `data-page.js`.
 
