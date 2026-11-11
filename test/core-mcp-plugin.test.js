@@ -249,7 +249,8 @@ describe('mcp plugin setup', () => {
         expect(tools.registerRemote.mock.calls[0][3]).toEqual({ rank: 0, include: ['query'], exclude: undefined });
         // A worker has no origin to send a visitor's token to.
         expect(ready).toHaveLength(0);
-        // A reconnect opens a new transport over the same worker.
+        // A reconnect opens a new transport over the same worker, which answered.
+        workers[0].dispatchEvent(new Event('message'));
         const first = clients[0].transport;
         await clients[0].connect();
         expect(clients[0].transport).not.toBe(first);
@@ -265,6 +266,18 @@ describe('mcp plugin setup', () => {
         expect(workers[0].terminated).toBe(true);
         failWorkers = false;
         await clients[0].connect();
+        expect(workers).toHaveLength(2);
+        expect(clients[0].transport.port).toBe(workers[1]);
+    });
+
+    it('replaces a worker whose last connection got no answer', async () => {
+        const { ctx } = context();
+        await plugin.setup(ctx, { worker: 'w.js' });
+        workers[0].dispatchEvent(new Event('message'));
+        await clients[0].connect();          // answered before: same worker
+        expect(workers).toHaveLength(1);
+        await clients[0].connect();          // the last connection heard nothing
+        expect(workers[0].terminated).toBe(true);
         expect(workers).toHaveLength(2);
         expect(clients[0].transport.port).toBe(workers[1]);
     });

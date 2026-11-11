@@ -195,14 +195,21 @@ export default {
      * fails before it answers (its file is missing, or its imports fail) is
      * dropped and its transport closed, so the connect fails at once instead
      * of waiting out the request timeout; the next reconnect starts a new one.
+     * So does a worker that gave no answer over its last connection.
      */
     async workerClient(MCPClient, server) {
         const PostMessageTransport = await this.loadTransport();
         let worker = null;
+        let last = null;
         const transport = () => {
+            // A worker that never answered the last connection over it may
+            // be stuck without an error; replace it rather than wait again.
+            if (worker && last && !last.heard) { worker.terminate?.(); worker = null; }
             worker ??= this.startWorker(server);
             const w = worker;
             const t = new PostMessageTransport(w);
+            const mine = last = { heard: false };
+            w.addEventListener('message', () => { mine.heard = true; }, { once: true });
             const failed = () => {
                 if (worker === w) worker = null;
                 w.terminate?.();
