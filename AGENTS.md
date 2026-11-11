@@ -14,6 +14,7 @@ Core library for map-based applications with LLM-powered data analysis. Interact
 - `main.js` — Bootstrap: loads config, initializes catalog → map → tools → agent → UI
 - `dataset-catalog.js` — Fetches STAC collections, builds unified records
 - `catalog-tree.js` — Finds collections by id at any depth, through Catalogs and Collections, so both our current STAC and the Portolan layout resolve (#441). Shared with glen core.
+- `published-styles.js` — A collection's published MapLibre styles: finding them, matching each to its PMTiles file, turning one into the layer glen draws, describing its colours. Shared with glen core, which re-exports them from `core/portolan.js`. `app/` never imports from `core/`; the preview serves `app/` on its own, so such an import breaks it (`test/app-imports.test.js`).
 - `cog-tiles.js` — How a COG is drawn: band settings (`bidx`, nodata, classes, `unscale` for scaled bands) and the TiTiler tile URL. Shared with glen core, so a raster draws the same in both apps.
 - `catalog-tools.js` / `stac-details.js` — `get_schema` and `get_stac_details`, answered in the browser from the loaded STAC (a port of the MCP server's renderer). The MCP server's catalog tools are never registered (#441).
 - `map-manager.js` — Creates MapLibre map, manages layers/filters/styles

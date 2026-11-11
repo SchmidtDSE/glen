@@ -1,7 +1,7 @@
 import { validateChartSpec } from './chart-renderer.js';
 import { metadataUrlFromTileUrl } from './hex-layer-helpers.js';
 import { legendFromPaint } from './legend-helpers.js';
-import { describeColor } from '../core/portolan.js';
+import { describeColor } from './published-styles.js';
 import {
     createMapControlTools,
     createProjectionTool,
