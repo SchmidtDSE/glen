@@ -179,6 +179,39 @@ export function rasterBand(asset, render = null, bidx = null) {
     };
 }
 
+// The full app's names for layer settings, read as glen core's own so an
+// app's config carries over (SchmidtDSE/glen#441).
+const KEY_ALIASES = Object.freeze({
+    default_style: 'paint',
+    outline_style: 'outline_paint',
+    tooltip_fields: 'tooltip',
+    layer_type: 'render_type',
+});
+
+/**
+ * One layer's settings: a collection entry, then any asset or item entry
+ * over it, later ones winning. The full app's key names are read as core's
+ * (`default_style` as `paint`, `tooltip_fields` as `tooltip`, `outline_style`,
+ * `layer_type`), and `group` may be the full app's `{ name, collapsed }`.
+ *
+ * @param {...Object} layers - config objects, outermost first
+ * @returns {Object} merged settings; `group` is a name, `group_collapsed` a boolean
+ */
+export function layerSettings(...layers) {
+    const out = {};
+    for (const o of layers) {
+        if (!o || typeof o !== 'object') continue;
+        for (const [k, v] of Object.entries(o)) {
+            if (v !== undefined) out[KEY_ALIASES[k] || k] = v;
+        }
+    }
+    if (out.group && typeof out.group === 'object') {
+        out.group_collapsed = out.group.collapsed === true;
+        out.group = out.group.name || null;
+    }
+    return out;
+}
+
 /**
  * The drawable assets a collection entry asks for, in the entry's order, each
  * with its own config entry. Without an `assets` list every drawable asset is
@@ -188,7 +221,12 @@ export function rasterBand(asset, render = null, bidx = null) {
  *   keys, or objects with an `id` and that asset's settings
  * @param {Array} vectors - from {@link findVectorSources}
  * @param {Array} rasters - from {@link findRasterAssets}
- * @returns {{picks: Array<{kind: 'vector'|'raster', src: Object, entry: Object}>, missing: string[]}}
+ * An entry with `versions` (`[{ label, asset_id }]`, as in the full app)
+ * becomes one pick of kind `versioned`, whose `members` are the versions'
+ * assets, all of the first one's kind.
+ *
+ * @returns {{picks: Array<{kind: 'vector'|'raster'|'versioned', src?: Object, entry: Object,
+ *            vkind?: string, members?: Array<{label: string, kind: string, src: Object}>}>, missing: string[]}}
  */
 export function selectAssets(entries, vectors, rasters) {
     if (!Array.isArray(entries)) {
@@ -202,8 +240,27 @@ export function selectAssets(entries, vectors, rasters) {
     }
     const picks = [];
     const missing = [];
+    const find = (id) => {
+        const v = vectors.find(x => x.key === id || x.aliases?.includes(id));
+        if (v) return { kind: 'vector', src: v };
+        const r = rasters.find(x => x.key === id);
+        return r ? { kind: 'raster', src: r } : null;
+    };
     for (const raw of entries) {
         const entry = typeof raw === 'string' ? { id: raw } : { ...(raw || {}) };
+        if (Array.isArray(entry.versions) && entry.versions.length) {
+            const members = [];
+            for (const ver of entry.versions) {
+                const hit = find(ver?.asset_id);
+                if (hit) members.push({ label: String(ver.label ?? ver.asset_id), ...hit });
+                else missing.push(String(ver?.asset_id));
+            }
+            const vkind = members[0]?.kind;
+            for (const m of members) if (m.kind !== vkind) missing.push(`${m.src.key} (a ${m.kind} among ${vkind} versions)`);
+            const same = members.filter(m => m.kind === vkind);
+            if (same.length) picks.push({ kind: 'versioned', vkind, members: same, entry });
+            continue;
+        }
         const v = vectors.find(x => x.key === entry.id || x.aliases?.includes(entry.id));
         const r = !v && rasters.find(x => x.key === entry.id);
         if (v) picks.push({ kind: 'vector', src: v, entry });

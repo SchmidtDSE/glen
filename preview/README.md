@@ -183,3 +183,6 @@ config, `core/layers-input.json`, published at `/preview/<branch>/core-<name>/`.
 registry (#462): Tmax and the Tmax anomaly (band 3) as time series over all 78
 items, read from the collection's `items.parquet`, and two single days as item
 layers.
+`panel.json` shows the full app's layer panel settings in glen core, written as
+apps already write them (SchmidtDSE/glen#441): a versioned layer, a toggle group
+over two rasters, a collapsed group, and a layer with `"sidebar": false`.

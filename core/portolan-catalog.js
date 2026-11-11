@@ -27,7 +27,7 @@ import {
     resolveHref, findVectorSources, findStyleAssets, findRasterAssets,
     defaultRescale, styleToLayer, describeColor, describeStyleColours, pmtilesLayerInfo, stylesForFile,
     agentsLink, providerSummary, portolanVersion, collectionColumns,
-    rasterBand, selectAssets, itemHref, itemDate, itemMirrorUrl, framesFromItems, withAbsoluteHrefs,
+    rasterBand, selectAssets, layerSettings, itemHref, itemDate, itemMirrorUrl, framesFromItems, withAbsoluteHrefs,
 } from './portolan.js';
 import { findCollections } from '../app/catalog-tree.js';
 import { cogTileUrl } from '../app/cog-tiles.js';
@@ -186,6 +186,8 @@ export class PortolanCatalog {
             agentsUrl: agentsLink(collection, url),
             bbox: collection.extent?.spatial?.bbox?.[0] || null,
             columns: collectionColumns(collection),
+            // The full app's `"group": { "name", "collapsed" }` starts the group folded.
+            groupCollapsed: !!(spec.group && typeof spec.group === 'object' && spec.group.collapsed),
             layerIds: [],
             stac: collection,
             // glen's data page and citations read the raw record under this name.
@@ -204,10 +206,18 @@ export class PortolanCatalog {
 
         const { picks, missing } = selectAssets(spec.assets, vectors, rasters);
         if (missing.length) console.warn(`[Portolan] ${id}: no drawable asset ${missing.map(m => `"${m}"`).join(', ')}`);
-        for (const { kind, src, entry } of picks) {
+        for (const pick of picks) {
+            const { kind, src, entry } = pick;
+            const settings = layerSettings(spec, entry);
+            delete settings.items;
+            delete settings.assets;
+            if (kind === 'versioned') {
+                // A logical layer named by its entry, as in the full app.
+                await this._addVersioned(dataset, `${id}/${entry.id}`, entry.display_name || dataset.title, pick, settings, usableStyles);
+                continue;
+            }
             const layerId = many ? `${id}/${src.key}` : id;
             const title = entry.display_name || (many ? (src.title || `${dataset.title} (${src.key})`) : dataset.title);
-            const settings = { ...spec, ...entry };
             if (kind === 'vector') await this._addVector(dataset, layerId, title, src, settings, usableStyles);
             else this._addRaster(dataset, layerId, title, src, settings);
         }
@@ -255,15 +265,18 @@ export class PortolanCatalog {
         }
         const sourceLayer = v.layers[0] || styleSourceLayer || info.layerName || v.key;
 
-        // Every style converted for this geometry, keyed by name.
+        // Every style converted for this geometry, keyed by name. A render
+        // type set in config (the full app's `layer_type`) picks the geometry.
+        const forced = ['fill', 'line', 'circle'].includes(s.render_type) ? s.render_type : null;
+        const geometry = { fill: 'Polygon', line: 'LineString', circle: 'Point' }[forced] || info.geometryType;
         const namedStyles = new Map();
         for (const st of ownStyles) {
-            const converted = styleToLayer(st.doc, info.geometryType);
+            const converted = styleToLayer(st.doc, geometry);
             if (converted) namedStyles.set(st.name, { ...converted, title: st.title || st.doc?.name || st.name, isDefault: st.isDefault });
         }
         const chosenName = s.style && namedStyles.has(s.style) ? s.style : [...namedStyles.keys()][0];
         const chosen = chosenName ? namedStyles.get(chosenName) : null;
-        const renderType = chosen?.renderType || ({ Polygon: 'fill', LineString: 'line', Point: 'circle' }[info.geometryType] || 'fill');
+        const renderType = forced || chosen?.renderType || ({ Polygon: 'fill', LineString: 'line', Point: 'circle' }[info.geometryType] || 'fill');
         const paint = s.paint || chosen?.paint || { fill: DEFAULT_FILL, line: DEFAULT_LINE, circle: DEFAULT_CIRCLE }[renderType];
 
         this.layers.set(layerId, {
@@ -271,7 +284,6 @@ export class PortolanCatalog {
             datasetId: dataset.id,
             kind: 'vector',
             title,
-            group: s.group || null,
             visible: s.visible === true,
             url: v.url,
             sourceLayer,
@@ -279,8 +291,9 @@ export class PortolanCatalog {
             fields: info.fields,
             renderType,
             paint,
-            outlinePaint: chosen?.outlinePaint || null,
+            outlinePaint: s.outline_paint || chosen?.outlinePaint || null,
             filter: s.default_filter || chosen?.filter || null,
+            ...panelFields(dataset, s),
             tooltip: s.tooltip || defaultTooltip(info.fields, paint),
             styles: namedStyles,
             defaultStyle: chosenName || null,
@@ -309,7 +322,6 @@ export class PortolanCatalog {
             datasetId: dataset.id,
             kind: 'raster',
             title,
-            group: s.group || null,
             visible: s.visible === true,
             url: r.url,
             band,
@@ -318,6 +330,7 @@ export class PortolanCatalog {
             defaultColormap: colormap,
             defaultRescale: rescale,
             opacity: s.opacity ?? 0.8,
+            ...panelFields(dataset, s),
         });
         dataset.layerIds.push(layerId);
         return layerId;
@@ -342,7 +355,7 @@ export class PortolanCatalog {
         const [r] = findRasterAssets({ assets: { [latest.key]: latest.asset }, renders: collection.renders || {} }, latest.href);
         const base = r || { key: latest.key, url: latest.href, title: null, band: rasterBand(latest.asset), render: null, asset: latest.asset };
         base.url = latest.href;
-        const settings = { ...spec };
+        const settings = layerSettings(spec);
         delete settings.items;
         delete settings.assets;
         const title = spec.display_name || dataset.title;
@@ -396,6 +409,44 @@ export class PortolanCatalog {
         return out.filter(Boolean);
     }
 
+    /**
+     * Register a versioned layer (the full app's `versions`): one panel row
+     * with a dropdown over several assets of one kind. The starting version
+     * (`default_version`, by label) sets the layer's style; each version keeps
+     * its own source, and a raster version its own band and render.
+     */
+    async _addVersioned(dataset, layerId, title, pick, s, usableStyles) {
+        const idx = Math.max(0, pick.members.findIndex(m => m.label === s.default_version));
+        const start = pick.members[idx];
+        const added = pick.vkind === 'vector'
+            ? await this._addVector(dataset, layerId, title, start.src, s, usableStyles)
+            : this._addRaster(dataset, layerId, title, start.src, s);
+        const rec = added && this.layers.get(added);
+        if (!rec) return;
+        const versions = [];
+        for (const m of pick.members) {
+            if (pick.vkind === 'vector') {
+                let meta = null;
+                if (!m.src.layers[0]) {
+                    try { meta = await this.pmtilesMetadata(m.src.url); } catch { /* the starting version's layer name is used */ }
+                }
+                const sourceLayer = m.src.layers[0] || pmtilesLayerInfo(meta, null).layerName || rec.sourceLayer;
+                versions.push({ label: m.label, url: m.src.url, sourceLayer });
+            } else {
+                const otherBand = s.bidx != null && Number(s.bidx) !== 1;
+                const render = otherBand ? null : m.src.render;
+                const band = s.bidx != null ? rasterBand(m.src.asset, render, s.bidx) : m.src.band;
+                versions.push({
+                    label: m.label, url: m.src.url, band,
+                    colormap: s.colormap || render?.colormap || null,
+                    rescale: s.rescale || render?.rescale || defaultRescale(band),
+                });
+            }
+        }
+        rec.versions = versions;
+        rec.defaultVersionIndex = idx;
+    }
+
     /** True, with a warning, when a layer id is already registered. */
     _taken(layerId) {
         if (!this.layers.has(layerId)) return false;
@@ -442,7 +493,7 @@ export class PortolanCatalog {
                 const title = assetEntry.display_name || (itemMany ? `${itemTitle} (${src.title || src.key})` : itemTitle);
                 const itemSettings = { ...entry };
                 delete itemSettings.assets;
-                const settings = { ...collectionSettings, ...itemSettings, ...assetEntry };
+                const settings = layerSettings(collectionSettings, itemSettings, assetEntry);
                 const added = kind === 'vector'
                     ? await this._addVector(dataset, layerId, title, src, settings, usableStyles)
                     : this._addRaster(dataset, layerId, title, src, settings);
@@ -470,13 +521,18 @@ export class PortolanCatalog {
         for (const ds of this.datasets.values()) {
             for (const layerId of ds.layerIds) {
                 const l = this.layers.get(layerId);
+                if (l.sidebar === false && l.visible) {
+                    console.warn(`[Portolan] ${layerId} has "sidebar": false and "visible": true: it draws on load with no panel checkbox, so only the assistant can turn it off.`);
+                }
                 const base = {
                     layerId,
                     datasetId: ds.id,
                     group: l.group,
+                    groupCollapsed: l.groupCollapsed || false,
                     displayName: l.title,
                     defaultVisible: l.visible,
-                    sidebar: true,
+                    sidebar: l.sidebar !== false,
+                    toggleGroup: l.toggleGroup || null,
                 };
                 if (l.kind === 'vector') {
                     configs.push({
@@ -514,6 +570,19 @@ export class PortolanCatalog {
                             frameTileUrl: (href) => this.rasterTileUrl({ ...l, url: href }),
                         }),
                     });
+                }
+                // A versioned layer: one source per version, the style shared.
+                if (l.versions) {
+                    const cfg = configs[configs.length - 1];
+                    const safe = layerId.replace(/[^a-zA-Z0-9]/g, '-');
+                    cfg.versions = l.versions.map((v, i) => (l.kind === 'vector'
+                        ? { label: v.label, type: 'vector', sourceId: `src-${safe}-v${i}`, source: { type: 'vector', url: `pmtiles://${v.url}` }, sourceLayer: v.sourceLayer }
+                        : {
+                            label: v.label, type: 'raster', colormap: v.colormap, rescale: v.rescale, sourceId: `src-${safe}-v${i}`,
+                            source: { type: 'raster', tiles: [this.rasterTileUrl({ ...l, url: v.url, band: v.band, colormap: v.colormap || l.colormap, rescale: v.rescale || l.rescale })], tileSize: 256 },
+                        }));
+                    cfg.defaultVersionIndex = l.defaultVersionIndex;
+                    delete cfg.source;
                 }
             }
         }
@@ -560,8 +629,13 @@ export class PortolanCatalog {
             for (const layerId of ds.layerIds) {
                 const l = this.layers.get(layerId);
                 lines.push('');
+                const panelNotes = () => {
+                    if (l.versions) lines.push(`  Versions, switched in the layer panel: ${l.versions.map(v => v.label).join(', ')}; starts on ${l.versions[l.defaultVersionIndex]?.label}`);
+                    if (l.toggleGroup) lines.push(`  Toggle group "${l.toggleGroup}": one panel checkbox shows and hides every member together`);
+                };
                 if (l.kind === 'vector') {
                     lines.push(`- layer_id \`${layerId}\` — vector, ${(l.geometryType || 'unknown geometry').toLowerCase()}, drawn as ${l.renderType}${l.visible ? ', on at start' : ''}`);
+                    panelNotes();
                     const fields = Object.entries(l.fields);
                     if (fields.length) {
                         lines.push('  Feature properties (exact names for filters, styles and tooltips):');
@@ -586,6 +660,7 @@ export class PortolanCatalog {
                         b.bidx ? `band ${b.bidx}` : null,
                     ].filter(Boolean).join(', ');
                     lines.push(`- layer_id \`${layerId}\` — raster (COG)${where ? `, ${where}` : ''}, ${stats}; drawn with colormap \`${l.colormap}\` over ${l.rescale || 'the full range'}${l.visible ? ', on at start' : ''}`);
+                    panelNotes();
                     if (b.classes) lines.push(`  Classes: ${b.classes.slice(0, 20).map(c => `${c.value}=${c.description || c.name}`).join(', ')}`);
                 }
             }
@@ -606,6 +681,20 @@ export function exportCatalogView(catalog) {
             value: () => catalog.getAll().map(d => ({ ...d, _rawStac: withAbsoluteHrefs(d._rawStac, d.url) })),
         },
     });
+}
+
+/**
+ * A layer's place in the panel: its group (and whether that group starts
+ * folded), whether it has a panel row at all (`sidebar`), and the toggle
+ * group whose one row it shares, as in the full app.
+ */
+function panelFields(dataset, s) {
+    return {
+        group: s.group || null,
+        groupCollapsed: dataset.groupCollapsed || s.group_collapsed || false,
+        sidebar: s.sidebar !== false,
+        toggleGroup: typeof s.toggle_group === 'string' && s.toggle_group.trim() ? s.toggle_group.trim() : null,
+    };
 }
 
 /**
