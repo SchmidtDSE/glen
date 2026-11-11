@@ -26,11 +26,13 @@ const roles = (asset) => (Array.isArray(asset?.roles) ? asset.roles : []);
 const isSource = (asset) => roles(asset).includes('source');
 
 /**
- * The style assets of a collection, the default first.
+ * The style assets of a collection, defaults first.
  *
- * The default is the asset with both `style` and `default` roles; when no
- * asset carries `default` (allowed when there is only one style, and common
- * in v0.1 catalogs), an asset keyed `style` wins, else the first.
+ * A default is an asset with both `style` and `default` roles. A collection
+ * with several PMTiles files publishes one default per file, so every default
+ * is kept; {@link stylesForFile} picks a layer's own. When no asset carries
+ * `default` (allowed when there is only one style, and common in v0.1
+ * catalogs), an asset keyed `style` wins, else the first.
  *
  * @returns {Array<{key: string, name: string, title: string|null, url: string, isDefault: boolean}>}
  */
@@ -49,7 +51,7 @@ export function findStyleAssets(collection, collectionUrl) {
         const pick = styles.find(s => s.key === 'style') || styles[0];
         pick.isDefault = true;
     }
-    return [...styles.filter(s => s.isDefault).slice(0, 1), ...styles.filter(s => !s.isDefault)];
+    return [...styles.filter(s => s.isDefault), ...styles.filter(s => !s.isDefault)];
 }
 
 /**
