@@ -233,6 +233,19 @@ export function itemHref(collection, collectionUrl, itemId) {
 }
 
 /**
+ * A copy of a collection with every asset href made absolute. Portolan writes
+ * hrefs relative to the collection (`./data.parquet`); the session export
+ * matches a query's `s3://` paths to the collection by its asset hrefs, so a
+ * relative one would never be cited as queried.
+ */
+export function withAbsoluteHrefs(collection, collectionUrl) {
+    if (!collection || !collectionUrl) return collection;
+    const assets = Object.fromEntries(Object.entries(collection.assets || {})
+        .map(([k, a]) => [k, a?.href ? { ...a, href: resolveHref(a.href, collectionUrl) } : a]));
+    return { ...collection, assets };
+}
+
+/**
  * The collection's `items.parquet` mirror, which Portolan asks raster
  * collections to publish: one row per item, as stac-geoparquet. Found by the
  * `collection-mirror` role, else by a Parquet asset named for items.

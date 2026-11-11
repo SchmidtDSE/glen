@@ -27,7 +27,7 @@ import {
     resolveHref, findVectorSources, findStyleAssets, findRasterAssets,
     defaultRescale, styleToLayer, describeColor, describeStyleColours, pmtilesLayerInfo, stylesForFile,
     agentsLink, providerSummary, portolanVersion, collectionColumns,
-    rasterBand, selectAssets, itemHref, itemDate, itemMirrorUrl, framesFromItems,
+    rasterBand, selectAssets, itemHref, itemDate, itemMirrorUrl, framesFromItems, withAbsoluteHrefs,
 } from './portolan.js';
 import { findCollections } from '../app/catalog-tree.js';
 import { cogTileUrl } from '../app/cog-tiles.js';
@@ -593,6 +593,19 @@ export class PortolanCatalog {
         }
         return lines.join('\n');
     }
+}
+
+/**
+ * The catalog as the session export reads it: the same object, but each
+ * collection's raw STAC with absolute asset hrefs, so the report can cite the
+ * collections a session queried (Portolan hrefs are relative).
+ */
+export function exportCatalogView(catalog) {
+    return Object.create(catalog, {
+        getAll: {
+            value: () => catalog.getAll().map(d => ({ ...d, _rawStac: withAbsoluteHrefs(d._rawStac, d.url) })),
+        },
+    });
 }
 
 /**

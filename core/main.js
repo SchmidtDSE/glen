@@ -32,7 +32,7 @@ import {
     Agent, ToolRegistry, applyProxyModelList, buildUserModels, loadUserSettings,
 } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.4.0/src/core.js';
 import { ChatUI } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.4.0/ui/chat-ui.js';
-import { PortolanCatalog } from './portolan-catalog.js';
+import { PortolanCatalog, exportCatalogView } from './portolan-catalog.js';
 import { createCoreMapTools } from './map-tools.js';
 
 /** The ref this module was loaded at (a tag or SHA on jsDelivr), or 'dev'. */
@@ -144,9 +144,10 @@ export async function start({ plugins: extraPlugins = [] } = {}) {
     agent.setSystemPrompt(systemPrompt);
     // The session export documents SQL sessions; a map-only app leaves it off
     // unless its config turns it on, and then the harness loads it on first use.
+    // It redraws the session's charts with the charts plugin's renderer.
     appConfig.export ??= false;
-    const ui = new ChatUI(agent, appConfig, layoutRefs.chatMount, mapManager);
-    ui.catalog = catalog;
+    const ui = new ChatUI(agent, appConfig, layoutRefs.chatMount, mapManager, ctx.charts || null);
+    ui.catalog = exportCatalogView(catalog);
     ctx.agent = agent;
     ctx.ui = ui;
     for (const fn of readyHooks) {
@@ -157,6 +158,7 @@ export async function start({ plugins: extraPlugins = [] } = {}) {
 }
 
 /* ── Helpers ──────────────────────────────────────────────────────────── */
+
 
 /** Copy the deploy-time settings (models, keys) over the static config. */
 export function mergeRuntimeConfig(appConfig, runtimeConfig) {
