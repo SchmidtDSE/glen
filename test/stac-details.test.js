@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     rewriteHref, routeHint, parquetPath, isQueryableAsset, formatColumns,
-    formatParquetAssets, formatCollection, pyRepr, pyStr,
+    formatParquetAssets, formatCollection, formatItems, pyRepr, pyStr,
 } from '../app/stac-details.js';
 
 describe('S3 paths', () => {
@@ -134,5 +134,43 @@ describe('formatCollection', () => {
         const lines = formatParquetAssets({ assets: { p: { href: 'https://minio.example.org/b/x.parquet' } } });
         expect(lines[0]).toBe("  - p: `read_parquet('s3://b/x.parquet')`");
         expect(lines[1]).toContain("s3_endpoint='minio.example.org', s3_scope='s3://b'");
+    });
+});
+
+describe('STAC items (#462)', () => {
+    const URL = 'https://h/cat/heat/collection.json';
+    const col = {
+        id: 'heat', title: 'Heat',
+        extent: { temporal: { interval: [['2025-06-15T00:00:00Z', '2025-08-31T23:59:59Z']] } },
+        links: [{ rel: 'item', href: './a/a.json' }, { rel: 'item', href: './b/b.json' }, { rel: 'root', href: '../catalog.json' }],
+        assets: { mirror: { href: './items.parquet', type: 'application/vnd.apache.parquet', roles: ['collection-mirror'], title: 'STAC items as GeoParquet' } },
+    };
+    const item = {
+        id: 'a',
+        assets: {
+            data: { href: './a.tif', type: 'image/tiff; application=geotiff', bands: [{ name: 'tmax_c', unit: 'Cel' }, {}] },
+            table: { href: './a.parquet', type: 'application/vnd.apache.parquet' },
+        },
+    };
+
+    it('says how many items, their extent, the first item\'s assets, and where the full list is', () => {
+        expect(formatItems(col, item, { sampleUrl: 'https://s3-west.nrp-nautilus.io/b/heat/a/a.json' })).toEqual([
+            '\n**Items (2)**, 2025-06-15 to 2025-08-31.',
+            "First item's assets (`a`):",
+            '  - `data`: COG, 2 bands: `tmax_c` (Cel), `band 2`',
+            "  - `table`: GeoParquet, this item's: `read_parquet('s3://b/heat/a/a.parquet')`",
+            "The item list, with every item's dates and asset hrefs, is the items GeoParquet above.",
+        ]);
+    });
+
+    it('prints only the count without a sample item or extent, and nothing without items', () => {
+        expect(formatItems({ links: col.links }, null)).toEqual(['\n**Items (2)**.']);
+        expect(formatItems({ links: [] }, item)).toEqual([]);
+    });
+
+    it('closes the collection text, after its SQL data', () => {
+        const text = formatCollection(col, { url: URL, sampleItem: { doc: item, url: 'https://h/cat/heat/a/a.json' } });
+        expect(text.indexOf('SQL data')).toBeLessThan(text.indexOf('**Items (2)**'));
+        expect(formatCollection({ id: 'x', links: [] }, {})).not.toContain('Items');
     });
 });
