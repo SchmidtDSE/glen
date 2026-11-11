@@ -78,3 +78,25 @@ are tree-shaken out and are not present in the bundle.
 `test/mcp-client.test.js` mocks `../app/vendor/mcp-sdk.js` by relative path. If
 this file is ever renamed or moved, that mock must move with it, or the tests
 will silently load the real 218 kB bundle instead of the stubs.
+
+## `hyparquet.js` — Parquet reader
+
+| | |
+|---|---|
+| Package | `hyparquet` |
+| Version | **1.32.0** (pinned exactly in `devDependencies`) |
+| Built with | `esbuild` **0.28.2**, as above |
+| Entry point | `scripts/hyparquet-entry.js` |
+| Rebuild | `pnpm run build:vendor` (builds both files) |
+| Consumed by | `core/portolan-catalog.js` |
+
+glen core reads a raster series' item list from the collection's
+`items.parquet` mirror, which Portolan asks raster collections to publish
+(#462): one request for the whole list instead of one per item. hyparquet is
+pure JavaScript with no dependencies, so it bundles to about 60 kB (19 kB
+gzipped). It is imported dynamically, only when a series layer loads, so it
+is never in the boot module graph and an app without a series never fetches
+it. It is vendored for the same reasons as the SDK: no third-party ESM host at
+runtime, and a committed file that CI can rebuild and compare.
+
+hyparquet is MIT and has no transitive dependencies.

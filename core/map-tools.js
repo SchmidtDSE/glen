@@ -12,6 +12,7 @@ import { describeColor } from './portolan.js';
 import {
     createMapControlTools,
     createProjectionTool,
+    createSetTimeTool,
     PICK_LAYER_NUDGE,
 } from '../app/map-control-tools.js';
 
@@ -104,6 +105,9 @@ Colour maps: viridis, magma, inferno, plasma, cividis, ylorrd, ylgnbu, blues, gr
                 return json({ success: true, ...describeLayer(catalog, l) });
             },
         },
+        // Only an app with a series of items gets set_time (#462), as in the
+        // full app, so other apps' tool lists are unchanged.
+        ...([...catalog.layers.values()].some(l => l.series) ? [createSetTimeTool(mapManager)] : []),
     ];
 }
 
@@ -146,6 +150,7 @@ export function setRasterColormap(mapManager, catalog, layerId, { colormap, resc
     if (!l) return { success: false, error: `Unknown layer: ${layerId}` };
     if (l.kind !== 'raster') return { success: false, error: `${layerId} is a vector layer; use set_style or apply_style.` };
     if (l.band?.classes) return { success: false, error: `${layerId} is categorical; its colours come from the publisher's class list.` };
+    if (l.series) return { success: false, error: `${layerId} is a time series; its colour map and range are set in the app's config and stay the same on every date.` };
     if (colormap) l.colormap = String(colormap).toLowerCase();
     if (rescale) l.rescale = rescale;
     const state = mapManager.layers.get(layerId);

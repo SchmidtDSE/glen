@@ -1,12 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
     resolveHref, findVectorSources, findStyleAssets, findRasterAssets, rasterBand,
     defaultRescale, styleToLayer, stripGeometryTypeFilter, describeColor,
     pmtilesLayerInfo, normalizeGeometryType, guardMissingValues, styleName,
     portolanVersion, providerSummary, agentsLink, FAINT_OUTLINE, collectionColumns,
-    styleSourceFile, stylesForFile, selectAssets, itemHref, itemDate,
+    styleSourceFile, stylesForFile, selectAssets, itemHref, itemDate, itemMirrorUrl, framesFromItems,
 } from '../core/portolan.js';
-import { PortolanCatalog, titilerTileUrl, defaultTooltip } from '../core/portolan-catalog.js';
+import { PortolanCatalog, titilerTileUrl, defaultTooltip, topLevelColumns } from '../core/portolan-catalog.js';
 
 const BASE = 'https://example.org/cat/roads/collection.json';
 
@@ -514,5 +514,97 @@ describe('assets and items of a collection (#462)', () => {
         expect(idx).toMatchObject({ displayName: 'Index', defaultVisible: true, paint: { 'raster-opacity': 0.9 } });
         expect(zones).toMatchObject({ type: 'vector', displayName: 'Two (zones)' });
         expect(c.layers.has('two/pop')).toBe(false);
+    });
+});
+
+// #462: a collection's items as one raster time series.
+describe('a series of items (#462)', () => {
+    const CURL = 'https://example.org/cat/heat/collection.json';
+    const tif = (href) => ({ href, type: 'image/tiff; application=geotiff; profile=cloud-optimized', roles: ['data'],
+        bands: [{ nodata: -9999, unit: 'Cel', statistics: { minimum: 10, maximum: 40, mean: 26, stddev: 5 } }, { nodata: -9999 }] });
+    const ids = ['heat-2025-06-16', 'heat-2025-06-15', 'heat-2025-06-17'];
+    // stac-geoparquet rows: properties at top level, dates as Date objects.
+    const rows = ids.map(id => ({ id, datetime: new Date(`${id.slice(5)}T12:00:00Z`), assets: { data: tif(`./${id}.tif`), thumb: { href: './t.jpg', type: 'image/jpeg' } } }));
+    const heat = {
+        type: 'Collection', id: 'heat', title: 'Daily heat',
+        links: ids.map(id => ({ rel: 'item', href: `./${id}/${id}.json` })),
+        assets: { 'geoparquet-items': { href: './items.parquet', type: 'application/vnd.apache.parquet', roles: ['collection-mirror'] } },
+    };
+    const itemJson = (row) => ({ type: 'Feature', id: row.id, properties: { datetime: row.datetime.toISOString() }, assets: row.assets });
+    const docs = Object.fromEntries([[CURL, heat], ...rows.map(r => [`https://example.org/cat/heat/${r.id}/${r.id}.json`, itemJson(r)])]);
+    const fetchJson = vi.fn(async (u) => { if (!docs[u]) throw new Error(`404 ${u}`); return structuredClone(docs[u]); });
+    const control = { bind: 'frame', frames: 'items', frame_ms: 300 };
+
+    it('finds the item mirror and turns items into dated frames, hrefs against each item', () => {
+        expect(itemMirrorUrl(heat, CURL)).toBe('https://example.org/cat/heat/items.parquet');
+        expect(itemMirrorUrl({ assets: { items: { href: 'x/items.parquet', type: 'application/vnd.apache.parquet' } } }, CURL)).toBe('https://example.org/cat/heat/x/items.parquet');
+        expect(itemMirrorUrl({ assets: {} }, CURL)).toBeNull();
+        const frames = framesFromItems(rows.map(r => ({ id: r.id, url: itemHref(heat, CURL, r.id), item: r })));
+        expect(frames.map(f => [f.datetime, f.href])).toEqual([
+            ['2025-06-15', 'https://example.org/cat/heat/heat-2025-06-15/heat-2025-06-15.tif'],
+            ['2025-06-16', 'https://example.org/cat/heat/heat-2025-06-16/heat-2025-06-16.tif'],
+            ['2025-06-17', 'https://example.org/cat/heat/heat-2025-06-17/heat-2025-06-17.tif'],
+        ]);
+        expect(framesFromItems([{ id: 'x', url: CURL, item: { properties: {} , assets: { data: tif('a.tif') } } }])).toEqual([]);
+    });
+
+    it('reads the mirror once and draws one layer over every date, starting on the latest', async () => {
+        fetchJson.mockClear();
+        const readItemMirror = vi.fn(async () => structuredClone(rows));
+        const c = new PortolanCatalog({ fetchJson, pmtilesMetadata: async () => null, readItemMirror });
+        await c.load({ collections: [{ url: CURL, colormap: 'rdylbu_r', rescale: '10,40', control }] });
+        expect(readItemMirror).toHaveBeenCalledWith('https://example.org/cat/heat/items.parquet');
+        expect(fetchJson).toHaveBeenCalledTimes(1); // the collection only
+        const [cfg] = c.getMapLayerConfigs();
+        expect(cfg.layerId).toBe('heat');
+        expect(cfg.control).toEqual(control);
+        expect(cfg.frameSource.frames.map(f => f.datetime)).toEqual(['2025-06-15', '2025-06-16', '2025-06-17']);
+        expect(cfg.source.tiles[0]).toContain(encodeURIComponent('heat-2025-06-17.tif'));
+        expect(cfg.source.tiles[0]).toContain('bidx=1');
+        const frameUrl = cfg.frameTileUrl('https://example.org/cat/heat/heat-2025-06-15/heat-2025-06-15.tif');
+        expect(frameUrl).toContain('colormap_name=rdylbu_r');
+        expect(frameUrl).toContain('rescale=10,40');
+        expect(c.generatePrompt()).toContain('time series of 3 dates from 2025-06-15 to 2025-06-17');
+    });
+
+    it('reads the items one by one when the mirror is unreadable', async () => {
+        fetchJson.mockClear();
+        const c = new PortolanCatalog({ fetchJson, pmtilesMetadata: async () => null, readItemMirror: async () => { throw new Error('no range requests'); } });
+        await c.load({ collections: [{ url: CURL, control, bidx: 2 }] });
+        expect(fetchJson).toHaveBeenCalledTimes(4);
+        const l = c.layers.get('heat/band-2');
+        expect(l.series.frames).toHaveLength(3);
+        expect(l.band.bidx).toBe(2);
+    });
+
+    it('keeps config order when one collection is listed twice', async () => {
+        const slowFirst = async (u) => { if (u === CURL) await new Promise(r => setTimeout(r, 0)); return fetchJson(u); };
+        let calls = 0;
+        const c = new PortolanCatalog({
+            fetchJson: async (u) => (u === CURL && calls++ === 0 ? new Promise(r => setTimeout(() => r(structuredClone(heat)), 20)) : slowFirst(u)),
+            pmtilesMetadata: async () => null,
+            readItemMirror: async () => structuredClone(rows),
+        });
+        await c.load({ collections: [
+            { url: CURL, id: 'series', control },
+            { url: CURL, id: 'days', items: ['heat-2025-06-15'] },
+        ] });
+        expect([...c.datasets.keys()]).toEqual(['series', 'days']);
+    });
+
+    it('names a series beside other layers of the collection', async () => {
+        const c = new PortolanCatalog({ fetchJson, pmtilesMetadata: async () => null, readItemMirror: async () => structuredClone(rows) });
+        await c.load({ collections: [{ url: CURL, control, items: ['heat-2025-06-15'] }] });
+        expect(c.datasets.get('heat').layerIds).toEqual(['heat/heat-2025-06-15', 'heat/series']);
+    });
+
+    it('reads the top-level column names of a Parquet schema', () => {
+        const schema = [
+            { name: 'root', num_children: 3 },
+            { name: 'id' },
+            { name: 'assets', num_children: 1 }, { name: 'data', num_children: 1 }, { name: 'href' },
+            { name: 'datetime' },
+        ];
+        expect(topLevelColumns(schema)).toEqual(['id', 'assets', 'datetime']);
     });
 });

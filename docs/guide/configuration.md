@@ -398,6 +398,8 @@ The preferred source of dates is a STAC asset that lists them, which the data pi
 
 A monthly series dates each frame on the first of the month and is shown as `YYYY-MM`.
 
+glen core also plays a collection whose dates are STAC items, with `"frames": "items"`; see `core/README.md`.
+
 With `"frames": "list"`, the app instead lists the folder that holds the layer's COG, using an S3 ListObjectsV2 request, and reads each file's date from an 8-digit (`YYYYMMDD`) or 6-digit (`YYYYMM`) run in its name. Files without one, such as `ssta-latest.tif`, are skipped. This needs a path-style S3 URL and a bucket that allows cross-origin listing. Use it for a series that has no frame-list asset yet.
 
 ## Charts (opt-in)

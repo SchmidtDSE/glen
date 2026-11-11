@@ -97,13 +97,15 @@ export function parseListing(xml, base) {
 
 /**
  * Load a series' frames.
- * @param {{ indexUrl?: string, listFrom?: string }} source
+ * @param {{ indexUrl?: string, listFrom?: string, frames?: Frame[] }} source
  *   `indexUrl`: the frame-list asset's href. `listFrom`: a COG href whose
- *   directory is listed.
+ *   directory is listed. `frames`: a list already read, such as glen core's
+ *   frames from a collection's items (#462).
  * @param {Function} [fetchFn=fetch]
  * @returns {Promise<Frame[]>}
  */
 export async function loadFrames(source, fetchFn = globalThis.fetch) {
+    if (Array.isArray(source?.frames)) return parseFrameList({ frames: source.frames });
     if (source?.indexUrl) {
         const res = await fetchFn(source.indexUrl);
         if (!res.ok) throw new Error(`Frame list ${source.indexUrl} returned ${res.status}`);
@@ -125,7 +127,7 @@ export async function loadFrames(source, fetchFn = globalThis.fetch) {
         }
         return sortFrames(frames);
     }
-    throw new Error('A time series needs a frame-list asset or frames: "list".');
+    throw new Error('A time series needs a frame-list asset, frames: "list", or a list of frames.');
 }
 
 /**

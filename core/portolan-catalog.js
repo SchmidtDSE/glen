@@ -27,7 +27,7 @@ import {
     resolveHref, findVectorSources, findStyleAssets, findRasterAssets,
     defaultRescale, styleToLayer, describeColor, describeStyleColours, pmtilesLayerInfo, stylesForFile,
     agentsLink, providerSummary, portolanVersion, collectionColumns,
-    rasterBand, selectAssets, itemHref, itemDate,
+    rasterBand, selectAssets, itemHref, itemDate, itemMirrorUrl, framesFromItems,
 } from './portolan.js';
 import { findCollections } from '../app/catalog-tree.js';
 import { cogTileUrl } from '../app/cog-tiles.js';
@@ -37,6 +37,10 @@ const DEFAULT_FILL = { 'fill-color': '#2E7D32', 'fill-opacity': 0.5 };
 const DEFAULT_LINE = { 'line-color': '#1565C0', 'line-width': 1.5 };
 const DEFAULT_CIRCLE = { 'circle-color': '#C62828', 'circle-radius': 4, 'circle-opacity': 0.8 };
 const TOOLTIP_FIELDS = 4;
+// Without an items.parquet mirror a series reads one JSON file per item; past
+// this many it reads only the most recent, and says so.
+const MAX_SERIES_ITEMS = 400;
+const ITEM_FETCHES_AT_ONCE = 8;
 
 /**
  * TiTiler tile URL for a single-band COG, built by the full app's
@@ -71,6 +75,7 @@ export class PortolanCatalog {
     constructor(deps = {}) {
         this.fetchJson = deps.fetchJson || defaultFetchJson;
         this.pmtilesMetadata = deps.pmtilesMetadata || browserPmtilesMetadata;
+        this.readItemMirror = deps.readItemMirror || defaultReadItemMirror;
         /** @type {Map<string, Object>} collection id → dataset record */
         this.datasets = new Map();
         /** @type {Map<string, Object>} layer id → layer record */
@@ -104,9 +109,10 @@ export class PortolanCatalog {
         for (const r of results) {
             if (r.status === 'rejected') console.warn('[Portolan] Failed to load a collection:', r.reason?.message || r.reason);
         }
-        // Keep config order, which is also map draw order.
-        const order = targets.map(t => t.url);
-        this.datasets = new Map([...this.datasets.entries()].sort((a, b) => order.indexOf(a[1].url) - order.indexOf(b[1].url)));
+        // Keep config order, which is also map draw order. Entries, not URLs:
+        // one collection can be listed twice (a series and some single days).
+        const ordered = results.map(r => (r.status === 'fulfilled' ? r.value : null)).filter(Boolean);
+        this.datasets = new Map(ordered.map(d => [d.id, d]));
         console.log(`[Portolan] ${this.datasets.size} collections, ${this.layers.size} layers`);
     }
 
@@ -207,6 +213,11 @@ export class PortolanCatalog {
         }
 
         if (Array.isArray(spec.items)) await this._addItems(dataset, collection, url, spec, usableStyles);
+
+        if (spec.control?.bind === 'frame' && spec.control.frames === 'items') {
+            const seriesId = vectors.length + rasters.length > 0 || Array.isArray(spec.items) ? `${id}/series` : id;
+            await this._addSeries(dataset, collection, url, spec, seriesId);
+        }
 
         if (!dataset.layerIds.length) {
             const hasItems = (collection.links || []).some(l => l.rel === 'item');
@@ -310,6 +321,79 @@ export class PortolanCatalog {
         });
         dataset.layerIds.push(layerId);
         return layerId;
+    }
+
+    /**
+     * Register a collection's items as one raster time series (#462): a
+     * collection entry with `control: { bind: "frame", frames: "items" }`.
+     * The dates come from the collection's items.parquet mirror when it has
+     * one, else from its item links. The layer starts on the latest date and
+     * the full app's frame player steps through the rest.
+     */
+    async _addSeries(dataset, collection, url, spec, layerId) {
+        const items = await this._readSeriesItems(collection, url, dataset.id);
+        const control = { ...spec.control };
+        const frames = framesFromItems(items, control.asset || null);
+        if (!frames.length) {
+            console.warn(`[Portolan] ${dataset.id}: no dated COG among ${items.length} items, so no time series`);
+            return;
+        }
+        const latest = frames[frames.length - 1];
+        const [r] = findRasterAssets({ assets: { [latest.key]: latest.asset }, renders: collection.renders || {} }, latest.href);
+        const base = r || { key: latest.key, url: latest.href, title: null, band: rasterBand(latest.asset), render: null, asset: latest.asset };
+        base.url = latest.href;
+        const settings = { ...spec };
+        delete settings.items;
+        delete settings.assets;
+        const title = spec.display_name || dataset.title;
+        const added = this._addRaster(dataset, layerId, title, base, settings);
+        const rec = added && this.layers.get(added);
+        if (!rec) return;
+        rec.series = {
+            control,
+            frames: frames.map(f => ({ datetime: f.datetime, href: f.href })),
+            first: frames[0].datetime,
+            last: latest.datetime,
+        };
+    }
+
+    /**
+     * A series' items as `{ id, url, item }`, from the item mirror or the
+     * item links. Mirror rows are stac-geoparquet: the properties sit at top
+     * level and the asset hrefs are relative to the item's own JSON.
+     */
+    async _readSeriesItems(collection, url, datasetId) {
+        const mirror = itemMirrorUrl(collection, url);
+        if (mirror) {
+            try {
+                const rows = await this.readItemMirror(mirror);
+                const items = rows.filter(row => row?.id != null).map(row => ({ id: String(row.id), url: itemHref(collection, url, row.id), item: row }));
+                if (items.length) return items;
+            } catch (e) {
+                console.warn(`[Portolan] ${datasetId}: item mirror ${mirror} unreadable (${e.message}); reading the items one by one`);
+            }
+        }
+        let links = (collection.links || []).filter(l => l.rel === 'item' && typeof l.href === 'string');
+        if (links.length > MAX_SERIES_ITEMS) {
+            console.warn(`[Portolan] ${datasetId}: ${links.length} items and no item mirror, so only the last ${MAX_SERIES_ITEMS} are read`);
+            links = links.slice(-MAX_SERIES_ITEMS);
+        }
+        const out = new Array(links.length);
+        let next = 0;
+        const worker = async () => {
+            while (next < links.length) {
+                const i = next++;
+                const itemUrl = resolveHref(links[i].href, url);
+                try {
+                    const item = await this.fetchJson(itemUrl);
+                    out[i] = { id: String(item?.id ?? ''), url: itemUrl, item };
+                } catch (e) {
+                    console.warn(`[Portolan] ${datasetId}: item ${itemUrl} unreadable: ${e.message}`);
+                }
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(ITEM_FETCHES_AT_ONCE, links.length) }, worker));
+        return out.filter(Boolean);
     }
 
     /** True, with a warning, when a layer id is already registered. */
@@ -423,6 +507,12 @@ export class PortolanCatalog {
                         legendClasses: l.band?.classes
                             ? l.band.classes.map(c => ({ value: c.value, name: c.description || c.name || String(c.value), 'color-hint': c.color_hint || c['color-hint'] }))
                             : null,
+                        // A series of items plays in the full app's frame player.
+                        ...(l.series && {
+                            control: l.series.control,
+                            frameSource: { frames: l.series.frames },
+                            frameTileUrl: (href) => this.rasterTileUrl({ ...l, url: href }),
+                        }),
                     });
                 }
             }
@@ -490,7 +580,11 @@ export class PortolanCatalog {
                 } else {
                     const b = l.band || {};
                     const stats = b.min != null ? `values ${fmt(b.min)} to ${fmt(b.max)}, mean ${fmt(b.mean)}${b.unit ? ` ${b.unit}` : ''}` : 'no statistics published';
-                    const where = [l.itemId ? `item \`${l.itemId}\`${l.date ? ` (${l.date})` : ''}` : null, b.bidx ? `band ${b.bidx}` : null].filter(Boolean).join(', ');
+                    const where = [
+                        l.itemId ? `item \`${l.itemId}\`${l.date ? ` (${l.date})` : ''}` : null,
+                        l.series ? `time series of ${l.series.frames.length} dates from ${l.series.first} to ${l.series.last}, one item each, starting on ${l.series.last}; set_time picks the date` : null,
+                        b.bidx ? `band ${b.bidx}` : null,
+                    ].filter(Boolean).join(', ');
                     lines.push(`- layer_id \`${layerId}\` — raster (COG)${where ? `, ${where}` : ''}, ${stats}; drawn with colormap \`${l.colormap}\` over ${l.rescale || 'the full range'}${l.visible ? ', on at start' : ''}`);
                     if (b.classes) lines.push(`  Classes: ${b.classes.slice(0, 20).map(c => `${c.value}=${c.description || c.name}`).join(', ')}`);
                 }
@@ -533,6 +627,45 @@ function oneLine(text, cap) {
 function fmt(v) {
     if (v == null) return '?';
     return Math.abs(v) >= 100 ? Math.round(v).toLocaleString('en-US') : Number(v.toFixed(2)).toString();
+}
+
+/**
+ * Read a stac-geoparquet item mirror with the vendored hyparquet, loaded only
+ * now. Only the columns a series needs are read, of those the file has.
+ * Byte ranges first; a host that refuses them gets one plain download.
+ */
+async function defaultReadItemMirror(url) {
+    const { parquetReadObjects, parquetMetadataAsync, asyncBufferFromUrl } = await import('../app/vendor/hyparquet.js');
+    let file;
+    try {
+        file = await asyncBufferFromUrl({ url });
+    } catch {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`${res.status} for ${url}`);
+        file = await res.arrayBuffer();
+    }
+    const metadata = await parquetMetadataAsync(file);
+    const have = new Set(topLevelColumns(metadata.schema));
+    const columns = ['id', 'datetime', 'start_datetime', 'assets'].filter(c => have.has(c));
+    return parquetReadObjects({ file, metadata, columns });
+}
+
+/** The top-level column names of a Parquet schema (a flattened tree). */
+export function topLevelColumns(schema) {
+    const names = [];
+    const skip = (i) => {
+        const n = schema[i]?.num_children || 0;
+        let j = i + 1;
+        for (let k = 0; k < n; k++) j = skip(j);
+        return j;
+    };
+    let i = 1;
+    const roots = schema?.[0]?.num_children || 0;
+    for (let k = 0; k < roots && i < schema.length; k++) {
+        names.push(schema[i].name);
+        i = skip(i);
+    }
+    return names;
 }
 
 async function defaultFetchJson(url) {

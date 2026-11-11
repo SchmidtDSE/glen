@@ -232,10 +232,51 @@ export function itemHref(collection, collectionUrl, itemId) {
     return resolveHref(`./${encodeURIComponent(id)}/${encodeURIComponent(id)}.json`, collectionUrl);
 }
 
+/**
+ * The collection's `items.parquet` mirror, which Portolan asks raster
+ * collections to publish: one row per item, as stac-geoparquet. Found by the
+ * `collection-mirror` role, else by a Parquet asset named for items.
+ *
+ * @returns {string|null} its URL
+ */
+export function itemMirrorUrl(collection, collectionUrl) {
+    const assets = Object.entries(collection?.assets || {});
+    const hit = assets.find(([, a]) => roles(a).includes('collection-mirror'))
+        || assets.find(([k, a]) => /parquet/i.test(String(a?.type || '')) && /items/i.test(`${k} ${a?.href || ''}`));
+    return hit ? resolveHref(hit[1].href, collectionUrl) : null;
+}
+
+/**
+ * The frames of a series from its items, oldest first: one per item that has
+ * a date and the asset, its COG resolved against the item's own location
+ * (asset hrefs in an item, and in the mirror, are relative to the item JSON).
+ *
+ * @param {Array<{id: string, url: string, item: Object}>} items
+ * @param {string|null} assetKey - the item asset to draw; default the first COG
+ * @returns {Array<{datetime: string, href: string, itemId: string, key: string, asset: Object}>}
+ */
+export function framesFromItems(items, assetKey = null) {
+    const frames = [];
+    for (const { id, url, item } of items) {
+        const date = itemDate(item);
+        if (!date) continue;
+        const entries = Object.entries(item?.assets || {});
+        const pick = assetKey
+            ? entries.find(([k]) => k === assetKey)
+            : entries.find(([, a]) => isCogAsset(a) && (roles(a).includes('data') || roles(a).includes('visual')))
+                || entries.find(([, a]) => isCogAsset(a));
+        if (!pick?.[1]?.href) continue;
+        frames.push({ datetime: date, href: resolveHref(pick[1].href, url), itemId: String(id), key: pick[0], asset: pick[1] });
+    }
+    return frames.sort((a, b) => (a.datetime < b.datetime ? -1 : a.datetime > b.datetime ? 1 : 0));
+}
+
 /** An item's date for the prompt and titles: its `datetime`, else its start. */
 export function itemDate(item) {
-    const p = item?.properties || {};
+    // A stac-geoparquet row carries the properties at top level, as dates.
+    const p = item?.properties || item || {};
     const d = p.datetime || p.start_datetime || null;
+    if (d instanceof Date) return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
     return typeof d === 'string' ? d.slice(0, 10) : null;
 }
 

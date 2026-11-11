@@ -147,3 +147,15 @@ describe('createCoreMapTools', () => {
         expect(filter.inputSchema.properties.filter.items).toEqual({});
     });
 });
+
+describe('a series of items (#462)', () => {
+    it('gets set_time only when the catalog has a series, and keeps its colours', () => {
+        const { mapManager, catalog } = setup();
+        const names = () => createCoreMapTools(mapManager, catalog).map(t => t.name);
+        expect(names()).not.toContain('set_time');
+        catalog.layers.get('pop').series = { control: { bind: 'frame', frames: 'items' }, frames: [], first: '2025-06-15', last: '2025-08-31' };
+        expect(names()).toContain('set_time');
+        expect(setRasterColormap(mapManager, catalog, 'pop', { colormap: 'magma' })).toMatchObject({ success: false });
+        expect(catalog.layers.get('pop').colormap).toBe('viridis');
+    });
+});
