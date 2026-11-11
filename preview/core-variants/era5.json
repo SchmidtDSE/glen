@@ -1,5 +1,16 @@
 {
-  "view": { "center": [5, 46], "zoom": 4 },
+  "sidebar": {
+    "enabled": true,
+    "title": "Summer heat in Europe, 2025",
+    "chat_title": "Chat"
+  },
+  "view": {
+    "center": [
+      5,
+      46
+    ],
+    "zoom": 4
+  },
   "welcome": {
     "message": "I can show and colour daily heat over western Europe in summer 2025, from ERA5-Land. Each day is an item of one collection. Try asking:",
     "examples": [
@@ -15,10 +26,26 @@
       "colormap": "rdylbu_r",
       "rescale": "10,40",
       "items": [
-        { "id": "tmax-tmin-2025-06-15", "display_name": "Tmax, 15 June" },
-        { "id": "tmax-tmin-2025-07-01", "display_name": "Tmax, 1 July", "visible": true },
-        { "id": "tmax-tmin-2025-07-01", "bidx": 3, "display_name": "Tmax anomaly, 1 July", "colormap": "rdbu_r", "rescale": "-10,10" },
-        { "id": "tmax-tmin-2025-08-11", "display_name": "Tmax, 11 August" }
+        {
+          "id": "tmax-tmin-2025-06-15",
+          "display_name": "Tmax, 15 June"
+        },
+        {
+          "id": "tmax-tmin-2025-07-01",
+          "display_name": "Tmax, 1 July",
+          "visible": true
+        },
+        {
+          "id": "tmax-tmin-2025-07-01",
+          "bidx": 3,
+          "display_name": "Tmax anomaly, 1 July",
+          "colormap": "rdbu_r",
+          "rescale": "-10,10"
+        },
+        {
+          "id": "tmax-tmin-2025-08-11",
+          "display_name": "Tmax, 11 August"
+        }
       ]
     }
   ]
