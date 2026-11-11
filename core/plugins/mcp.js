@@ -39,6 +39,19 @@
  * read collections the app does not list (glen#441, as in the full app).
  * `s3_sources` in the app config adds https → s3 path rules, as there.
  *
+ * A server can also run in the page, in a Web Worker, such as geo-query-wasm
+ * (DuckDB-wasm in the visitor's browser). Its entry names the worker file in
+ * place of a URL, with `worker_config` sent to the worker as JSON in a
+ * `config` search parameter, which is where geo-query-wasm reads it:
+ *
+ *   { "worker": "geo-query-worker.js", "worker_config": { "discovery": false },
+ *     "include": ["query"] }
+ *
+ * A page may start a Worker only from its own origin, so the app serves that
+ * file; for geo-query-wasm it is one line that imports its worker.js from
+ * jsDelivr. The path is relative to the page. A worker entry takes the same
+ * rank, filters and prompt as any other, and never offers a visitor token.
+ *
  * When the first server is on another origin and its entry has no
  * Authorization header, a visitor can enter their own token for it in the
  * chat's settings (glen#442). It is saved in their browser and sent to that
@@ -51,25 +64,36 @@ import { createCatalogTools, MCP_CATALOG_TOOLS } from '../../app/catalog-tools.j
 
 // The same glen-harness tag as the imports in core/main.js; a test checks.
 export const HARNESS_MCP_CLIENT = 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.4.0/src/mcp-client.js';
+const HARNESS_POST_MESSAGE = new URL('post-message-transport.js', HARNESS_MCP_CLIENT).href;
 
 /**
  * The servers to connect to, in rank order, from the plugin options. The
  * single-server keys (`url`, `headers`, `prompt`, `include`, `exclude`) are
  * the shorthand for a one-entry `servers` list; `config.mcp_url` is the
- * fallback URL for that shorthand.
+ * fallback URL for that shorthand. An entry with `worker` names a worker
+ * file in place of a URL; `url` is then its label, `worker:<path>`.
  *
  * @returns {Array<{url: string, headers: Object, prompt?: string,
- *   include?: string[], exclude?: string[]}>}
+ *   include?: string[], exclude?: string[], worker?: string,
+ *   worker_config?: Object}>}
  */
 export function resolveServers(options = {}, config = {}) {
     const listed = Array.isArray(options.servers)
         ? options.servers
-        : [{ ...options, url: options.url || config.mcp_url }];
-    const servers = listed.filter((s) => s && typeof s.url === 'string' && s.url.trim());
+        : [{ ...options, url: options.worker ? undefined : (options.url || config.mcp_url) }];
+    const given = (v) => typeof v === 'string' && v.trim();
+    const servers = listed.filter((s) => s && (given(s.worker) || given(s.url)));
     if (!servers.length) throw new Error('mcp plugin: options.url or options.servers is required');
-    return servers.map(({ url, headers, prompt, include, exclude }) => ({
-        url, headers: headers || {}, prompt, include, exclude,
-    }));
+    return servers.map(({ url, headers, prompt, include, exclude, worker, worker_config }) => (given(worker)
+        ? { url: `worker:${worker}`, worker, worker_config: worker_config || {}, headers: {}, prompt, include, exclude }
+        : { url, headers: headers || {}, prompt, include, exclude }));
+}
+
+/** The URL a worker entry starts from: its path against the page, with its configuration. */
+export function workerUrl(server, base) {
+    const url = new URL(server.worker, base);
+    url.searchParams.set('config', JSON.stringify(server.worker_config || {}));
+    return url;
 }
 
 export default {
@@ -83,6 +107,18 @@ export default {
         return (await import(HARNESS_MCP_CLIENT)).MCPClient;
     },
 
+    /** The harness's postMessage transport, from the same tag. Tests replace this. */
+    async loadTransport() {
+        return (await import(HARNESS_POST_MESSAGE)).PostMessageTransport;
+    },
+
+    /** Starts a worker entry's Worker. Tests replace this. */
+    startWorker(server) {
+        const worker = new Worker(workerUrl(server, document.baseURI), { type: 'module' });
+        worker.addEventListener('error', (e) => console.error(`[mcp plugin] ${server.url} error:`, e.message));
+        return worker;
+    },
+
     /** The harness's token helpers (glen#442), from the same module. Tests replace this. */
     async loadTokenHelpers() {
         const { userTokenApplies, withUserToken, isMcpAuthError, loadMcpToken } = await import(HARNESS_MCP_CLIENT);
@@ -94,7 +130,7 @@ export default {
         const MCPClient = await this.loadClient();
         const token = await this.loadTokenHelpers();
         // Only the first server takes a visitor's token.
-        const offerToken = token.userTokenApplies(servers[0]);
+        const offerToken = !servers[0].worker && token.userTokenApplies(servers[0]);
         const primary = { client: null, authFailed: false };
         if (offerToken) {
             ctx.onReady(({ ui }) => ui.enableMcpToken?.({
@@ -119,7 +155,9 @@ export default {
             const headers = rank === 0 && offerToken
                 ? token.withUserToken(server.headers, token.loadMcpToken())
                 : server.headers;
-            const client = new MCPClient(server.url, headers);
+            const client = server.worker
+                ? await this.workerClient(MCPClient, server)
+                : new MCPClient(server.url, headers);
             try {
                 await client.connect();
             } catch (err) {
@@ -147,6 +185,32 @@ export default {
         if (!connected) throw new Error('mcp plugin: no MCP server could be reached');
         ctx.addPrompt(parquetSection(ctx.catalog));
         for (const text of prompts) ctx.addPrompt(text);
+    },
+
+    /**
+     * A client for a server in a Web Worker. The worker starts once; each
+     * connect and reconnect opens a fresh transport over it. A worker that
+     * fails before it answers (its file is missing, or its imports fail) is
+     * dropped and its transport closed, so the connect fails at once instead
+     * of waiting out the request timeout; the next reconnect starts a new one.
+     */
+    async workerClient(MCPClient, server) {
+        const PostMessageTransport = await this.loadTransport();
+        let worker = null;
+        const transport = () => {
+            worker ??= this.startWorker(server);
+            const w = worker;
+            const t = new PostMessageTransport(w);
+            const failed = () => {
+                if (worker === w) worker = null;
+                w.terminate?.();
+                t.close();
+            };
+            w.addEventListener('error', failed, { once: true });
+            w.addEventListener('message', () => w.removeEventListener('error', failed), { once: true });
+            return t;
+        };
+        return new MCPClient(server.url, {}, { transport });
     },
 };
 

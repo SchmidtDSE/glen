@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PortolanCatalog } from '../core/portolan-catalog.js';
 import { createCatalogTools } from '../app/catalog-tools.js';
 import { readFileSync } from 'node:fs';
-import mcpPlugin, { resolveServers, parquetSection, HARNESS_MCP_CLIENT } from '../core/plugins/mcp.js';
+import mcpPlugin, { resolveServers, workerUrl, parquetSection, HARNESS_MCP_CLIENT } from '../core/plugins/mcp.js';
 
 describe('resolveServers', () => {
     it('reads the single-server shorthand', () => {
@@ -24,6 +24,26 @@ describe('resolveServers', () => {
     it('throws without any server', () => {
         expect(() => resolveServers({})).toThrow(/required/);
     });
+
+    it('reads a worker entry in place of a url (#457)', () => {
+        const [w, h] = resolveServers({ servers: [
+            { worker: 'geo-query-worker.js', worker_config: { discovery: false }, include: ['query'], headers: { A: '1' } },
+            { url: 'https://a/mcp' },
+        ] });
+        expect(w).toEqual({ url: 'worker:geo-query-worker.js', worker: 'geo-query-worker.js', worker_config: { discovery: false },
+            headers: {}, prompt: undefined, include: ['query'], exclude: undefined });
+        expect(h.url).toBe('https://a/mcp');
+        expect(resolveServers({ worker: 'w.js' }, { mcp_url: 'https://c/mcp' })[0].url).toBe('worker:w.js');
+    });
+});
+
+describe('workerUrl', () => {
+    it('resolves the worker file against the page and carries its config', () => {
+        const url = workerUrl({ worker: 'plugins/w.js', worker_config: { discovery: false } }, 'https://app.example/demo/index.html');
+        expect(url.origin + url.pathname).toBe('https://app.example/demo/plugins/w.js');
+        expect(JSON.parse(url.searchParams.get('config'))).toEqual({ discovery: false });
+        expect(workerUrl({ worker: 'w.js' }, 'https://app.example/').searchParams.get('config')).toBe('{}');
+    });
 });
 
 describe('mcp plugin setup', () => {
@@ -31,6 +51,7 @@ describe('mcp plugin setup', () => {
     const listings = {
         'https://a/mcp': ['query', 'browse_stac_catalog', 'get_stac_details', 'get_schema', 'get_collection'],
         'https://b/mcp': ['fit_sdm', 'query'],
+        'worker:w.js': ['query', 'get_schema'],
     };
     let clients;
     let warn;
@@ -38,12 +59,20 @@ describe('mcp plugin setup', () => {
     let savedToken;
 
     class FakeClient {
-        constructor(url, headers) {
+        constructor(url, headers, options = {}) {
             this.url = url;
             this.headers = headers;
+            this.options = options;
             clients.push(this);
         }
         async connect() {
+            if (this.options.transport) {
+                this.transport = this.options.transport();
+                // The worker's file fails to load while the client waits.
+                if (failWorkers) this.transport.port.dispatchEvent(new Event('error'));
+                if (this.transport.closed) throw new Error('Connection closed');
+                return;
+            }
             if (refuse.has(this.url) && this.headers.Authorization !== 'Bearer good') {
                 throw new Error('Error POSTing to endpoint (HTTP 401): Unauthorized');
             }
@@ -80,10 +109,30 @@ describe('mcp plugin setup', () => {
         isMcpAuthError: (e) => /\(HTTP 40[13]\)/.test(String(e?.message || '')),
         loadMcpToken: () => savedToken,
     };
-    const plugin = { ...mcpPlugin, loadClient: async () => FakeClient, loadTokenHelpers: async () => tokenHelpers };
+    // A Worker stand-in, and a transport that records the port it wraps.
+    let workers;
+    let failWorkers;
+    class FakeWorker extends EventTarget {
+        constructor(server) { super(); this.server = server; workers.push(this); }
+        postMessage() {}
+        terminate() { this.terminated = true; }
+    }
+    class FakeTransport {
+        constructor(port) { this.port = port; }
+        close() { this.closed = true; }
+    }
+    const plugin = {
+        ...mcpPlugin,
+        loadClient: async () => FakeClient,
+        loadTokenHelpers: async () => tokenHelpers,
+        loadTransport: async () => FakeTransport,
+        startWorker: (server) => new FakeWorker(server),
+    };
 
     beforeEach(() => {
         clients = [];
+        workers = [];
+        failWorkers = false;
         refuse = new Set();
         savedToken = '';
         warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -178,6 +227,51 @@ describe('mcp plugin setup', () => {
         await ui.enableMcpToken.mock.calls[0][0].apply('new');
         expect(clients[0].headers).toEqual({ 'X-A': '1', Authorization: 'Bearer new' });
         expect(clients[0].reconnected).toBe(true);
+    });
+
+    it('connects to a server in a Web Worker like any other (#457)', async () => {
+        savedToken = 'tok';
+        const { ctx, tools, ready } = context();
+        await plugin.setup(ctx, { servers: [
+            { worker: 'w.js', worker_config: { discovery: false }, include: ['query'] },
+            { url: 'https://b/mcp' },
+        ] });
+        expect(workers).toHaveLength(1);
+        expect(workers[0].server.worker_config).toEqual({ discovery: false });
+        expect(clients[0].transport.port).toBe(workers[0]);
+        expect(clients[0].headers).toEqual({});
+        expect(tools.registerLocal.mock.calls.map(c => c[0].name)).toEqual(['get_schema', 'get_stac_details']);
+        expect(tools.registerRemote.mock.calls[0][0].map(t => t.name)).toEqual(['query']);
+        expect(tools.registerRemote.mock.calls[0][3]).toEqual({ rank: 0, include: ['query'], exclude: undefined });
+        // A worker has no origin to send a visitor's token to.
+        expect(ready).toHaveLength(0);
+        // A reconnect opens a new transport over the same worker.
+        const first = clients[0].transport;
+        await clients[0].connect();
+        expect(clients[0].transport).not.toBe(first);
+        expect(clients[0].transport.port).toBe(workers[0]);
+        expect(workers).toHaveLength(1);
+    });
+
+    it('drops a worker that fails before it answers, and starts a new one on reconnect', async () => {
+        failWorkers = true;
+        const { ctx } = context();
+        await plugin.setup(ctx, { servers: [{ worker: 'w.js' }, { url: 'https://b/mcp' }] });
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('worker:w.js'), 'Connection closed');
+        expect(workers[0].terminated).toBe(true);
+        failWorkers = false;
+        await clients[0].connect();
+        expect(workers).toHaveLength(2);
+        expect(clients[0].transport.port).toBe(workers[1]);
+    });
+
+    it('keeps a worker that has answered when it later reports an error', async () => {
+        const { ctx } = context();
+        await plugin.setup(ctx, { worker: 'w.js' });
+        workers[0].dispatchEvent(new Event('message'));
+        workers[0].dispatchEvent(new Event('error'));
+        expect(workers[0].terminated).toBeUndefined();
+        expect(clients[0].transport.closed).toBeUndefined();
     });
 
     it('adds each server\'s prompt after the data-file section', async () => {
