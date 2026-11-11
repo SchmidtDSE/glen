@@ -57,6 +57,25 @@ A collection can be named by URL or, when `catalog` is set, by id. With `catalog
 | `paint`, `default_filter` | vector | MapLibre paint and filter to use instead of the published style's |
 | `tooltip` | vector | Properties shown on hover |
 | `colormap`, `rescale`, `opacity` | raster | TiTiler colour map, display range `"min,max"`, and opacity |
+| `bidx` | raster | Band of a multi-band COG to draw (default 1). The catalog's render describes band 1, so another band starts from its own statistics |
+| `assets` | all | The collection's assets to draw, in this order: asset keys, or objects with an `id` and any of the keys above for that asset alone. Without it every drawable asset is drawn |
+| `items` | all | Items of the collection to draw: item ids, or objects with an `id` and any of the keys above, `assets` included, for that item alone |
+
+Keys on a collection entry apply to all of its layers; an entry under `assets` or `items` overrides them for its own layers. Layer ids are `<collection>/<asset>` when the collection has more than one drawable asset, whichever of them `assets` keeps, so an id does not change with the selection. An item's layer is `<collection>/<item>`, or `<collection>/<item>/<asset>` when the item has more than one drawable asset. A layer whose entry sets `bidx` adds `/band-<n>`, so one COG can be listed once per band.
+
+A collection whose data is in items, such as a daily raster series, draws nothing until its entry lists the items to draw:
+
+```json
+{
+  "url": "https://example.org/heat/daily-cog/collection.json",
+  "colormap": "rdylbu_r",
+  "rescale": "10,40",
+  "items": [
+    { "id": "tmax-tmin-2025-07-01", "display_name": "Tmax, 1 July", "visible": true },
+    { "id": "tmax-tmin-2025-07-01", "bidx": 3, "display_name": "Tmax anomaly, 1 July", "colormap": "rdbu_r", "rescale": "-10,10" }
+  ]
+}
+```
 
 ## Portolan support
 
@@ -68,6 +87,7 @@ A collection can be named by URL or, when `catalog` is set, by id. With `catalog
 - A colour ramp cannot interpolate a missing value and paints it black. The core sets the opacity to zero for features without a number in that property, and leaves the colour expression whole so the legend still reads it.
 - Rasters are COG assets with the `data` role. The starting display range comes from the band statistics Portolan requires, capped at the mean plus two standard deviations for skewed data. Tiles come from TiTiler, by default the NRP server at `titiler.nrp-nautilus.io`; `titiler_url` points an app at another.
 - Assets with the `source` role are the publisher's upstream originals and are never drawn.
+- Items are read one JSON file each, found through the collection's `item` links by file or folder name, or in a folder named for the item beside the collection. Their COGs and PMTiles are drawn as the collection's are, and the prompt gives each item layer its item id and date. Renders on the item or the collection apply to its COGs.
 - A band with a `scale` or `offset` is drawn in real units: TiTiler applies them (`unscale`), as in the full app. A class whose value is the band's nodata value is never drawn or listed.
 - Column descriptions (`table:columns`) are read from the collection and from each asset. Portolan puts them on the collection; our current STAC puts them on each asset. When a PMTiles archive's metadata cannot be read, the asset's `table:columns` name the feature properties.
 
@@ -128,6 +148,6 @@ The core reuses these modules from `app/` unchanged: `map-control-tools.js` (the
 
 ## Limitations
 
-- Multi-scene raster collections, with one COG per item, are not drawn yet; only collection-level COGs are.
+- Items are drawn only when config lists them, one layer per item. Tiled products whose items make up one mosaic (GHSL) need a mosaic layer, and a long series would read the collection's `items.parquet` mirror instead of one file per item; neither is done yet.
 - Style layers of type `symbol` (labels) are skipped, because labels need a glyph server.
 - `map-manager.js` still loads the hex-layer helpers it imports, though the core never adds a hex layer.

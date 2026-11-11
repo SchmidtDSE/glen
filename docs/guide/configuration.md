@@ -189,7 +189,7 @@ The agent closes that last gap with `set_legend`, which names the classes (`{"1"
 | `visible` | boolean | Default visibility. Default: `false`. |
 | `colormap` | string | TiTiler colormap name (e.g., `"reds"`, `"blues"`, `"viridis"`). Default: the catalog render's, else `"reds"`. |
 | `rescale` | string | TiTiler min,max range for color scaling (e.g., `"0,150"`). The range is in real units when `unscale` is on, and in the stored values otherwise. |
-| `bidx` | integer | 1-based band index for a multi-band COG. Default: `1`. Without it, TiTiler refuses a multi-band source with "Source data must be 1 band" and every tile fails. The band's STAC `nodata` and `classification:classes` are read from this band. |
+| `bidx` | integer | 1-based band index for a multi-band COG. Default: `1`. TiTiler colours one band only, so when the COG's STAC lists more than one band and `bidx` is not set, glen draws band 1 (before v3.49, every tile failed with "Source data must be 1 band"). The band's STAC `nodata` and `classification:classes` are read from this band. |
 | `unscale` | boolean | Apply the band's scale and offset before coloring, so `rescale` and the legend are in real units. Default: on when the STAC `raster:bands` entry gives a `scale` other than 1 or an `offset` other than 0, as for int16 temperatures stored in hundredths of a degree. |
 | `nodata` | number\|string | Pixel value to render transparent (e.g., `0` to mask ocean/no-data). If unset, falls back to the catalog render's `nodata`, then the band's STAC `nodata` value; omit both to leave all pixels opaque. Given in stored values, before `unscale`. |
 | `legend_label` | string | Label shown next to the color legend. |

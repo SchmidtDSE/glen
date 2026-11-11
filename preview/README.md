@@ -174,3 +174,10 @@ adds it), so the fixture uses the TPL app's configured default. A third turn,
 was appended to exercise `render_chart`, using turn 2's real query result as
 its rows. It draws through the real `ChartRenderer`, with Observable Plot from
 devDependencies at the version the app loads.
+
+## Core variants
+
+`preview/core-variants/<name>.json` is a shallow patch over glen core's own
+config, `core/layers-input.json`, published at `/preview/<branch>/core-<name>/`.
+`era5.json` draws days of the ERA5-Land daily heat collection from the Portolan
+registry as items (#462), including one day's anomaly band beside its Tmax.

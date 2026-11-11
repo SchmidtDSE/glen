@@ -109,6 +109,25 @@ jobs:
               cp -R "$work/app/." "$dest/app/"
               rm -f "$dest/app/index.html" "$dest/app/config.json"
               echo "  /preview/$slug/core/"
+
+              # Core variants: preview/core-variants/<name>.json is a shallow
+              # patch over core/layers-input.json, published at core-<name>/
+              # beside core/, so its ../app/ imports resolve to the same copy.
+              for patch in "$work"/preview/core-variants/*.json; do
+                [ -e "$patch" ] || continue
+                vname=$(basename "$patch" .json)
+                vdest="$dest/core-$vname"
+                cp -R "$work/core" "$vdest"
+                python3 - "$vdest/layers-input.json" "$patch" <<'PYEOF'
+          import json, sys
+          target, patch = sys.argv[1], sys.argv[2]
+          base = json.load(open(target))
+          base.update(json.load(open(patch)))
+          json.dump(base, open(target, 'w'), indent=2)
+          PYEOF
+                test ! -e "$vdest/config.json"
+                echo "  /preview/$slug/core-$vname/"
+              done
             fi
 
             # Variants: preview/variants/<name>.json is a shallow patch over

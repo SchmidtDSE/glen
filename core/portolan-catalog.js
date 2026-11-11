@@ -27,6 +27,7 @@ import {
     resolveHref, findVectorSources, findStyleAssets, findRasterAssets,
     defaultRescale, styleToLayer, describeColor, describeStyleColours, pmtilesLayerInfo, stylesForFile,
     agentsLink, providerSummary, portolanVersion, collectionColumns,
+    rasterBand, selectAssets, itemHref, itemDate,
 } from './portolan.js';
 import { findCollections } from '../app/catalog-tree.js';
 import { cogTileUrl } from '../app/cog-tiles.js';
@@ -41,7 +42,7 @@ const TOOLTIP_FIELDS = 4;
  * TiTiler tile URL for a single-band COG, built by the full app's
  * `cogTileUrl` (app/cog-tiles.js) so both apps draw a raster the same way.
  */
-export function titilerTileUrl(titilerUrl, cogUrl, { colormap, rescale, nodata, classes, unscale } = {}) {
+export function titilerTileUrl(titilerUrl, cogUrl, { colormap, rescale, nodata, classes, unscale, bidx } = {}) {
     return cogTileUrl(titilerUrl, cogUrl, {
         legendType: classes?.length ? 'categorical' : null,
         legendClasses: classes || null,
@@ -49,6 +50,7 @@ export function titilerTileUrl(titilerUrl, cogUrl, { colormap, rescale, nodata, 
         rescale,
         nodata,
         unscale,
+        bidx: bidx ?? null,
     });
 }
 
@@ -194,87 +196,176 @@ export class PortolanCatalog {
         }));
         const usableStyles = styleDocs.filter(Boolean);
 
-        for (const v of vectors) {
-            const layerId = many ? `${id}/${v.key}` : id;
-            let meta = null;
-            try { meta = await this.pmtilesMetadata(v.url); } catch (e) {
-                console.warn(`[Portolan] PMTiles metadata for ${v.url} unreadable: ${e.message}`);
-            }
-            // The style names the source layer too; prefer the catalog's
-            // pmtiles:layers, then the style, then the archive itself.
-            const ownStyles = stylesForFile(usableStyles, v.url);
-            const defaultStyleDoc = ownStyles.find(s => s.isDefault)?.doc;
-            const styleSourceLayer = defaultStyleDoc?.layers?.find(l => l['source-layer'])?.['source-layer'];
-            const info = pmtilesLayerInfo(meta, v.layers[0] || styleSourceLayer || null);
-            // Without the archive's own field list, the asset's table:columns
-            // name the feature properties (our current STAC carries them).
-            if (!Object.keys(info.fields).length && v.columns.length) {
-                info.fields = Object.fromEntries(v.columns
-                    .filter(c => !/^(geometry|geom|bbox)$/i.test(c.name))
-                    .map(c => [c.name, c.type || 'unknown']));
-            }
-            const sourceLayer = v.layers[0] || styleSourceLayer || info.layerName || v.key;
-
-            // Every style converted for this geometry, keyed by name.
-            const namedStyles = new Map();
-            for (const s of ownStyles) {
-                const converted = styleToLayer(s.doc, info.geometryType);
-                if (converted) namedStyles.set(s.name, { ...converted, title: s.title || s.doc?.name || s.name, isDefault: s.isDefault });
-            }
-            const chosenName = spec.style && namedStyles.has(spec.style) ? spec.style : [...namedStyles.keys()][0];
-            const chosen = chosenName ? namedStyles.get(chosenName) : null;
-            const renderType = chosen?.renderType || ({ Polygon: 'fill', LineString: 'line', Point: 'circle' }[info.geometryType] || 'fill');
-            const paint = spec.paint || chosen?.paint || { fill: DEFAULT_FILL, line: DEFAULT_LINE, circle: DEFAULT_CIRCLE }[renderType];
-
-            this.layers.set(layerId, {
-                layerId,
-                datasetId: id,
-                kind: 'vector',
-                title: many ? (v.title || `${dataset.title} (${v.key})`) : dataset.title,
-                group: spec.group || null,
-                visible: spec.visible === true,
-                url: v.url,
-                sourceLayer,
-                geometryType: info.geometryType,
-                fields: info.fields,
-                renderType,
-                paint,
-                outlinePaint: chosen?.outlinePaint || null,
-                filter: spec.default_filter || chosen?.filter || null,
-                tooltip: spec.tooltip || defaultTooltip(info.fields, paint),
-                styles: namedStyles,
-                defaultStyle: chosenName || null,
-            });
-            dataset.layerIds.push(layerId);
+        const { picks, missing } = selectAssets(spec.assets, vectors, rasters);
+        if (missing.length) console.warn(`[Portolan] ${id}: no drawable asset ${missing.map(m => `"${m}"`).join(', ')}`);
+        for (const { kind, src, entry } of picks) {
+            const layerId = many ? `${id}/${src.key}` : id;
+            const title = entry.display_name || (many ? (src.title || `${dataset.title} (${src.key})`) : dataset.title);
+            const settings = { ...spec, ...entry };
+            if (kind === 'vector') await this._addVector(dataset, layerId, title, src, settings, usableStyles);
+            else this._addRaster(dataset, layerId, title, src, settings);
         }
 
-        for (const r of rasters) {
-            const layerId = many ? `${id}/${r.key}` : id;
-            const colormap = spec.colormap || r.render?.colormap || 'viridis';
-            const rescale = spec.rescale || r.render?.rescale || defaultRescale(r.band);
-            this.layers.set(layerId, {
-                layerId,
-                datasetId: id,
-                kind: 'raster',
-                title: many ? (r.title || `${dataset.title} (${r.key})`) : dataset.title,
-                group: spec.group || null,
-                visible: spec.visible === true,
-                url: r.url,
-                band: r.band,
-                colormap,
-                rescale,
-                defaultColormap: colormap,
-                defaultRescale: rescale,
-                opacity: spec.opacity ?? 0.8,
-            });
-            dataset.layerIds.push(layerId);
-        }
+        if (Array.isArray(spec.items)) await this._addItems(dataset, collection, url, spec, usableStyles);
 
         if (!dataset.layerIds.length) {
-            console.warn(`[Portolan] ${id}: nothing to draw (no PMTiles link or visual asset, no COG data asset)`);
+            const hasItems = (collection.links || []).some(l => l.rel === 'item');
+            console.warn(`[Portolan] ${id}: nothing to draw (no PMTiles link or visual asset, no COG data asset)${hasItems && !spec.items ? '; its data is in items, so list the ones to draw under "items"' : ''}`);
         }
         this.datasets.set(id, dataset);
         return dataset;
+    }
+
+    /**
+     * Register one PMTiles layer.
+     * @param {Object} dataset - the collection's record
+     * @param {Object} v - from findVectorSources
+     * @param {Object} s - the collection's config with this asset's entry over it
+     * @param {Array} usableStyles - the collection's styles, with their documents
+     */
+    async _addVector(dataset, layerId, title, v, s, usableStyles) {
+        if (this._taken(layerId)) return;
+        let meta = null;
+        try { meta = await this.pmtilesMetadata(v.url); } catch (e) {
+            console.warn(`[Portolan] PMTiles metadata for ${v.url} unreadable: ${e.message}`);
+        }
+        // The style names the source layer too; prefer the catalog's
+        // pmtiles:layers, then the style, then the archive itself.
+        const ownStyles = stylesForFile(usableStyles, v.url);
+        const defaultStyleDoc = ownStyles.find(st => st.isDefault)?.doc;
+        const styleSourceLayer = defaultStyleDoc?.layers?.find(l => l['source-layer'])?.['source-layer'];
+        const info = pmtilesLayerInfo(meta, v.layers[0] || styleSourceLayer || null);
+        // Without the archive's own field list, the asset's table:columns
+        // name the feature properties (our current STAC carries them).
+        if (!Object.keys(info.fields).length && v.columns.length) {
+            info.fields = Object.fromEntries(v.columns
+                .filter(c => !/^(geometry|geom|bbox)$/i.test(c.name))
+                .map(c => [c.name, c.type || 'unknown']));
+        }
+        const sourceLayer = v.layers[0] || styleSourceLayer || info.layerName || v.key;
+
+        // Every style converted for this geometry, keyed by name.
+        const namedStyles = new Map();
+        for (const st of ownStyles) {
+            const converted = styleToLayer(st.doc, info.geometryType);
+            if (converted) namedStyles.set(st.name, { ...converted, title: st.title || st.doc?.name || st.name, isDefault: st.isDefault });
+        }
+        const chosenName = s.style && namedStyles.has(s.style) ? s.style : [...namedStyles.keys()][0];
+        const chosen = chosenName ? namedStyles.get(chosenName) : null;
+        const renderType = chosen?.renderType || ({ Polygon: 'fill', LineString: 'line', Point: 'circle' }[info.geometryType] || 'fill');
+        const paint = s.paint || chosen?.paint || { fill: DEFAULT_FILL, line: DEFAULT_LINE, circle: DEFAULT_CIRCLE }[renderType];
+
+        this.layers.set(layerId, {
+            layerId,
+            datasetId: dataset.id,
+            kind: 'vector',
+            title,
+            group: s.group || null,
+            visible: s.visible === true,
+            url: v.url,
+            sourceLayer,
+            geometryType: info.geometryType,
+            fields: info.fields,
+            renderType,
+            paint,
+            outlinePaint: chosen?.outlinePaint || null,
+            filter: s.default_filter || chosen?.filter || null,
+            tooltip: s.tooltip || defaultTooltip(info.fields, paint),
+            styles: namedStyles,
+            defaultStyle: chosenName || null,
+        });
+        dataset.layerIds.push(layerId);
+        return layerId;
+    }
+
+    /**
+     * Register one COG layer. A `bidx` in config draws that band, and the
+     * layer id gains `/band-<n>` so one COG can be listed once per band. The
+     * catalog's render describes band 1, so it is set aside for another band.
+     * @param {Object} r - from findRasterAssets
+     * @param {Object} s - the collection's config with this asset's entry over it
+     */
+    _addRaster(dataset, layerId, title, r, s) {
+        if (s.bidx != null) layerId = `${layerId}/band-${Number(s.bidx)}`;
+        if (this._taken(layerId)) return;
+        const otherBand = s.bidx != null && Number(s.bidx) !== 1;
+        const render = otherBand ? null : r.render;
+        const band = s.bidx != null ? rasterBand(r.asset, render, s.bidx) : r.band;
+        const colormap = s.colormap || render?.colormap || 'viridis';
+        const rescale = s.rescale || render?.rescale || defaultRescale(band);
+        this.layers.set(layerId, {
+            layerId,
+            datasetId: dataset.id,
+            kind: 'raster',
+            title,
+            group: s.group || null,
+            visible: s.visible === true,
+            url: r.url,
+            band,
+            colormap,
+            rescale,
+            defaultColormap: colormap,
+            defaultRescale: rescale,
+            opacity: s.opacity ?? 0.8,
+        });
+        dataset.layerIds.push(layerId);
+        return layerId;
+    }
+
+    /** True, with a warning, when a layer id is already registered. */
+    _taken(layerId) {
+        if (!this.layers.has(layerId)) return false;
+        console.warn(`[Portolan] ${layerId} is listed twice; the second is skipped`);
+        return true;
+    }
+
+    /**
+     * Register the items a collection entry lists under `items`: ids, or
+     * objects with an `id` and that item's settings. Each item's JSON is read
+     * once; its COGs and PMTiles are drawn as layers `<collection>/<item>`, or
+     * `<collection>/<item>/<asset>` when the item has more than one. An item
+     * entry may take `assets` to pick among them, as a collection entry does.
+     */
+    async _addItems(dataset, collection, url, spec, usableStyles) {
+        const entries = spec.items.map(e => (typeof e === 'string' ? { id: e } : { ...(e || {}) })).filter(e => e.id != null);
+        const fetched = await Promise.all(entries.map(async (entry) => {
+            const itemUrl = itemHref(collection, url, entry.id);
+            try {
+                return { entry, itemUrl, item: await this.fetchJson(itemUrl) };
+            } catch (e) {
+                console.warn(`[Portolan] ${dataset.id}: item "${entry.id}" unreadable at ${itemUrl}: ${e.message}`);
+                return null;
+            }
+        }));
+        const collectionSettings = { ...spec };
+        delete collectionSettings.items;
+        delete collectionSettings.assets;
+        for (const got of fetched) {
+            if (!got?.item) continue;
+            const { entry, itemUrl, item } = got;
+            // Renders may sit on the collection or on the item itself.
+            const withRenders = { ...item, renders: { ...(collection.renders || {}), ...(item.renders || {}) } };
+            const vectors = findVectorSources(item, itemUrl);
+            const rasters = findRasterAssets(withRenders, itemUrl);
+            const itemMany = vectors.length + rasters.length > 1;
+            const { picks, missing } = selectAssets(entry.assets, vectors, rasters);
+            if (missing.length) console.warn(`[Portolan] ${dataset.id}/${entry.id}: no drawable asset ${missing.map(m => `"${m}"`).join(', ')}`);
+            if (!picks.length) console.warn(`[Portolan] ${dataset.id}/${entry.id}: nothing to draw in this item`);
+            const date = itemDate(item);
+            const itemTitle = entry.display_name || item.properties?.title || (date ? `${dataset.title}, ${date}` : `${dataset.title} (${entry.id})`);
+            for (const { kind, src, entry: assetEntry } of picks) {
+                const layerId = itemMany ? `${dataset.id}/${entry.id}/${src.key}` : `${dataset.id}/${entry.id}`;
+                const title = assetEntry.display_name || (itemMany ? `${itemTitle} (${src.title || src.key})` : itemTitle);
+                const itemSettings = { ...entry };
+                delete itemSettings.assets;
+                const settings = { ...collectionSettings, ...itemSettings, ...assetEntry };
+                const added = kind === 'vector'
+                    ? await this._addVector(dataset, layerId, title, src, settings, usableStyles)
+                    : this._addRaster(dataset, layerId, title, src, settings);
+                const rec = added && this.layers.get(added);
+                if (rec) { rec.itemId = String(entry.id); rec.date = date; }
+            }
+        }
     }
 
     /** The tile URL for a raster layer at its current colormap and range. */
@@ -285,6 +376,7 @@ export class PortolanCatalog {
             nodata: layer.band?.nodata,
             classes: layer.band?.classes,
             unscale: layer.band?.unscale,
+            bidx: layer.band?.bidx,
         });
     }
 
@@ -398,7 +490,8 @@ export class PortolanCatalog {
                 } else {
                     const b = l.band || {};
                     const stats = b.min != null ? `values ${fmt(b.min)} to ${fmt(b.max)}, mean ${fmt(b.mean)}${b.unit ? ` ${b.unit}` : ''}` : 'no statistics published';
-                    lines.push(`- layer_id \`${layerId}\` — raster (COG), ${stats}; drawn with colormap \`${l.colormap}\` over ${l.rescale || 'the full range'}${l.visible ? ', on at start' : ''}`);
+                    const where = [l.itemId ? `item \`${l.itemId}\`${l.date ? ` (${l.date})` : ''}` : null, b.bidx ? `band ${b.bidx}` : null].filter(Boolean).join(', ');
+                    lines.push(`- layer_id \`${layerId}\` — raster (COG)${where ? `, ${where}` : ''}, ${stats}; drawn with colormap \`${l.colormap}\` over ${l.rescale || 'the full range'}${l.visible ? ', on at start' : ''}`);
                     if (b.classes) lines.push(`  Classes: ${b.classes.slice(0, 20).map(c => `${c.value}=${c.description || c.name}`).join(', ')}`);
                 }
             }
