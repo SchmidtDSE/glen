@@ -4,7 +4,7 @@ import {
     defaultRescale, styleToLayer, stripGeometryTypeFilter, describeColor,
     pmtilesLayerInfo, normalizeGeometryType, guardMissingValues, styleName,
     portolanVersion, providerSummary, agentsLink, FAINT_OUTLINE, collectionColumns,
-    styleSourceFile, stylesForFile, selectAssets, itemHref, itemDate, itemMirrorUrl, framesFromItems,
+    styleSourceFile, stylesForFile, selectAssets, layerSettings, itemHref, itemDate, itemMirrorUrl, framesFromItems,
 } from '../core/portolan.js';
 import { PortolanCatalog, titilerTileUrl, defaultTooltip, topLevelColumns } from '../core/portolan-catalog.js';
 
@@ -633,5 +633,75 @@ describe('the catalog as the session export reads it', () => {
         expect(view.getAll()[0]._rawStac.assets.data.href).toBe('https://storage.googleapis.com/b/roads/data.parquet');
         expect(raw.assets.data.href).toBe('./data.parquet');
         expect(view.getIds()).toEqual(['roads']);
+    });
+});
+
+// SchmidtDSE/glen#441: glen core takes the full app's per-layer settings, by
+// the names apps already use, so a v3 config carries over.
+describe('the full app\'s layer settings in glen core', () => {
+    const U = 'https://example.org/cat/w/collection.json';
+    const cog = (href, min, max) => ({ href, type: 'image/tiff; application=geotiff', roles: ['data'],
+        bands: [{ statistics: { minimum: min, maximum: max } }] });
+    const pm = (href, layer) => ({ href, type: 'application/vnd.pmtiles', roles: ['visual'], 'pmtiles:layers': [layer] });
+    const col = {
+        type: 'Collection', id: 'w', title: 'Watersheds', links: [],
+        assets: {
+            l3: pm('./l3.pmtiles', 'l3'), l6: pm('./l6.pmtiles', 'l6'),
+            y2000: cog('./y2000.tif', 0, 10), y2020: cog('./y2020.tif', 0, 20),
+        },
+    };
+    const meta = async () => ({ vector_layers: [{ id: 'x', fields: { name: 'String' } }], tilestats: { layers: [{ layer: 'x', geometry: 'Polygon' }] } });
+    const make = () => new PortolanCatalog({ fetchJson: async () => structuredClone(col), pmtilesMetadata: meta });
+
+    it('reads the full app\'s key names as core\'s, and the group\'s object form', () => {
+        expect(layerSettings(
+            { group: { name: 'Water', collapsed: true }, tooltip_fields: ['a'] },
+            { default_style: { 'line-color': '#00f' }, layer_type: 'line', outline_style: { 'line-width': 2 } },
+        )).toEqual({ group: 'Water', group_collapsed: true, tooltip: ['a'], paint: { 'line-color': '#00f' }, render_type: 'line', outline_paint: { 'line-width': 2 } });
+    });
+
+    it('draws versions as one layer with a source per version, starting on default_version', async () => {
+        const c = make();
+        await c.load({ collections: [{ url: U, group: { name: 'Water', collapsed: true }, assets: [
+            { id: 'basins', display_name: 'Basins', default_style: { 'fill-color': '#08f' },
+              versions: [{ label: 'L3', asset_id: 'l3' }, { label: 'L6', asset_id: 'l6' }], default_version: 'L6' },
+            { id: 'years', display_name: 'Rain', colormap: 'blues',
+              versions: [{ label: '2000', asset_id: 'y2000' }, { label: '2020', asset_id: 'y2020' }] },
+        ] }] });
+        const [basins, years] = c.getMapLayerConfigs();
+        expect(basins).toMatchObject({ layerId: 'w/basins', displayName: 'Basins', group: 'Water', groupCollapsed: true, defaultVersionIndex: 1, paint: { 'fill-color': '#08f' } });
+        expect(basins.source).toBeUndefined();
+        expect(basins.versions.map(v => [v.label, v.source.url, v.sourceLayer])).toEqual([
+            ['L3', 'pmtiles://https://example.org/cat/w/l3.pmtiles', 'l3'],
+            ['L6', 'pmtiles://https://example.org/cat/w/l6.pmtiles', 'l6'],
+        ]);
+        expect(years.versions.map(v => [v.label, v.rescale])).toEqual([['2000', '0,10'], ['2020', '0,20']]);
+        expect(years.versions[1].source.tiles[0]).toContain(encodeURIComponent('y2020.tif'));
+        expect(years.versions[1].source.tiles[0]).toContain('colormap_name=blues');
+        expect(c.generatePrompt()).toContain('Versions, switched in the layer panel: L3, L6; starts on L6');
+    });
+
+    it('takes toggle groups, out-of-panel layers, render type and tooltips by the full app\'s names', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const c = make();
+        await c.load({ collections: [{ url: U, sidebar: false, assets: [
+            { id: 'l3', layer_type: 'line', tooltip_fields: ['name'], toggle_group: 'Basins', visible: true },
+            { id: 'y2000', sidebar: true, toggle_group: 'Basins' },
+        ] }] });
+        const [l3, y] = c.getMapLayerConfigs();
+        expect(l3).toMatchObject({ sidebar: false, toggleGroup: 'Basins', renderType: 'line', tooltipFields: ['name'] });
+        expect(y).toMatchObject({ sidebar: true, toggleGroup: 'Basins' });
+        expect(warn.mock.calls.some(([m]) => /sidebar.*false.*visible/.test(m))).toBe(true);
+        expect(c.generatePrompt()).toContain('Toggle group "Basins"');
+        warn.mockRestore();
+    });
+
+    it('reports a version asset the collection lacks, and keeps one kind per layer', () => {
+        const v = [{ key: 'a', aliases: [], layers: [] }];
+        const r = [{ key: 'b' }];
+        const { picks, missing } = selectAssets([{ id: 'x', versions: [{ label: 'A', asset_id: 'a' }, { label: 'B', asset_id: 'b' }, { label: 'C', asset_id: 'c' }] }], v, r);
+        expect(picks[0]).toMatchObject({ kind: 'versioned', vkind: 'vector' });
+        expect(picks[0].members.map(m => m.label)).toEqual(['A']);
+        expect(missing).toEqual(['c', 'b (a raster among vector versions)']);
     });
 });

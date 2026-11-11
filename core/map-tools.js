@@ -150,6 +150,7 @@ export function setRasterColormap(mapManager, catalog, layerId, { colormap, resc
     if (!l) return { success: false, error: `Unknown layer: ${layerId}` };
     if (l.kind !== 'raster') return { success: false, error: `${layerId} is a vector layer; use set_style or apply_style.` };
     if (l.band?.classes) return { success: false, error: `${layerId} is categorical; its colours come from the publisher's class list.` };
+    if (l.versions) return { success: false, error: `${layerId} has versions; each version's colour map and range are set in the app's config.` };
     if (l.series) return { success: false, error: `${layerId} is a time series; its colour map and range are set in the app's config and stay the same on every date.` };
     if (colormap) l.colormap = String(colormap).toLowerCase();
     if (rescale) l.rescale = rescale;

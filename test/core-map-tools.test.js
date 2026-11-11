@@ -159,3 +159,11 @@ describe('a series of items (#462)', () => {
         expect(catalog.layers.get('pop').colormap).toBe('viridis');
     });
 });
+
+describe('a versioned raster', () => {
+    it('keeps its colours, which config sets per version', () => {
+        const { mapManager, catalog } = setup();
+        catalog.layers.get('pop').versions = [{ label: 'a' }];
+        expect(setRasterColormap(mapManager, catalog, 'pop', { colormap: 'magma' })).toMatchObject({ success: false });
+    });
+});

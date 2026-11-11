@@ -1,0 +1,96 @@
+{
+  "sidebar": {
+    "enabled": true,
+    "title": "Layer panel settings in glen core",
+    "chat_title": "Chat"
+  },
+  "view": {
+    "center": [
+      -110,
+      45
+    ],
+    "zoom": 3
+  },
+  "welcome": {
+    "message": "This preview shows the full app's layer panel settings in glen core: a versioned layer with a dropdown, two rasters sharing one checkbox, and a layer the assistant can show but the panel does not list. Try asking:",
+    "examples": [
+      "Show the wildfire hazard layers",
+      "Show the hidden hydrobasins layer",
+      "What layers are on the map?"
+    ]
+  },
+  "collections": [
+    {
+      "url": "https://s3-west.nrp-nautilus.io/public-hydrobasins/stac-collection.json",
+      "group": {
+        "name": "Water",
+        "collapsed": false
+      },
+      "assets": [
+        {
+          "id": "watersheds",
+          "display_name": "Watersheds",
+          "visible": true,
+          "versions": [
+            {
+              "label": "L3",
+              "asset_id": "level-03-pmtiles"
+            },
+            {
+              "label": "L4",
+              "asset_id": "level-04-pmtiles"
+            },
+            {
+              "label": "L5",
+              "asset_id": "level-05-pmtiles"
+            }
+          ],
+          "default_version": "L4"
+        }
+      ]
+    },
+    {
+      "url": "https://s3-west.nrp-nautilus.io/public-fire/whp-2023-continuous-conus/stac-collection.json",
+      "group": {
+        "name": "Fire",
+        "collapsed": true
+      },
+      "assets": [
+        {
+          "id": "whp-2023-continuous-conus-cog",
+          "display_name": "Wildfire hazard (CONUS)",
+          "rescale": "0,2000",
+          "toggle_group": "Wildfire hazard · WHP 2023"
+        }
+      ]
+    },
+    {
+      "url": "https://s3-west.nrp-nautilus.io/public-fire/whp-2023-continuous-ak/stac-collection.json",
+      "group": "Fire",
+      "assets": [
+        {
+          "id": "whp-2023-continuous-ak-cog",
+          "display_name": "Wildfire hazard (Alaska)",
+          "rescale": "0,9000",
+          "toggle_group": "Wildfire hazard · WHP 2023"
+        }
+      ]
+    },
+    {
+      "url": "https://s3-west.nrp-nautilus.io/public-hydrobasins/stac-collection.json",
+      "id": "hidden-basins",
+      "display_name": "Hydrobasins (all levels)",
+      "sidebar": false,
+      "assets": [
+        {
+          "id": "unified-pmtiles",
+          "layer_type": "line",
+          "default_style": {
+            "line-color": "#0b5",
+            "line-width": 0.6
+          }
+        }
+      ]
+    }
+  ]
+}
