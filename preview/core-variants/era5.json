@@ -12,35 +12,54 @@
     "zoom": 4
   },
   "welcome": {
-    "message": "I can show and colour daily heat over western Europe in summer 2025, from ERA5-Land. Each day is an item of one collection. Try asking:",
+    "message": "I can show daily heat over western Europe in summer 2025, from ERA5-Land. Each day is an item of one collection, and the time player steps through them. Try asking:",
     "examples": [
-      "Show the Tmax anomaly for 1 July",
-      "Compare 15 June and 1 July",
-      "Show 1 July with the inferno colour map"
+      "Show 1 July",
+      "Play July",
+      "Show the Tmax anomaly for the hottest day you can find"
     ]
   },
   "collections": [
     {
       "url": "https://storage.googleapis.com/carto-open-catalogs/era5-land-heat-europe-2025/main/daily-cog/collection.json",
+      "id": "tmax",
+      "display_name": "Daily Tmax",
       "group": "Daily heat (ERA5-Land)",
+      "visible": true,
+      "colormap": "rdylbu_r",
+      "rescale": "10,40",
+      "control": {
+        "bind": "frame",
+        "frames": "items",
+        "frame_ms": 500,
+        "default": "2025-07-01"
+      }
+    },
+    {
+      "url": "https://storage.googleapis.com/carto-open-catalogs/era5-land-heat-europe-2025/main/daily-cog/collection.json",
+      "id": "tmax-anomaly",
+      "display_name": "Daily Tmax anomaly",
+      "group": "Daily heat (ERA5-Land)",
+      "bidx": 3,
+      "colormap": "rdbu_r",
+      "rescale": "-10,10",
+      "control": {
+        "bind": "frame",
+        "frames": "items",
+        "frame_ms": 500,
+        "default": "2025-07-01"
+      }
+    },
+    {
+      "url": "https://storage.googleapis.com/carto-open-catalogs/era5-land-heat-europe-2025/main/daily-cog/collection.json",
+      "id": "days",
+      "group": "Single days",
       "colormap": "rdylbu_r",
       "rescale": "10,40",
       "items": [
         {
           "id": "tmax-tmin-2025-06-15",
           "display_name": "Tmax, 15 June"
-        },
-        {
-          "id": "tmax-tmin-2025-07-01",
-          "display_name": "Tmax, 1 July",
-          "visible": true
-        },
-        {
-          "id": "tmax-tmin-2025-07-01",
-          "bidx": 3,
-          "display_name": "Tmax anomaly, 1 July",
-          "colormap": "rdbu_r",
-          "rescale": "-10,10"
         },
         {
           "id": "tmax-tmin-2025-08-11",

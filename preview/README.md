@@ -179,5 +179,7 @@ devDependencies at the version the app loads.
 
 `preview/core-variants/<name>.json` is a shallow patch over glen core's own
 config, `core/layers-input.json`, published at `/preview/<branch>/core-<name>/`.
-`era5.json` draws days of the ERA5-Land daily heat collection from the Portolan
-registry as items (#462), including one day's anomaly band beside its Tmax.
+`era5.json` draws the ERA5-Land daily heat collection from the Portolan
+registry (#462): Tmax and the Tmax anomaly (band 3) as time series over all 78
+items, read from the collection's `items.parquet`, and two single days as item
+layers.

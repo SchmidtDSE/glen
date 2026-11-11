@@ -102,6 +102,9 @@ async function resolveHexMetadata(args) {
  * @param {string} text
  * @returns {Array|null}
  */
+// set_time is shared with glen core (#462); re-exported so imports keep working.
+export { createSetTimeTool } from './map-control-tools.js';
+
 export function extractJsonArray(text) {
     const start = text.indexOf('[');
     const end = text.lastIndexOf(']');
@@ -447,45 +450,6 @@ x / y name the columns to plot; series (optional) splits/colors by a column. Kee
                 return JSON.stringify({ success: false, error: `Could not render chart: ${err.message}` });
             }
         },
-    };
-}
-
-/**
- * Build the `set_time` tool for raster time series (#421). Registered only
- * when the app has a layer with a frame control, so other apps' prompts carry
- * no extra schema.
- *
- * @param {import('./map-manager.js').MapManager} mapManager
- * @returns {Object} a tool definition
- */
-export function createSetTimeTool(mapManager) {
-    return {
-        name: 'set_time',
-        description: `Set the date shown by a time-series raster layer, choose which dates it plays, and start or stop playback. Time-series layers report a \`timeSeries\` block in get_map_state, with the date on screen and the first and last dates available.
-
-Use it when the user asks for a date ("show SST anomaly on 1 March"), a period ("animate the last three months", "play 2015 to 2016"), a speed, or to stop the animation.
-
-- date: jump to the frame nearest this date (YYYY-MM-DD, or YYYY-MM for monthly series).
-- start / end: the first and last dates to play. Giving either replaces the layer's configured window.
-- step: play every Nth frame (e.g. 4 for every fourth day). The most recent frame is always kept.
-- frame_ms: how long each frame is shown, in milliseconds.
-- play: true to start playback, false to stop.
-
-The layer is shown if it is hidden. The result gives the date on screen and the range now playing; report those rather than the dates you asked for, since a date snaps to the nearest available frame.`,
-        inputSchema: {
-            type: 'object',
-            properties: {
-                layer_id: { type: 'string', description: 'Time-series raster layer ID' },
-                date: { type: 'string', description: 'Date to show, YYYY-MM-DD or YYYY-MM' },
-                start: { type: 'string', description: 'First date to play' },
-                end: { type: 'string', description: 'Last date to play' },
-                step: { type: 'integer', description: 'Play every Nth frame' },
-                frame_ms: { type: 'integer', description: 'Milliseconds each frame is shown' },
-                play: { type: 'boolean', description: 'true to start playback, false to stop' },
-            },
-            required: ['layer_id'],
-        },
-        execute: async (args) => JSON.stringify(await mapManager.setTime(args)),
     };
 }
 

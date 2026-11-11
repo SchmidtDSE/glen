@@ -138,3 +138,18 @@ describe('nearestFrameIndex and normalizeDate', () => {
         expect(normalizeDate(20260105)).toBe(null);
     });
 });
+
+describe('a frame list already read (#462)', () => {
+    it('loadFrames takes the frames as given, sorted, without fetching', async () => {
+        const fetchFn = () => { throw new Error('no fetch expected'); };
+        const frames = await loadFrames({ frames: [
+            { datetime: '2025-07-02', href: 'https://x/b.tif' },
+            { datetime: '2025-07-01T12:00:00Z', href: 'https://x/a.tif' },
+            { datetime: 'nope', href: 'https://x/c.tif' },
+        ] }, fetchFn);
+        expect(frames).toEqual([
+            { datetime: '2025-07-01', href: 'https://x/a.tif' },
+            { datetime: '2025-07-02', href: 'https://x/b.tif' },
+        ]);
+    });
+});
