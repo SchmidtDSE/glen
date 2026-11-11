@@ -30,7 +30,8 @@ import {
     rasterBand, selectAssets, layerSettings, itemHref, itemDate, itemMirrorUrl, framesFromItems, withAbsoluteHrefs,
 } from './portolan.js';
 import { findCollections } from '../app/catalog-tree.js';
-import { cogTileUrl } from '../app/cog-tiles.js';
+import { cogTileUrl, normalizeLegendClasses } from '../app/cog-tiles.js';
+import { legendFromPaint } from '../app/legend-helpers.js';
 
 const DEFAULT_TITILER = 'https://titiler.nrp-nautilus.io';
 const DEFAULT_FILL = { 'fill-color': '#2E7D32', 'fill-opacity': 0.5 };
@@ -247,12 +248,15 @@ export class PortolanCatalog {
     async _addVector(dataset, layerId, title, v, s, usableStyles) {
         if (this._taken(layerId)) return;
         let meta = null;
-        try { meta = await this.pmtilesMetadata(v.url); } catch (e) {
-            console.warn(`[Portolan] PMTiles metadata for ${v.url} unreadable: ${e.message}`);
+        if (!v.geojson) {
+            try { meta = await this.pmtilesMetadata(v.url); } catch (e) {
+                console.warn(`[Portolan] PMTiles metadata for ${v.url} unreadable: ${e.message}`);
+            }
         }
         // The style names the source layer too; prefer the catalog's
-        // pmtiles:layers, then the style, then the archive itself.
-        const ownStyles = stylesForFile(usableStyles, v.url);
+        // pmtiles:layers, then the style, then the archive itself. A GeoJSON
+        // file takes no published style, as in the full app.
+        const ownStyles = v.geojson ? [] : stylesForFile(usableStyles, v.url);
         const defaultStyleDoc = ownStyles.find(st => st.isDefault)?.doc;
         const styleSourceLayer = defaultStyleDoc?.layers?.find(l => l['source-layer'])?.['source-layer'];
         const info = pmtilesLayerInfo(meta, v.layers[0] || styleSourceLayer || null);
@@ -294,6 +298,10 @@ export class PortolanCatalog {
             outlinePaint: s.outline_paint || chosen?.outlinePaint || null,
             filter: s.default_filter || chosen?.filter || null,
             ...panelFields(dataset, s),
+            ...vectorLegend(s, s.paint ? null : chosen?.paint),
+            geojson: !!v.geojson,
+            control: s.control && s.control.bind !== 'frame' ? s.control : null,
+            animation: animationFor(s.animation, dataset),
             tooltip: s.tooltip || defaultTooltip(info.fields, paint),
             styles: namedStyles,
             defaultStyle: chosenName || null,
@@ -314,7 +322,7 @@ export class PortolanCatalog {
         if (this._taken(layerId)) return;
         const otherBand = s.bidx != null && Number(s.bidx) !== 1;
         const render = otherBand ? null : r.render;
-        const band = s.bidx != null ? rasterBand(r.asset, render, s.bidx) : r.band;
+        const band = bandFor(r, render, s);
         const colormap = s.colormap || render?.colormap || 'viridis';
         const rescale = s.rescale || render?.rescale || defaultRescale(band);
         this.layers.set(layerId, {
@@ -329,8 +337,11 @@ export class PortolanCatalog {
             rescale,
             defaultColormap: colormap,
             defaultRescale: rescale,
-            opacity: s.opacity ?? 0.8,
+            // The full app's default, and its `paint: { "raster-opacity" }` on a raster asset.
+            opacity: s.opacity ?? s.paint?.['raster-opacity'] ?? 0.7,
             ...panelFields(dataset, s),
+            legendLabel: s.legend_label || null,
+            legendType: s.legend_type || null,
         });
         dataset.layerIds.push(layerId);
         return layerId;
@@ -426,6 +437,7 @@ export class PortolanCatalog {
         const versions = [];
         for (const m of pick.members) {
             if (pick.vkind === 'vector') {
+                if (m.src.geojson) { versions.push({ label: m.label, url: m.src.url, geojson: true }); continue; }
                 let meta = null;
                 if (!m.src.layers[0]) {
                     try { meta = await this.pmtilesMetadata(m.src.url); } catch { /* the starting version's layer name is used */ }
@@ -435,7 +447,7 @@ export class PortolanCatalog {
             } else {
                 const otherBand = s.bidx != null && Number(s.bidx) !== 1;
                 const render = otherBand ? null : m.src.render;
-                const band = s.bidx != null ? rasterBand(m.src.asset, render, s.bidx) : m.src.band;
+                const band = bandFor(m.src, render, s);
                 versions.push({
                     label: m.label, url: m.src.url, band,
                     colormap: s.colormap || render?.colormap || null,
@@ -538,11 +550,16 @@ export class PortolanCatalog {
                     configs.push({
                         ...base,
                         type: 'vector',
-                        source: {
-                            type: 'vector',
-                            url: `pmtiles://${l.url}`,
-                        },
-                        sourceLayer: l.sourceLayer,
+                        source: l.geojson ? { type: 'geojson', data: l.url } : { type: 'vector', url: `pmtiles://${l.url}` },
+                        ...(l.geojson ? {} : { sourceLayer: l.sourceLayer }),
+                        legendLabel: l.legendLabel,
+                        legendType: l.legendType,
+                        legendClasses: l.legendClasses,
+                        legendRange: l.legendRange,
+                        legendGradient: l.legendGradient,
+                        control: l.control,
+                        animation: l.animation,
+                        tracksUrl: l.geojson ? l.url : null,
                         renderType: l.renderType === 'fill' ? null : l.renderType,
                         paint: l.paint,
                         outlinePaint: l.outlinePaint,
@@ -558,8 +575,8 @@ export class PortolanCatalog {
                         paint: { 'raster-opacity': l.opacity },
                         colormap: l.colormap,
                         rescale: l.rescale,
-                        legendLabel: l.band?.unit || null,
-                        legendType: l.band?.classes ? 'categorical' : null,
+                        legendLabel: l.legendLabel || l.band?.unit || null,
+                        legendType: l.legendType || (l.band?.classes ? 'categorical' : null),
                         legendClasses: l.band?.classes
                             ? l.band.classes.map(c => ({ value: c.value, name: c.description || c.name || String(c.value), 'color-hint': c.color_hint || c['color-hint'] }))
                             : null,
@@ -576,7 +593,9 @@ export class PortolanCatalog {
                     const cfg = configs[configs.length - 1];
                     const safe = layerId.replace(/[^a-zA-Z0-9]/g, '-');
                     cfg.versions = l.versions.map((v, i) => (l.kind === 'vector'
-                        ? { label: v.label, type: 'vector', sourceId: `src-${safe}-v${i}`, source: { type: 'vector', url: `pmtiles://${v.url}` }, sourceLayer: v.sourceLayer }
+                        ? (v.geojson
+                            ? { label: v.label, type: 'vector', sourceId: `src-${safe}-v${i}`, source: { type: 'geojson', data: v.url } }
+                            : { label: v.label, type: 'vector', sourceId: `src-${safe}-v${i}`, source: { type: 'vector', url: `pmtiles://${v.url}` }, sourceLayer: v.sourceLayer })
                         : {
                             label: v.label, type: 'raster', colormap: v.colormap, rescale: v.rescale, sourceId: `src-${safe}-v${i}`,
                             source: { type: 'raster', tiles: [this.rasterTileUrl({ ...l, url: v.url, band: v.band, colormap: v.colormap || l.colormap, rescale: v.rescale || l.rescale })], tileSize: 256 },
@@ -681,6 +700,43 @@ export function exportCatalogView(catalog) {
             value: () => catalog.getAll().map(d => ({ ...d, _rawStac: withAbsoluteHrefs(d._rawStac, d.url) })),
         },
     });
+}
+
+/**
+ * A vector layer's legend, by the full app's rules: `legend_*` in config win;
+ * else a legend read from the catalog style's colours (swatches for a
+ * `match`, a colorbar for a ramp). Paint set in config gets a legend only
+ * when config asks for one, as in the full app.
+ */
+function vectorLegend(s, catalogPaint) {
+    const fromConfig = s.legend_type || s.legend_classes;
+    const derived = !fromConfig && catalogPaint ? legendFromPaint(catalogPaint) : { legendType: null, legendClasses: null };
+    return {
+        legendType: s.legend_type || (s.legend_classes ? 'categorical' : null) || derived.legendType,
+        legendClasses: normalizeLegendClasses(s.legend_classes) || derived.legendClasses,
+        legendLabel: s.legend_label || null,
+        legendRange: Array.isArray(s.legend_range) ? s.legend_range : null,
+        legendGradient: Array.isArray(s.legend_gradient) ? s.legend_gradient : null,
+    };
+}
+
+/**
+ * The full app's trajectory `animation` block, with `static_positions_asset`
+ * (another asset of the collection) resolved to its URL.
+ */
+function animationFor(animation, dataset) {
+    if (!animation || typeof animation !== 'object') return null;
+    const out = { ...animation };
+    const key = animation.static_positions_asset;
+    const href = key && dataset.stac?.assets?.[key]?.href;
+    if (href) out.static_positions_url = resolveHref(href, dataset.url);
+    return out;
+}
+
+/** A COG's band, with the layer's band settings applied when it has any. */
+function bandFor(src, render, s) {
+    const custom = s.bidx != null || s.nodata != null || s.legend_classes || typeof s.unscale === 'boolean';
+    return custom ? rasterBand(src.asset, render, s) : src.band;
 }
 
 /**
