@@ -2,7 +2,7 @@
 
 glen core is a small GLEN app: a MapLibre map of the layers in a [Portolan](https://www.portolan-sdi.org/) catalog, and a chat agent that controls the map. It assumes no MCP server and no SQL engine. The agent's tools act on the page: show and hide layers, filter features, apply the publisher's styles or new paint, recolour rasters, label legends, set tooltips and move the view.
 
-Everything else the full app in `app/` does, such as DuckDB queries over MCP, hex layers, charts, drawing and uploads, is meant to come back as plugins; the session export is a config setting (see below). `plugins/mcp.js` adds MCP servers' tools to the map tools, and `plugins/charts.js` adds charts.
+Everything else the full app in `app/` does comes back as plugins: `plugins/mcp.js` adds MCP servers' tools, such as DuckDB queries, to the map tools, `plugins/charts.js` adds charts, and `plugins/draw.js` and `plugins/uploads.js` add drawing and uploads. Hex layers are still to come. The session export is a config setting (see below).
 
 ## Use
 
@@ -141,6 +141,16 @@ When the first server is on another origin from the page and its entry sets no `
 ]
 ```
 
+`plugins/draw.js` adds the full app's polygon draw button and the `get_drawn_region` tool, which returns the drawn region as WKT with an H3 resolution to join it at. `plugins/uploads.js` adds the full app's GeoJSON upload: polygons or points, sent from the browser to S3, with the `get_uploaded_dataset` tool, which gives the agent the file's URL and never its geometry. Its options are the full app's upload settings (`bucket_url`, `prefix`, `max_bytes`, `max_features`, `max_point_features`, `ingest_url`; see the [configuration guide](../docs/guide/configuration.md#geojson-upload-optional)). Both tell the chat when a region is drawn or a file arrives. Both answers are meant for SQL, so these plugins go with an SQL server from `plugins/mcp.js`.
+
+```json
+"plugins": [
+  { "url": "…/core/plugins/mcp.js", "options": { "url": "…" } },
+  "…/core/plugins/draw.js",
+  { "url": "…/core/plugins/uploads.js", "options": { "max_features": 200 } }
+]
+```
+
 `setup` runs after the map and the map tools exist and before the agent is built. It receives:
 
 | Field | What it is |
@@ -169,6 +179,8 @@ The agent loop, tool registry and chat come from [glen-harness](https://github.c
 | `system-prompt.md` | The base prompt; an app can replace it with `system_prompt_url` |
 | `plugins/mcp.js` | Plugin that adds the tools of one or more MCP servers, filtered by `include` or `exclude`, and the collections' GeoParquet URLs |
 | `plugins/charts.js` | Plugin that adds `render_chart`, with SQL run through the registered `query` tool |
+| `plugins/draw.js` | Plugin that adds the polygon draw button and `get_drawn_region` |
+| `plugins/uploads.js` | Plugin that adds the GeoJSON upload and `get_uploaded_dataset` |
 
 The core reuses these modules from `app/` unchanged: `map-control-tools.js` (the map tools both apps share), `catalog-tree.js` (finding collections by id at any depth, in our current STAC and the Portolan layout), `cog-tiles.js` (raster band settings and tile URLs), `map-manager.js` (layers, filters, styles, legend, tooltips), `layout-manager.js` with the header, theme and mobile sheet, `geocoder.js` and `data-page.js`.
 
