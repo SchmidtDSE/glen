@@ -39,18 +39,9 @@
  * read collections the app does not list (glen#441, as in the full app).
  * `s3_sources` in the app config adds https → s3 path rules, as there.
  *
- * A server can also run in the page, in a Web Worker, such as geo-query-wasm
- * (DuckDB-wasm in the visitor's browser). Its entry names the worker file in
- * place of a URL, with `worker_config` sent to the worker as JSON in a
- * `config` search parameter, which is where geo-query-wasm reads it:
- *
- *   { "worker": "geo-query-worker.js", "worker_config": { "discovery": false },
- *     "include": ["query"] }
- *
- * A page may start a Worker only from its own origin, so the app serves that
- * file; for geo-query-wasm it is one line that imports its worker.js from
- * jsDelivr. The path is relative to the page. A worker entry takes the same
- * rank, filters and prompt as any other, and never offers a visitor token.
+ * A server can also run in the page, in a Web Worker, such as geo-query-wasm.
+ * Its entry takes `worker`, a file the app serves, in place of `url`, and
+ * `worker_config`; core/README.md describes both.
  *
  * When the first server is on another origin and its entry has no
  * Authorization header, a visitor can enter their own token for it in the
@@ -117,7 +108,8 @@ export default {
     /** Starts a worker entry's Worker. Tests replace this. */
     startWorker(server) {
         const worker = new Worker(workerUrl(server, document.baseURI), { type: 'module' });
-        worker.addEventListener('error', (e) => console.error(`[mcp plugin] ${server.url} error:`, e.message));
+        // A file that fails to load fires a plain Event, with no message.
+        worker.addEventListener('error', (e) => console.error(`[mcp plugin] ${server.url} error:`, e.message ?? 'worker failed to load'));
         return worker;
     },
 
@@ -204,6 +196,10 @@ export default {
         const transport = () => {
             // A worker that never answered the last connection over it may
             // be stuck without an error; replace it rather than wait again.
+            // A worker busy with a long query that sends nothing for the
+            // whole connect timeout is replaced too, and that query is lost.
+            // The harness reconnects only after a network or timeout error,
+            // so this is rare.
             if (worker && last && !last.heard) { worker.terminate?.(); worker = null; }
             worker ??= this.startWorker(server);
             const w = worker;
