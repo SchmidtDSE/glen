@@ -1620,3 +1620,52 @@ describe('raster renders from the catalog (#440)', () => {
         expect(layers[0].versions.map(v => [v.colormap, v.rescale])).toEqual([['viridis', '0,1'], ['viridis', '0,1']]);
     });
 });
+
+// utah-public-lands: one collection, point and polygon PMTiles files, each
+// with its own default style. Only the first default was kept, so the point
+// layers fell back to fill paint, which MapLibre rejects on a circle layer.
+describe('a collection with a default style per PMTiles file', () => {
+    const URL_ = 'https://x.example/udogm/stac-collection.json';
+    const style = (file, type, paint) => ({
+        version: 8, sources: { data: { type: 'vector', url: `pmtiles://../${file}` } },
+        layers: [{ id: type, type, source: 'data', 'source-layer': file.replace('.pmtiles', ''), paint }],
+    });
+    const udogm = {
+        type: 'Collection', id: 'udogm', title: 'UDOGM', description: 'd', links: [],
+        assets: {
+            'coal-pmtiles': { href: 'https://x.example/udogm/coal-permits.pmtiles', type: 'application/vnd.pmtiles', roles: ['visual'] },
+            'wells-pmtiles': { href: 'https://x.example/udogm/wells.pmtiles', type: 'application/vnd.pmtiles', roles: ['visual'] },
+            'mines-pmtiles': { href: 'https://x.example/udogm/mineral-mines.pmtiles', type: 'application/vnd.pmtiles', roles: ['visual'] },
+            'style-coal': { href: './styles/coal.json', type: 'application/vnd.mapbox.style+json', roles: ['style', 'default'] },
+            'style-wells': { href: './styles/wells.json', type: 'application/vnd.mapbox.style+json', roles: ['style', 'default'] },
+            'style-mines': { href: './styles/mines.json', type: 'application/vnd.mapbox.style+json', roles: ['style', 'default'] },
+        },
+    };
+    const docs = new Map([
+        [URL_, udogm],
+        ['https://x.example/udogm/styles/coal.json', style('coal-permits.pmtiles', 'fill', { 'fill-color': '#8c510a' })],
+        ['https://x.example/udogm/styles/wells.json', style('wells.pmtiles', 'circle', { 'circle-color': '#1f78b4', 'circle-radius': 3 })],
+        ['https://x.example/udogm/styles/mines.json', style('mineral-mines.pmtiles', 'circle', { 'circle-color': '#e31a1c', 'circle-radius': 4 })],
+    ]);
+    let originalFetch;
+    beforeEach(() => {
+        originalFetch = global.fetch;
+        global.fetch = mockFetchJson(docs);
+        vi.spyOn(console, 'log').mockImplementation(() => {});
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+    afterEach(() => { global.fetch = originalFetch; vi.restoreAllMocks(); });
+
+    it('gives each layer its own file\'s default, points included', async () => {
+        const cat = new DatasetCatalog();
+        await cat.load({ collections: [{ collection_id: 'udogm', collection_url: URL_, assets: [
+            'coal-pmtiles', { id: 'wells-pmtiles', layer_type: 'circle' }, { id: 'mines-pmtiles', layer_type: 'circle' },
+        ] }] });
+        const [coal, wells, mines] = cat.get('udogm').mapLayers;
+        expect([coal.catalogStyle, wells.catalogStyle, mines.catalogStyle]).toEqual(['coal', 'wells', 'mines']);
+        expect(coal.defaultStyle).toEqual({ 'fill-color': '#8c510a' });
+        expect(wells.defaultStyle).toEqual({ 'circle-color': '#1f78b4', 'circle-radius': 3 });
+        expect(mines.defaultStyle['circle-color']).toBe('#e31a1c');
+        expect(Object.keys(wells.defaultStyle).some(k => k.startsWith('fill-'))).toBe(false);
+    });
+});
