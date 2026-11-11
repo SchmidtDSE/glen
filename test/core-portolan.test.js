@@ -85,6 +85,15 @@ describe('findStyleAssets', () => {
         expect(findStyleAssets(c, BASE)[0].key).toBe('style');
     });
 
+    it('keeps every default, one per PMTiles file, defaults first', () => {
+        const c = { assets: {
+            a: { href: './a.json', roles: ['style', 'default'] },
+            extra: { href: './x.json', roles: ['style'] },
+            b: { href: './b.json', roles: ['style', 'default'] },
+        } };
+        expect(findStyleAssets(c, BASE).map(s => [s.key, s.isDefault])).toEqual([['a', true], ['b', true], ['extra', false]]);
+    });
+
     it('names styles for the agent', () => {
         expect(styleName('style-by-direction')).toBe('by-direction');
         expect(styleName('styles/2025')).toBe('2025');
