@@ -13,7 +13,7 @@
  */
 
 import { findCollections, childLinks as stacChildLinks, resolveHref } from './catalog-tree.js';
-import { normalizeLegendClasses, resolveRasterBand, cogTileUrl } from './cog-tiles.js';
+import { normalizeLegendClasses, resolveRasterBand, cogTileUrl, publishedRender } from './cog-tiles.js';
 import { findStyleAssets, styleToLayer, stylesForFile, describeStyleColours } from '../core/portolan.js';
 import { legendFromPaint } from './legend-helpers.js';
 
@@ -415,12 +415,18 @@ export class DatasetCatalog {
                                 description: vAsset.description || '',
                             });
                         } else if (vType.includes('geotiff') || vType.includes('tiff')) {
+                            // Each version takes its own published render (#440);
+                            // config set on the layer still wins for every version.
+                            const render = publishedRender(collection, v.asset_id);
                             versions.push({
                                 label: v.label,
                                 assetId: v.asset_id,
                                 layerType: 'raster',
                                 cogUrl: vAsset.href,
-                                ...resolveRasterBand(vAsset, config),
+                                ...resolveRasterBand(vAsset, config, render),
+                                colormap: config.colormap || options.colormap || render?.colormap || null,
+                                rescale: config.rescale || options.rescale || render?.rescale || null,
+                                categorical: !!render?.classColours,
                                 description: vAsset.description || '',
                             });
                         } else if (vType.includes('geo+json') || vAsset.href?.endsWith('.geojson')) {
@@ -445,6 +451,7 @@ export class DatasetCatalog {
 
                     // All versions must share a layer type (vector or raster)
                     const layerType = versions[0].layerType;
+                    const startVersion = versions[defaultIndex];
 
                     layers.push({
                         assetId: key,
@@ -460,12 +467,13 @@ export class DatasetCatalog {
                         tooltipFields: config.tooltip_fields || null,
                         defaultVisible: config.visible === true,
                         defaultFilter: config.default_filter || null,
-                        colormap: config.colormap || options.colormap || 'reds',
-                        rescale: config.rescale || options.rescale || null,
+                        colormap: startVersion.colormap || config.colormap || options.colormap || 'reds',
+                        rescale: startVersion.rescale || config.rescale || options.rescale || null,
                         paint: config.paint || null,
                         legendLabel: config.legend_label || null,
-                        legendType: config.legend_type || null,
-                        legendClasses: normalizeLegendClasses(config.legend_classes),
+                        legendType: config.legend_type || (startVersion.categorical ? 'categorical' : null),
+                        legendClasses: normalizeLegendClasses(config.legend_classes)
+                            ?? (startVersion.categorical ? startVersion.legendClasses : null),
                         legendRange: config.legend_range || null,
                         legendGradient: config.legend_gradient || null,
                         control: config.control || null,
@@ -509,7 +517,10 @@ export class DatasetCatalog {
                         control: config.control || null,
                     });
                 } else if (type.includes('geotiff') || type.includes('tiff')) {
-                    const band = resolveRasterBand(asset, config);
+                    // The catalog's published render is the starting look;
+                    // config keys still win where set (#440).
+                    const render = publishedRender(collection, assetId);
+                    const band = resolveRasterBand(asset, config, render);
                     layers.push({
                         assetId: key,
                         layerType: 'raster',
@@ -518,11 +529,12 @@ export class DatasetCatalog {
                         toggleGroup,
                         title: config.display_name || asset.title || assetId,
                         cogUrl: asset.href,
-                        colormap: config.colormap || options.colormap || 'reds',
-                        rescale: config.rescale || options.rescale || null,
+                        colormap: config.colormap || options.colormap || render?.colormap || 'reds',
+                        rescale: config.rescale || options.rescale || render?.rescale || null,
+                        catalogRender: render?.name || null,
                         paint: config.paint || null,
                         legendLabel: config.legend_label || null,
-                        legendType: config.legend_type || null,
+                        legendType: config.legend_type || (render?.classColours && band.legendClasses ? 'categorical' : null),
                         legendClasses: band.legendClasses,
                         nodata: band.nodata,
                         bidx: band.bidx,
@@ -591,14 +603,18 @@ export class DatasetCatalog {
                         defaultFilter: null,
                     });
                 } else if (type.includes('geotiff') || type.includes('tiff')) {
+                    const render = publishedRender(collection, assetId);
+                    const band = resolveRasterBand(asset, {}, render);
                     layers.push({
                         assetId,
                         layerType: 'raster',
                         title: asset.title || assetId,
                         cogUrl: asset.href,
-                        colormap: options.colormap || 'reds',
-                        rescale: options.rescale || null,
-                        ...resolveRasterBand(asset),
+                        colormap: options.colormap || render?.colormap || 'reds',
+                        rescale: options.rescale || render?.rescale || null,
+                        catalogRender: render?.name || null,
+                        ...(render?.classColours && band.legendClasses ? { legendType: 'categorical' } : {}),
+                        ...band,
                         description: asset.description || '',
                         defaultVisible: false,
                         defaultFilter: null,
@@ -1245,8 +1261,8 @@ export class DatasetCatalog {
                             const tilesUrl = cogTileUrl(this.titilerUrl, v.cogUrl, {
                                 legendType: ml.legendType,
                                 legendClasses: v.legendClasses,
-                                colormap: ml.colormap,
-                                rescale: ml.rescale,
+                                colormap: v.colormap || ml.colormap,
+                                rescale: v.rescale || ml.rescale,
                                 nodata: v.nodata,
                                 bidx: v.bidx,
                                 unscale: v.unscale,
@@ -1254,6 +1270,8 @@ export class DatasetCatalog {
                             return {
                                 label: v.label,
                                 type: 'raster',
+                                colormap: v.colormap || null,
+                                rescale: v.rescale || null,
                                 sourceId: `src-${ds.id.replace(/[^a-zA-Z0-9]/g, '-')}-${v.assetId.replace(/[^a-zA-Z0-9]/g, '-')}`,
                                 source: { type: 'raster', tiles: [tilesUrl], tileSize: 256 },
                             };

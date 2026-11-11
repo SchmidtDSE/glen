@@ -26,6 +26,63 @@ export function normalizeLegendClasses(raw) {
 }
 
 /**
+ * The catalog's published look for a COG asset: the first of the
+ * collection's renders (the STAC render extension) that names the asset.
+ * `colormap_name`, the first `rescale` range and `nodata` become the config
+ * keys of the same names; a categorical `colormap` (value → colour) is
+ * returned as `classColours`. Null when no render names the asset.
+ *
+ * @param {Object} collection STAC collection
+ * @param {string} assetKey   the COG asset's key in the collection
+ * @returns {{name:string, title:string|null, colormap:string|null,
+ *   rescale:string|null, nodata:*, classColours:Object|null}|null}
+ */
+export function publishedRender(collection, assetKey) {
+    const entry = Object.entries(collection?.renders || {})
+        .find(([, r]) => Array.isArray(r?.assets) && r.assets.includes(assetKey));
+    if (!entry) return null;
+    const [name, r] = entry;
+    const range = Array.isArray(r.rescale?.[0]) && r.rescale[0].length === 2
+        && r.rescale[0].every(v => v !== null && v !== '' && Number.isFinite(Number(v)))
+        ? r.rescale[0].map(Number).join(',') : null;
+    return {
+        name,
+        title: r.title || null,
+        colormap: typeof r.colormap_name === 'string' && r.colormap_name ? r.colormap_name : null,
+        rescale: range,
+        nodata: r.nodata ?? null,
+        classColours: r.colormap && typeof r.colormap === 'object' && !Array.isArray(r.colormap) ? r.colormap : null,
+    };
+}
+
+/** "RRGGBB" from "#RRGGBB", "RRGGBB" or [r, g, b(, a)]; null otherwise. */
+function hexColour(c) {
+    if (Array.isArray(c) && c.length >= 3 && c.slice(0, 3).every(v => Number.isInteger(v) && v >= 0 && v <= 255)) {
+        return c.slice(0, 3).map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+    }
+    const h = String(c ?? '').replace(/^#/, '');
+    return /^[0-9a-fA-F]{6}$/.test(h) ? h : null;
+}
+
+/**
+ * Legend classes from a render's categorical colormap, in its order and
+ * colours, named from the band's classes where they share a value. A value
+ * the render leaves out is not drawn.
+ */
+export function renderClasses(classColours, bandClasses = null) {
+    if (!classColours) return null;
+    const names = new Map((bandClasses || []).map(c => [String(c.value), c.name]));
+    const out = [];
+    for (const [v, colour] of Object.entries(classColours)) {
+        const hex = hexColour(colour);
+        if (!hex) continue;
+        const n = Number(v);
+        out.push({ value: v !== '' && Number.isFinite(n) ? n : v, name: names.get(String(v)) ?? `Class ${v}`, 'color-hint': hex });
+    }
+    return out.length ? out : null;
+}
+
+/**
  * Resolve the band-dependent settings of a COG asset from its STAC
  * `bands` (STAC 1.1) or `raster:bands`, and the asset's config.
  *
@@ -39,16 +96,23 @@ export function normalizeLegendClasses(raw) {
  *   and the legend are in real units. It defaults to on when STAC gives a
  *   scale other than 1 or an offset other than 0; config `unscale` overrides.
  *
+ * - A published render (`publishedRender`) comes between the two: its
+ *   `nodata` and categorical colours win over the band's, and config wins
+ *   over the render.
+ *
  * @param {Object} asset  STAC asset
  * @param {Object} config asset config from layers-input.json
+ * @param {Object|null} render the asset's published render, if any
  * @returns {{bidx:number|null, nodata:*, legendClasses:Array|null, unscale:boolean}}
  */
-export function resolveRasterBand(asset, config = {}) {
+export function resolveRasterBand(asset, config = {}, render = null) {
     const bidx = Number.isInteger(Number(config.bidx)) && Number(config.bidx) >= 1 ? Number(config.bidx) : null;
     const bands = asset?.bands || asset?.['raster:bands'];
     const band = bands?.[(bidx ?? 1) - 1];
-    const nodata = config.nodata ?? band?.nodata ?? null;
-    let legendClasses = normalizeLegendClasses(config.legend_classes) ?? band?.['classification:classes'] ?? null;
+    const nodata = config.nodata ?? render?.nodata ?? band?.nodata ?? null;
+    const bandClasses = band?.['classification:classes'] ?? null;
+    let legendClasses = normalizeLegendClasses(config.legend_classes)
+        ?? renderClasses(render?.classColours, bandClasses) ?? bandClasses;
     if (legendClasses && nodata != null) {
         legendClasses = legendClasses.filter(c => c.value == null || String(c.value) !== String(nodata));
     }

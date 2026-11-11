@@ -250,8 +250,8 @@ export class PortolanCatalog {
 
         for (const r of rasters) {
             const layerId = many ? `${id}/${r.key}` : id;
-            const colormap = spec.colormap || 'viridis';
-            const rescale = spec.rescale || defaultRescale(r.band);
+            const colormap = spec.colormap || r.render?.colormap || 'viridis';
+            const rescale = spec.rescale || r.render?.rescale || defaultRescale(r.band);
             this.layers.set(layerId, {
                 layerId,
                 datasetId: id,

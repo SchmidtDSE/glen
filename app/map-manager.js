@@ -297,6 +297,9 @@ export class MapManager {
                     outlineLayerId: vOutlineLayerId,
                     sourceId: v.sourceId,
                     sourceLayer: v.sourceLayer || null,
+                    // A raster version's own colormap and range, for its legend.
+                    colormap: v.colormap || null,
+                    rescale: v.rescale || null,
                 };
             });
 
@@ -2533,6 +2536,8 @@ export class MapManager {
         state.outlineLayerId = newV.outlineLayerId;
         state.sourceId = newV.sourceId;
         state.sourceLayer = newV.sourceLayer;
+        if (newV.colormap) state.colormap = newV.colormap;
+        if (newV.rescale) state.rescale = newV.rescale;
 
         // The version now on screen is a separate MapLibre layer carrying the
         // registered paint, so any set_style override no longer applies (#333).
