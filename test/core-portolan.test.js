@@ -4,6 +4,7 @@ import {
     defaultRescale, styleToLayer, stripGeometryTypeFilter, describeColor,
     pmtilesLayerInfo, normalizeGeometryType, guardMissingValues, styleName,
     portolanVersion, providerSummary, agentsLink, FAINT_OUTLINE, collectionColumns,
+    styleSourceFile, stylesForFile,
 } from '../core/portolan.js';
 import { PortolanCatalog, titilerTileUrl, defaultTooltip } from '../core/portolan-catalog.js';
 
@@ -88,6 +89,31 @@ describe('findStyleAssets', () => {
         expect(styleName('style-by-direction')).toBe('by-direction');
         expect(styleName('styles/2025')).toBe('2025');
         expect(styleName('style')).toBe('default');
+    });
+});
+
+describe('styles per PMTiles file', () => {
+    const style = (url) => ({ version: 8, sources: { data: { type: 'vector', url } }, layers: [] });
+    const styles = [
+        { name: 'county', isDefault: true, doc: style('pmtiles://../SVI2022_US_county.pmtiles') },
+        { name: 'tract', isDefault: false, doc: style('pmtiles://../SVI2022_US_tract.pmtiles') },
+        { name: 'tract-pct', isDefault: false, doc: style('pmtiles://../SVI2022_US_tract.pmtiles') },
+        { name: 'any', isDefault: false, doc: { version: 8, sources: {}, layers: [] } },
+    ];
+
+    it('reads the archive a style draws from its source', () => {
+        expect(styleSourceFile(style('pmtiles://../level_03/hydrobasins_level_03.pmtiles'))).toBe('hydrobasins_level_03.pmtiles');
+        expect(styleSourceFile(style('../data.pmtiles'))).toBe('data.pmtiles');
+        expect(styleSourceFile(style('https://tiles.example/{z}/{x}/{y}.mvt'))).toBe(null);
+        expect(styleSourceFile({ sources: {} })).toBe(null);
+    });
+
+    it("gives a layer only its own file's styles, default first", () => {
+        const county = stylesForFile(styles, 'https://s3.example/svi/SVI2022_US_county.pmtiles');
+        expect(county.map(s => [s.name, s.isDefault])).toEqual([['county', true], ['any', false]]);
+        const tract = stylesForFile(styles, 'https://s3.example/svi/SVI2022_US_tract.pmtiles');
+        expect(tract.map(s => [s.name, s.isDefault])).toEqual([['tract', true], ['tract-pct', false], ['any', false]]);
+        expect(stylesForFile(styles, 'https://s3.example/other.pmtiles').map(s => s.name)).toEqual(['any']);
     });
 });
 
@@ -281,6 +307,30 @@ describe('PortolanCatalog', () => {
         expect(p).toContain('`Damage` (string): Damage class');
         expect(p).toContain('`categorical`: colours by `Damage`, values: "road_damage", "road_blockage"');
         expect(p).toContain('License: CC-BY-4.0. Source: Response Network; mirrored by CARTO.');
+    });
+
+    it("draws each archive of a collection with that archive's own styles", async () => {
+        const two = {
+            type: 'Collection', id: 'svi', links: [],
+            assets: {
+                county: { href: './county.pmtiles', type: 'application/vnd.pmtiles', roles: ['data'] },
+                tract: { href: './tract.pmtiles', type: 'application/vnd.pmtiles', roles: ['data'] },
+                'style-county': { href: './styles/county.json', type: 'application/vnd.mapbox.style+json', roles: ['style', 'default'] },
+                'style-tract': { href: './styles/tract.json', type: 'application/vnd.mapbox.style+json', roles: ['style'] },
+            },
+        };
+        const at = (colour, file) => ({ ...generatedStyle(colour), sources: { data: { type: 'vector', url: `pmtiles://../${file}` } } });
+        const url = 'https://example.org/cat/svi/collection.json';
+        const more = {
+            [url]: two,
+            'https://example.org/cat/svi/styles/county.json': at('#111111', 'county.pmtiles'),
+            'https://example.org/cat/svi/styles/tract.json': at('#222222', 'tract.pmtiles'),
+        };
+        const c = new PortolanCatalog({ ...deps, fetchJson: async (u) => structuredClone(more[u]) });
+        await c.load({ collections: [url] });
+        expect(c.layers.get('svi/county').paint['circle-color']).toBe('#111111');
+        expect(c.layers.get('svi/tract').paint['circle-color']).toBe('#222222');
+        expect([...c.layers.get('svi/tract').styles.keys()]).toEqual(['tract']);
     });
 
     it('skips a collection it cannot fetch and loads the rest', async () => {

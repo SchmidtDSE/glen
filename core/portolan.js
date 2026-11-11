@@ -142,6 +142,44 @@ export function findStyleAssets(collection, collectionUrl) {
     return [...styles.filter(s => s.isDefault).slice(0, 1), ...styles.filter(s => !s.isDefault)];
 }
 
+/**
+ * The PMTiles file a style draws, by file name, or null when its sources name
+ * no PMTiles archive. Portolan writes the source URL relative to the style
+ * file (`pmtiles://../eez.pmtiles`), so the file name is what a style and an
+ * asset's href reliably share.
+ */
+export function styleSourceFile(doc) {
+    for (const src of Object.values(doc?.sources || {})) {
+        const u = typeof src?.url === 'string' ? src.url : '';
+        if (!/^pmtiles:\/\//.test(u) && !/\.pmtiles([?#]|$)/.test(u)) continue;
+        return fileName(u.replace(/^pmtiles:\/\//, '')) || null;
+    }
+    return null;
+}
+
+/**
+ * Of a collection's styles (each `{ ..., doc }`, default first as
+ * {@link findStyleAssets} orders them), the ones that draw the PMTiles file at
+ * `fileUrl`, default first. A collection with several archives publishes a
+ * style per archive (SVI's county and tract layers, EEZ and high seas), so a
+ * layer takes only its own file's styles. A style whose sources name no
+ * archive applies to any layer. When none of a layer's styles is the
+ * collection's default, its first one is.
+ */
+export function stylesForFile(styles, fileUrl) {
+    const file = fileName(fileUrl);
+    const mine = (styles || []).filter(s => {
+        const f = styleSourceFile(s.doc);
+        return !f || f === file;
+    });
+    if (!mine.length || mine.some(s => s.isDefault)) return mine;
+    return mine.map((s, i) => (i === 0 ? { ...s, isDefault: true } : s));
+}
+
+function fileName(url) {
+    return String(url || '').split(/[?#]/)[0].split('/').pop();
+}
+
 /** A short style name for the agent: "style-categorical" → "categorical", "styles/2025" → "2025". */
 export function styleName(key) {
     const k = String(key).replace(/^styles\//, '').replace(/^style[-_]?/, '');
