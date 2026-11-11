@@ -132,13 +132,15 @@ Each entry in `assets` may be a **bare string** (the STAC asset key, loaded with
 
 ### Styles from the catalog
 
-Since v3.46, a PMTiles layer without `default_style` starts from a MapLibre style the collection publishes (STAC assets with the `style` role). It takes the default style for its PMTiles file, or the one named by `style`, either by its short name (`"fee-gap-sts"`) or by its asset key (`"style-fee-gap-sts"`). A collection with several PMTiles files (SVI's county and tract layers, say) publishes styles for each, and a layer takes only the styles whose source is its own file; a versioned layer takes those of its starting version. The style also supplies the outline, any filter, and a legend read from its colours: swatches for a `match` expression, a colorbar for a ramp. `outline_style`, `layer_type`, `default_filter` and the `legend_*` keys still win where set, and a layer with `default_style` reads no style at all, so existing configs draw as before.
+Since v3.46, a PMTiles layer without `default_style` starts from a MapLibre style the collection publishes (STAC assets with the `style` role). It takes the default style for its PMTiles file, or the one named by `style`, either by its short name (`"fee-gap-sts"`) or by its asset key (`"style-fee-gap-sts"`). A collection with several PMTiles files (SVI's county and tract layers, say) publishes styles for each, and a layer takes only the styles whose source is its own file; a versioned layer takes those of its starting version. The style also supplies the outline, any filter, and a legend read from its colours: swatches for a `match` expression, a colorbar for a ramp. `outline_style`, `layer_type`, `default_filter` and the `legend_*` keys still win where set, and a layer with `default_style` keeps it, so existing configs draw as before.
 
 ```json
 { "id": "fee-pmtiles", "display_name": "Fee lands", "style": "fee-gap-sts" }
 ```
 
 An app on an earlier release ignores the catalog's styles, so remove a layer's `default_style` only in the change that moves the app to v3.46.1 or later. (v3.46.0 gave every layer of a collection with several PMTiles files the collection's one default style.)
+
+**The agent can switch styles (since v3.47).** Every PMTiles layer with published styles, including one styled by config, offers them to the agent: the system prompt lists them, with what each colours by when the app has eight datasets or fewer, and the `apply_style` tool switches a layer to one, with its outline, filter and legend. `reset_style` returns to the layer's starting look. A layer whose only published style is already on the map lists nothing, and an app with no published styles has no `apply_style` tool.
 
 ### Continuous (graduated) vector legends
 

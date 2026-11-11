@@ -5,6 +5,8 @@
  * Consumed by map-manager.js (the continuous-vector legend branch, #258).
  */
 
+import { normalizeLegendClasses } from './cog-tiles.js';
+
 /**
  * The paint keys that carry a layer's primary data-driven color, in priority
  * order. A fill layer colors via `fill-color`, an extruded fill via
@@ -149,4 +151,26 @@ export function deriveContinuousLegend(paint) {
         gradient: colors,
         range: [Math.min(...values), Math.max(...values)],
     };
+}
+
+/**
+ * The legend a published style's paint implies: swatches for a `match`, a
+ * colorbar for a ramp, or none. Shared by the starting style and apply_style.
+ *
+ * @returns {{legendType: string|null, legendClasses: Array|null}}
+ */
+export function legendFromPaint(paint) {
+    const cat = deriveCategoricalLegend(paint);
+    if (cat) {
+        return {
+            legendType: 'categorical',
+            legendClasses: normalizeLegendClasses(cat.classes.map(c => ({
+                value: Array.isArray(c.value) ? c.value[0] : c.value,
+                name: Array.isArray(c.value) ? c.value.join(', ') : String(c.value),
+                color: c.color,
+            }))),
+        };
+    }
+    if (deriveContinuousLegend(paint)) return { legendType: 'continuous', legendClasses: null };
+    return { legendType: null, legendClasses: null };
 }

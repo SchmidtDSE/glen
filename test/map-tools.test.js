@@ -678,3 +678,48 @@ describe('add_hex_tile_layer — fetch color-scale metadata by hash (#276)', () 
         expect(tool.description).toMatch(/do NOT copy/i);
     });
 });
+
+describe('apply_style (#440)', () => {
+    const gap = { 'fill-color': ['match', ['get', 'GAP_Sts'], '1', '#26633A', '2', '#3E9C47', '#888888'] };
+    const roads = { 'line-color': '#000000' };
+    const layer = {
+        assetId: 'fee-pmtiles', renderType: null,
+        publishedStyles: [
+            { name: 'fee-gap-sts', key: 'style-fee-gap-sts', renderType: 'fill', paint: gap, outlinePaint: { 'line-color': '#333' }, filter: null },
+            { name: 'roads', key: 'style-roads', renderType: 'line', paint: roads, outlinePaint: null, filter: null },
+        ],
+    };
+    const catalogWith = (mapLayers) => ({
+        getAll: () => [{ id: 'fee', mapLayers }],
+        findMapLayer: (id) => (id === 'fee/fee-pmtiles' && mapLayers[0] ? { dataset: { id: 'fee' }, layer: mapLayers[0] } : null),
+    });
+    const manager = () => ({
+        layers: new Map([['fee/fee-pmtiles', { mapLayerId: 'layer-fee' }]]),
+        map: { getLayer: () => ({ type: 'fill' }) },
+        applyPublishedStyle: vi.fn(() => ({ success: true })),
+    });
+    const tool = (mm, cat) => createMapTools(mm, cat, null).find(t => t.name === 'apply_style');
+
+    it('is registered only when a layer has published styles', () => {
+        expect(tool(manager(), catalogWith([layer]))).toBeDefined();
+        expect(tool(manager(), catalogWith([{ assetId: 'x' }]))).toBeUndefined();
+    });
+
+    it('applies a style by name or asset key, with its legend', async () => {
+        const mm = manager();
+        const t = tool(mm, catalogWith([layer]));
+        const r = JSON.parse(await t.execute({ layer_id: 'fee/fee-pmtiles', style: 'style-fee-gap-sts' }));
+        expect(r).toEqual({ success: true, layer: 'fee/fee-pmtiles', style: 'fee-gap-sts', colours_by: { property: 'GAP_Sts', kind: 'categorical', values: ['1', '2'] } });
+        const [, args] = mm.applyPublishedStyle.mock.calls[0];
+        expect(args).toMatchObject({ paint: gap, outlinePaint: { 'line-color': '#333' }, legendType: 'categorical' });
+    });
+
+    it('names the published styles for an unknown one, and refuses another geometry', async () => {
+        const t = tool(manager(), catalogWith([layer]));
+        expect(JSON.parse(await t.execute({ layer_id: 'fee/fee-pmtiles', style: 'nope' })).error)
+            .toBe('No style "nope" for fee/fee-pmtiles. Published styles: fee-gap-sts, roads');
+        expect(JSON.parse(await t.execute({ layer_id: 'fee/fee-pmtiles', style: 'roads' })).error)
+            .toBe('Style "roads" draws line layers but fee/fee-pmtiles is drawn as fill.');
+        expect(JSON.parse(await t.execute({ layer_id: 'other', style: 'roads' })).error).toBe('Unknown layer: other');
+    });
+});

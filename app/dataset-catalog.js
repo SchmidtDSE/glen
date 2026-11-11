@@ -14,8 +14,8 @@
 
 import { findCollections, childLinks as stacChildLinks, resolveHref } from './catalog-tree.js';
 import { normalizeLegendClasses, resolveRasterBand, cogTileUrl } from './cog-tiles.js';
-import { findStyleAssets, styleToLayer, stylesForFile } from '../core/portolan.js';
-import { deriveCategoricalLegend, deriveContinuousLegend } from './legend-helpers.js';
+import { findStyleAssets, styleToLayer, stylesForFile, describeStyleColours } from '../core/portolan.js';
+import { legendFromPaint } from './legend-helpers.js';
 
 export { resolveRasterBand, cogTileUrl };
 
@@ -646,13 +646,14 @@ export class DatasetCatalog {
      * @param {string|null} url - where it was read, to resolve style hrefs
      */
     async _applyCatalogStyles(mapLayers, collection, url) {
-        const wanting = mapLayers.filter(ml => ml.layerType === 'vector' && ml.sourceType !== 'geojson' && !ml.defaultStyle);
-        if (!wanting.length) return;
+        const vectors = mapLayers.filter(ml => ml.layerType === 'vector' && ml.sourceType !== 'geojson');
+        if (!vectors.length) return;
         const found = findStyleAssets(collection, url || this.catalogUrl);
         if (!found.length) return;
         // Read every style once: a collection with several PMTiles archives
         // publishes a style per archive, and the source each style names is
-        // what says which layer it belongs to.
+        // what says which layer it belongs to. Layers styled by config read
+        // them too, for apply_style and the prompt.
         const styles = (await Promise.all(found.map(async (st) => {
             try { return { ...st, doc: await this.readJson(st.url) }; } catch (err) {
                 console.warn(`[Catalog] Style ${st.url} unreadable: ${err.message}`);
@@ -660,37 +661,37 @@ export class DatasetCatalog {
             }
         }))).filter(Boolean);
         const GEOMETRY = { line: 'LineString', circle: 'Point', fill: 'Polygon' };
-        for (const ml of wanting) {
+        for (const ml of vectors) {
             const fileUrl = ml.url || ml.versions?.[ml.defaultVersionIndex || 0]?.url;
-            const own = stylesForFile(styles, fileUrl);
-            if (!own.length) continue;
+            const geometry = GEOMETRY[ml.renderType] || null;
+            const published = [];
+            for (const st of stylesForFile(styles, fileUrl)) {
+                const layer = styleToLayer(st.doc, geometry);
+                if (layer) published.push({ name: st.name, key: st.key, title: st.title || st.doc?.name || st.name, isDefault: st.isDefault, ...layer });
+            }
+            if (!published.length) continue;
+            ml.publishedStyles = published;
+            if (ml.defaultStyle) continue;
+
             const named = ml.styleName
-                ? own.find(st => st.name === ml.styleName || st.key === ml.styleName)
+                ? published.find(st => st.name === ml.styleName || st.key === ml.styleName)
                 : null;
             if (ml.styleName && !named) {
                 console.warn(`[Catalog] ${collection.id}/${ml.assetId}: no published style "${ml.styleName}"; `
-                    + `using the default. Published: ${own.map(st => st.name).join(', ')}`);
+                    + `using the default. Published: ${published.map(st => st.name).join(', ')}`);
             }
-            const pick = named || own.find(st => st.isDefault) || own[0];
-            const layer = styleToLayer(pick.doc, GEOMETRY[ml.renderType] || null);
-            if (!layer) continue;
-            ml.defaultStyle = layer.paint;
+            const pick = named || published.find(st => st.isDefault) || published[0];
+            ml.defaultStyle = pick.paint;
             ml.catalogStyle = pick.name;
-            if (!ml.renderType && layer.renderType !== 'fill') ml.renderType = layer.renderType;
-            if (!ml.outlineStyle && layer.outlinePaint) ml.outlineStyle = layer.outlinePaint;
-            if (!ml.defaultFilter && layer.filter) ml.defaultFilter = layer.filter;
+            if (!ml.renderType && pick.renderType !== 'fill') ml.renderType = pick.renderType;
+            if (!ml.outlineStyle && pick.outlinePaint) ml.outlineStyle = pick.outlinePaint;
+            if (!ml.defaultFilter && pick.filter) {
+                ml.defaultFilter = pick.filter;
+                ml.styleFilter = pick.filter;
+            }
             if (!ml.legendType) {
-                const cat = deriveCategoricalLegend(layer.paint);
-                if (cat) {
-                    ml.legendType = 'categorical';
-                    ml.legendClasses = normalizeLegendClasses(cat.classes.map(c => ({
-                        value: Array.isArray(c.value) ? c.value[0] : c.value,
-                        name: Array.isArray(c.value) ? c.value.join(', ') : String(c.value),
-                        color: c.color,
-                    })));
-                } else if (deriveContinuousLegend(layer.paint)) {
-                    ml.legendType = 'continuous';
-                }
+                const legend = legendFromPaint(pick.paint);
+                if (legend.legendType) Object.assign(ml, legend);
             }
         }
     }
@@ -1029,7 +1030,14 @@ export class DatasetCatalog {
                     if (ml.defaultFilter) {
                         layerLine += ` [default filter: ${JSON.stringify(ml.defaultFilter)}]`;
                     }
+                    if (ml.catalogStyle && this._stylesOnOffer(ml)) {
+                        layerLine += ` [starts as published style \`${ml.catalogStyle}\`]`;
+                    }
                     section += layerLine + '\n';
+                }
+                for (const g of this._styleGroups(ds)) {
+                    section += `\n**Published styles (apply with apply_style) for ${this._styleGroupTarget(ds, g)}:**\n`;
+                    for (const st of g.styles) section += `- \`${st.name}\`: ${describeStyleColours(st.paint)}\n`;
                 }
             }
 
@@ -1041,6 +1049,55 @@ export class DatasetCatalog {
         }
 
         return sections.join('\n---\n\n');
+    }
+
+    /**
+     * A layer's published styles, when apply_style has something to offer:
+     * one that isn't what the layer draws at start. Null otherwise, so a layer
+     * whose only style is already on the map adds nothing to the prompt.
+     * @private
+     */
+    _stylesOnOffer(ml) {
+        const styles = ml.publishedStyles || [];
+        return styles.some(st => st.name !== ml.catalogStyle) ? styles : null;
+    }
+
+    /**
+     * A dataset's layers with published styles on offer, grouped by the set of
+     * styles they share, so alias layers over one archive (one per attribute)
+     * list their styles once rather than once each.
+     * @private
+     * @returns {Array<{layerIds: string[], styles: Object[]}>}
+     */
+    _styleGroups(ds) {
+        const groups = new Map();
+        for (const ml of ds.mapLayers) {
+            const styles = this._stylesOnOffer(ml);
+            if (!styles) continue;
+            const sig = styles.map(st => st.name).join('\n');
+            if (!groups.has(sig)) groups.set(sig, { layerIds: [], styles });
+            groups.get(sig).layerIds.push(`${ds.id}/${ml.assetId}`);
+        }
+        return [...groups.values()];
+    }
+
+    /** Which layers a style group is for, in the fewest words. @private */
+    _styleGroupTarget(ds, g) {
+        if (g.layerIds.length === ds.mapLayers.length) return g.layerIds.length === 1 ? 'this layer' : 'each layer above';
+        if (g.layerIds.length === 1) return `\`${g.layerIds[0]}\``;
+        return g.layerIds.map(id => `\`${id}\``).join(', ');
+    }
+
+    /**
+     * A map layer by its `<collection>/<asset>` id, with its dataset.
+     * @returns {{dataset: Object, layer: Object}|null}
+     */
+    findMapLayer(layerId) {
+        for (const ds of this.datasets.values()) {
+            const layer = ds.mapLayers?.find(ml => `${ds.id}/${ml.assetId}` === layerId);
+            if (layer) return { dataset: ds, layer };
+        }
+        return null;
     }
 
     /**
@@ -1073,10 +1130,28 @@ export class DatasetCatalog {
             const summary = this._oneLine(ds.description);
             let line = `- \`${ds.id}\` — **${ds.title}**${summary ? ` — ${summary}` : ''}`;
             if (ds.mapLayers.length > 0) {
+                // A layer's styles go inline; a set several layers share
+                // (alias layers over one archive) gets one line of its own.
+                const groups = this._styleGroups(ds);
+                const shared = groups.filter(g => g.layerIds.length > 1);
+                const names = (styles, start) => styles.map(st => `\`${st.name}\`${st.name === start ? ' (on at start)' : ''}`).join(', ');
                 const layers = ds.mapLayers
-                    .map(ml => `\`${ds.id}/${ml.assetId}\` (${ml.layerType})`)
+                    .map(ml => {
+                        const id = `${ds.id}/${ml.assetId}`;
+                        const styles = this._stylesOnOffer(ml);
+                        let extra = '';
+                        if (styles && shared.some(g => g.layerIds.includes(id))) {
+                            if (ml.catalogStyle) extra = `, starts as \`${ml.catalogStyle}\``;
+                        } else if (styles) {
+                            extra = `; published styles: ${names(styles, ml.catalogStyle)}`;
+                        }
+                        return `\`${id}\` (${ml.layerType}${extra})`;
+                    })
                     .join(', ');
                 line += `\n  map layers: ${layers}`;
+                for (const g of shared) {
+                    line += `\n  published styles for ${this._styleGroupTarget(ds, g)} (apply_style): ${names(g.styles, null)}`;
+                }
             }
             lines.push(line);
         }
@@ -1203,6 +1278,7 @@ export class DatasetCatalog {
                         tooltipFields: ml.tooltipFields || null,
                         defaultVisible: ml.defaultVisible || false,
                         defaultFilter: ml.defaultFilter || null,
+                        ...(ml.styleFilter && { styleFilter: ml.styleFilter }),
                         colormap: ml.colormap || null,
                         rescale: ml.rescale || null,
                         legendLabel: ml.legendLabel || null,
@@ -1245,6 +1321,7 @@ export class DatasetCatalog {
                         tooltipFields: ml.tooltipFields || null,
                         defaultVisible: ml.defaultVisible || false,
                         defaultFilter: ml.defaultFilter || null,
+                        ...(ml.styleFilter && { styleFilter: ml.styleFilter }),
                         legendLabel: ml.legendLabel || null,
                         legendType: ml.legendType || null,
                         legendClasses: ml.legendClasses || null,

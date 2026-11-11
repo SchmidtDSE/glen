@@ -1,5 +1,7 @@
 import { validateChartSpec } from './chart-renderer.js';
 import { metadataUrlFromTileUrl } from './hex-layer-helpers.js';
+import { legendFromPaint } from './legend-helpers.js';
+import { describeColor } from '../core/portolan.js';
 import {
     createMapControlTools,
     createProjectionTool,
@@ -336,6 +338,7 @@ ${pickLayerNudge}`,
 
         createProjectionTool(mapManager),
 
+        ...createApplyStyleTool(mapManager, catalog, pickLayerNudge),
     ];
 }
 
@@ -484,4 +487,51 @@ The layer is shown if it is hidden. The result gives the date on screen and the 
         },
         execute: async (args) => JSON.stringify(await mapManager.setTime(args)),
     };
+}
+
+/**
+ * `apply_style` (#440): switch a vector layer to one of the styles its
+ * collection publishes. Registered only when some layer has published styles,
+ * so an app without them keeps its tool list.
+ */
+export function createApplyStyleTool(mapManager, catalog, pickLayerNudge = PICK_LAYER_NUDGE) {
+    const any = catalog.getAll?.().some(ds => ds.mapLayers?.some(ml => ml.publishedStyles?.length));
+    if (!any) return [];
+    return [{
+        name: 'apply_style',
+        description: `Apply one of the styles the data publisher made for a vector layer: its colours, outline, filter and legend together. The system prompt lists each layer's published styles and what each colours by. Prefer a published style over writing your own paint with set_style when one matches the request. reset_style returns to the layer's starting look.
+
+${pickLayerNudge}`,
+        inputSchema: {
+            type: 'object',
+            properties: {
+                layer_id: { type: 'string', description: 'Vector layer' },
+                style: { type: 'string', description: 'Published style name, as listed in the system prompt' },
+            },
+            required: ['layer_id', 'style'],
+        },
+        execute: (args) => JSON.stringify(applyPublishedStyle(mapManager, catalog, args.layer_id, args.style)),
+    }];
+}
+
+/** Apply a layer's published style by name (or asset key). */
+export function applyPublishedStyle(mapManager, catalog, layerId, name) {
+    const hit = catalog.findMapLayer?.(layerId);
+    if (!hit) return { success: false, error: `Unknown layer: ${layerId}` };
+    const styles = hit.layer.publishedStyles || [];
+    if (!styles.length) return { success: false, error: `${layerId} has no published styles; use set_style.` };
+    const st = styles.find(s => s.name === name || s.key === name);
+    if (!st) {
+        return { success: false, error: `No style "${name}" for ${layerId}. Published styles: ${styles.map(s => s.name).join(', ')}` };
+    }
+    const state = mapManager.layers?.get?.(layerId);
+    const drawnAs = mapManager.map?.getLayer?.(state?.mapLayerId)?.type || hit.layer.renderType || 'fill';
+    if (st.renderType !== drawnAs) {
+        return { success: false, error: `Style "${st.name}" draws ${st.renderType} layers but ${layerId} is drawn as ${drawnAs}.` };
+    }
+    const result = mapManager.applyPublishedStyle(layerId, {
+        paint: st.paint, outlinePaint: st.outlinePaint, filter: st.filter, ...legendFromPaint(st.paint),
+    });
+    if (!result.success) return result;
+    return { success: true, layer: layerId, style: st.name, colours_by: describeColor(st.paint) };
 }
