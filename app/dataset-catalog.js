@@ -14,7 +14,7 @@
 
 import { findCollections, childLinks as stacChildLinks, resolveHref } from './catalog-tree.js';
 import { normalizeLegendClasses, resolveRasterBand, cogTileUrl, publishedRender } from './cog-tiles.js';
-import { findStyleAssets, styleToLayer, stylesForFile, describeStyleColours } from '../core/portolan.js';
+import { findStyleAssets, styleToLayer, stylesForFile, describeStyleColours } from './published-styles.js';
 import { legendFromPaint } from './legend-helpers.js';
 
 export { resolveRasterBand, cogTileUrl };
