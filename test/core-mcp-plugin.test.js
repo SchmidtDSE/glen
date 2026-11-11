@@ -35,6 +35,10 @@ describe('resolveServers', () => {
         expect(h.url).toBe('https://a/mcp');
         expect(resolveServers({ worker: 'w.js' }, { mcp_url: 'https://c/mcp' })[0].url).toBe('worker:w.js');
     });
+
+    it('refuses an entry with both url and worker', () => {
+        expect(() => resolveServers({ servers: [{ url: 'https://a/mcp', worker: 'w.js' }] })).toThrow(/not both/);
+    });
 });
 
 describe('workerUrl', () => {

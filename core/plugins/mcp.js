@@ -83,7 +83,9 @@ export function resolveServers(options = {}, config = {}) {
         : [{ ...options, url: options.worker ? undefined : (options.url || config.mcp_url) }];
     const given = (v) => typeof v === 'string' && v.trim();
     const servers = listed.filter((s) => s && (given(s.worker) || given(s.url)));
-    if (!servers.length) throw new Error('mcp plugin: options.url or options.servers is required');
+    if (!servers.length) throw new Error('mcp plugin: options.url, options.worker or options.servers is required');
+    const both = servers.find((s) => given(s.url) && given(s.worker));
+    if (both) throw new Error(`mcp plugin: a server takes url or worker, not both (${both.url}, ${both.worker})`);
     return servers.map(({ url, headers, prompt, include, exclude, worker, worker_config }) => (given(worker)
         ? { url: `worker:${worker}`, worker, worker_config: worker_config || {}, headers: {}, prompt, include, exclude }
         : { url, headers: headers || {}, prompt, include, exclude }));
