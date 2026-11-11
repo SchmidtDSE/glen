@@ -20,7 +20,7 @@
  * Asset keys carry no meaning; everything is found by role and media type.
  */
 
-import { resolveRasterBand } from '../app/cog-tiles.js';
+import { resolveRasterBand, publishedRender } from '../app/cog-tiles.js';
 
 export const PMTILES_TYPE = 'application/vnd.pmtiles';
 
@@ -194,12 +194,17 @@ export function styleName(key) {
 export function findRasterAssets(collection, collectionUrl) {
     return Object.entries(collection?.assets || {})
         .filter(([, a]) => isCogAsset(a) && (roles(a).includes('data') || roles(a).includes('visual')))
-        .map(([key, a]) => ({
-            key,
-            url: resolveHref(a.href, collectionUrl),
-            title: a.title || null,
-            band: rasterBand(a),
-        }));
+        .map(([key, a]) => {
+            const render = publishedRender(collection, key);
+            return {
+                key,
+                url: resolveHref(a.href, collectionUrl),
+                title: a.title || null,
+                band: rasterBand(a, render),
+                // The catalog's published look, as in the full app (#440).
+                render,
+            };
+        });
 }
 
 /**
@@ -207,13 +212,14 @@ export function findRasterAssets(collection, collectionUrl) {
  * whether TiTiler should apply the band's scale and offset.
  * Reads STAC 1.1 `bands` first, then the raster extension's `raster:bands`.
  * nodata, the classes and `unscale` follow the full app's rules
- * (app/cog-tiles.js), so a class whose value is the nodata value is dropped.
+ * (app/cog-tiles.js), so a class whose value is the nodata value is dropped,
+ * and a published render's nodata and class colours win over the band's.
  */
-export function rasterBand(asset) {
+export function rasterBand(asset, render = null) {
     const band = asset?.bands?.[0] || asset?.['raster:bands']?.[0] || {};
     const stats = band.statistics || {};
     const num = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
-    const shared = resolveRasterBand(asset);
+    const shared = resolveRasterBand(asset, {}, render);
     const nodata = shared.nodata ?? asset?.nodata ?? null;
     let classes = shared.legendClasses || asset?.['classification:classes'] || null;
     if (Array.isArray(classes) && nodata != null) classes = classes.filter(c => c.value == null || String(c.value) !== String(nodata));

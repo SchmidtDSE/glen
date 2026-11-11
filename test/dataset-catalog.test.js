@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { DatasetCatalog, resolveRasterBand, cogTileUrl } from '../app/dataset-catalog.js';
+import { publishedRender, renderClasses } from '../app/cog-tiles.js';
 
 const stacCollection = (overrides = {}) => ({
     type: 'Collection',
@@ -1515,5 +1516,100 @@ describe('raster band settings (#357, #350, unscale)', () => {
         } }, {}, [{ key: 'cog', assetId: 'cog', config: { bidx: 2, legend_classes: [{ value: 3, color: '#000000' }] } }]);
         expect(layers[0]).toMatchObject({ bidx: 2, unscale: true, nodata: 9 });
         expect(layers[0].legendClasses).toEqual([{ value: 3, name: 'Class 3', 'color-hint': '#000000' }]);
+    });
+});
+
+describe('raster renders from the catalog (#440)', () => {
+    const COG = 'image/tiff; application=geotiff; profile=cloud-optimized';
+    const ships = {
+        type: 'Collection', id: 'ships', links: [],
+        renders: {
+            global: { title: 'All vessels', assets: ['global-cog'], colormap_name: 'reds', rescale: [[0, 13500000]], nodata: 0 },
+            fishing: { title: 'Fishing', assets: ['fishing-cog'], colormap_name: 'blues', rescale: [[0, 108000]] },
+        },
+        assets: {
+            'global-cog': { href: 'https://x/global.tif', type: COG, roles: ['data'], 'raster:bands': [{ nodata: 2147483647 }] },
+            'fishing-cog': { href: 'https://x/fishing.tif', type: COG, roles: ['data'] },
+        },
+    };
+    const landcover = {
+        type: 'Collection', id: 'nlcd', links: [],
+        renders: { lc: { assets: ['lc-cog'], colormap: { 11: '#466B9F', 21: [222, 197, 197, 255] }, nodata: 250, resampling: 'nearest' } },
+        assets: {
+            'lc-cog': {
+                href: 'https://x/lc.tif', type: COG, roles: ['data'],
+                'raster:bands': [{ nodata: 250, 'classification:classes': [
+                    { value: 11, name: 'Open Water', color_hint: '000000' },
+                    { value: 21, name: 'Developed, Open Space', color_hint: '000000' },
+                    { value: 31, name: 'Barren', color_hint: '000000' },
+                ] }],
+            },
+        },
+    };
+
+    it("reads the render that names an asset, in config's terms", () => {
+        expect(publishedRender(ships, 'global-cog')).toEqual({
+            name: 'global', title: 'All vessels', colormap: 'reds', rescale: '0,13500000', nodata: 0, classColours: null,
+        });
+        expect(publishedRender(ships, 'missing')).toBeNull();
+        expect(publishedRender({ assets: {} }, 'x')).toBeNull();
+        expect(publishedRender({ renders: { a: { assets: ['x'], rescale: [['lo', 1]] } } }, 'x').rescale).toBeNull();
+    });
+
+    it("names a render's categories from the band and takes the render's colours", () => {
+        expect(renderClasses({ 11: '#466B9F', 21: [222, 197, 197, 255], 99: 'nope' }, [{ value: 11, name: 'Open Water' }])).toEqual([
+            { value: 11, name: 'Open Water', 'color-hint': '466B9F' },
+            { value: 21, name: 'Class 21', 'color-hint': 'DEC5C5' },
+        ]);
+        expect(renderClasses(null)).toBeNull();
+    });
+
+    it("starts a raster from its render when config gives no look", () => {
+        const cat = new DatasetCatalog();
+        const [layer] = cat.extractMapLayers(ships, {}, [{ key: 'global-cog', assetId: 'global-cog', config: {} }]);
+        expect(layer).toMatchObject({ colormap: 'reds', rescale: '0,13500000', nodata: 0, catalogRender: 'global' });
+    });
+
+    it('keeps config colormap, range and nodata over the render', () => {
+        const cat = new DatasetCatalog();
+        const [layer] = cat.extractMapLayers(ships, {}, [{ key: 'global-cog', assetId: 'global-cog',
+            config: { colormap: 'magma', rescale: '0,5', nodata: -1 } }]);
+        expect(layer).toMatchObject({ colormap: 'magma', rescale: '0,5', nodata: -1 });
+    });
+
+    it("draws a categorical render's classes, in its colours, as a categorical legend", () => {
+        const cat = new DatasetCatalog();
+        const [layer] = cat.extractMapLayers(landcover, {}, [{ key: 'lc-cog', assetId: 'lc-cog', config: {} }]);
+        expect(layer.legendType).toBe('categorical');
+        expect(layer.legendClasses).toEqual([
+            { value: 11, name: 'Open Water', 'color-hint': '466B9F' },
+            { value: 21, name: 'Developed, Open Space', 'color-hint': 'DEC5C5' },
+        ]);
+        const url = decodeURIComponent(cogTileUrl('https://t', layer.cogUrl, layer));
+        expect(url).toContain('colormap={"11":[70,107,159,255],"21":[222,197,197,255]}');
+    });
+
+    it('gives each version of a versioned raster its own render, and its legend follows', () => {
+        const cat = new DatasetCatalog();
+        const layers = cat.extractMapLayers(ships, {}, [{ key: 'ships', assetId: 'ships', config: {
+            versions: [{ label: 'All', asset_id: 'global-cog' }, { label: 'Fishing', asset_id: 'fishing-cog' }],
+            default_version: 'Fishing',
+        } }]);
+        expect(layers[0]).toMatchObject({ colormap: 'blues', rescale: '0,108000' });
+        cat.datasets.set('ships', { id: 'ships', title: 'Ships', columns: [], mapLayers: layers });
+        const [cfg] = cat.getMapLayerConfigs();
+        const q = (v) => decodeURIComponent(v.source.tiles[0]);
+        expect(q(cfg.versions[0])).toContain('colormap_name=reds&rescale=0,13500000&nodata=0');
+        expect(q(cfg.versions[1])).toContain('colormap_name=blues&rescale=0,108000');
+        expect(cfg.versions.map(v => [v.colormap, v.rescale])).toEqual([['reds', '0,13500000'], ['blues', '0,108000']]);
+    });
+
+    it('lets config on a versioned raster win for every version', () => {
+        const cat = new DatasetCatalog();
+        const layers = cat.extractMapLayers(ships, {}, [{ key: 'ships', assetId: 'ships', config: {
+            colormap: 'viridis', rescale: '0,1',
+            versions: [{ label: 'All', asset_id: 'global-cog' }, { label: 'Fishing', asset_id: 'fishing-cog' }],
+        } }]);
+        expect(layers[0].versions.map(v => [v.colormap, v.rescale])).toEqual([['viridis', '0,1'], ['viridis', '0,1']]);
     });
 });

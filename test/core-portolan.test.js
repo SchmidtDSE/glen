@@ -137,7 +137,15 @@ describe('rasters', () => {
         expect(r[0].band).toMatchObject({ nodata: -99999, min: 2.7, max: 29, mean: 8, stddev: 3.25 });
     });
 
-    it('reads raster:bands when bands is absent', () => {
+    it("takes a COG's published render and its nodata (#440)", () => {
+        const withRender = { ...cog, renders: { kids: { assets: ['data'], colormap_name: 'magma', rescale: [[0, 12]], nodata: 0 } } };
+        const [r] = findRasterAssets(withRender, BASE);
+        expect(r.render).toMatchObject({ name: 'kids', colormap: 'magma', rescale: '0,12' });
+        expect(r.band.nodata).toBe(0);
+        expect(findRasterAssets(cog, BASE)[0].render).toBeNull();
+    });
+
+        it('reads raster:bands when bands is absent', () => {
         expect(rasterBand({ 'raster:bands': [{ nodata: 0, statistics: { minimum: 1, maximum: 5 } }] })).toMatchObject({ nodata: 0, min: 1, max: 5 });
     });
 
@@ -309,7 +317,21 @@ describe('PortolanCatalog', () => {
         expect(p).toContain('License: CC-BY-4.0. Source: Response Network; mirrored by CARTO.');
     });
 
-    it("draws each archive of a collection with that archive's own styles", async () => {
+    it("draws a raster with its collection's published render (#440)", async () => {
+        const url = 'https://example.org/cat/kids/collection.json';
+        const kids = {
+            type: 'Collection', id: 'kids', links: [],
+            renders: { kids: { assets: ['data'], colormap_name: 'magma', rescale: [[0, 12]], nodata: 0 } },
+            assets: { data: { href: './children.tif', type: 'image/tiff; application=geotiff; profile=cloud-optimized', roles: ['data'],
+                bands: [{ nodata: -99999, statistics: { minimum: 0, maximum: 29 } }] } },
+        };
+        const c = new PortolanCatalog({ ...deps, fetchJson: async (u) => (u === url ? structuredClone(kids) : deps.fetchJson(u)) });
+        await c.load({ collections: [url] });
+        const tiles = decodeURIComponent(c.getMapLayerConfigs()[0].source.tiles[0]);
+        expect(tiles).toContain('colormap_name=magma&rescale=0,12&nodata=0');
+    });
+
+        it("draws each archive of a collection with that archive's own styles", async () => {
         const two = {
             type: 'Collection', id: 'svi', links: [],
             assets: {

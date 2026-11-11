@@ -101,6 +101,11 @@ duplicating the whole fixture, which would then drift out of sync.
 a downstream app can recolour from config alone. It is a made-up colour scheme,
 not anyone's real branding.
 
+`rasters-from-catalog.json` draws two rasters with no styling in their config,
+so they start from the catalog's published renders (#440): vessel density as
+one layer with two versions, each with its own range, and NLCD 2024 in its
+land-cover classes.
+
 Top-level keys in the patch replace those in the base; there is no deep merge,
 so patch whole blocks rather than individual nested fields.
 
