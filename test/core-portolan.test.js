@@ -617,3 +617,21 @@ describe('a series of items (#462)', () => {
         expect(topLevelColumns(schema)).toEqual(['id', 'assets', 'datetime']);
     });
 });
+
+// The session export cites the collections a session queried by matching its
+// s3:// paths to asset hrefs, which Portolan writes relative.
+describe('the catalog as the session export reads it', () => {
+    it('gives each collection absolute asset hrefs and keeps the catalog otherwise', async () => {
+        const { exportCatalogView } = await import('../core/portolan-catalog.js');
+        const { withAbsoluteHrefs } = await import('../core/portolan.js');
+        const u = 'https://storage.googleapis.com/b/roads/collection.json';
+        expect(withAbsoluteHrefs({ assets: { data: { href: './data.parquet' }, x: null } }, u).assets)
+            .toEqual({ data: { href: 'https://storage.googleapis.com/b/roads/data.parquet' }, x: null });
+        const raw = { id: 'roads', assets: { data: { href: './data.parquet', type: 'application/vnd.apache.parquet' } } };
+        const catalog = { getAll: () => [{ id: 'roads', url: u, _rawStac: raw }], getIds: () => ['roads'] };
+        const view = exportCatalogView(catalog);
+        expect(view.getAll()[0]._rawStac.assets.data.href).toBe('https://storage.googleapis.com/b/roads/data.parquet');
+        expect(raw.assets.data.href).toBe('./data.parquet');
+        expect(view.getIds()).toEqual(['roads']);
+    });
+});

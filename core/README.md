@@ -2,7 +2,7 @@
 
 glen core is a small GLEN app: a MapLibre map of the layers in a [Portolan](https://www.portolan-sdi.org/) catalog, and a chat agent that controls the map. It assumes no MCP server and no SQL engine. The agent's tools act on the page: show and hide layers, filter features, apply the publisher's styles or new paint, recolour rasters, label legends, set tooltips and move the view.
 
-Everything else the full app in `app/` does, such as DuckDB queries over MCP, hex layers, charts, drawing, uploads and the session export, is meant to come back as plugins. `plugins/mcp.js` adds MCP servers' tools to the map tools, and `plugins/charts.js` adds charts.
+Everything else the full app in `app/` does, such as DuckDB queries over MCP, hex layers, charts, drawing and uploads, is meant to come back as plugins; the session export is a config setting (see below). `plugins/mcp.js` adds MCP servers' tools to the map tools, and `plugins/charts.js` adds charts.
 
 ## Use
 
@@ -87,6 +87,10 @@ A collection whose data is in items, such as a daily raster series, draws nothin
   "control": { "bind": "frame", "frames": "items", "frame_ms": 500 }
 }
 ```
+
+## Session export
+
+`"export": true` adds the full app's session export: a button under the chat that downloads the session as an HTML report, with each question, the SQL that answered it, a snapshot of the map, the charts drawn, and a Data sources section citing the datasets the session queried or showed. The report comes from glen-harness, which loads it on first use, and it takes the same `export` settings as the full app ([configuration guide](../docs/guide/configuration.md)). It is off by default, since a map-only app has little to report. With `plugins/charts.js` the report redraws the session's charts. A dataset counts as queried when a query read one of its Parquet assets; Portolan writes those hrefs relative to the collection, so core resolves them before the report matches them.
 
 ## Portolan support
 
