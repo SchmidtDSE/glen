@@ -4,7 +4,7 @@ import {
     defaultRescale, styleToLayer, stripGeometryTypeFilter, describeColor,
     pmtilesLayerInfo, normalizeGeometryType, guardMissingValues, styleName,
     portolanVersion, providerSummary, agentsLink, FAINT_OUTLINE, collectionColumns,
-    styleSourceFile, stylesForFile,
+    styleSourceFile, stylesForFile, selectAssets, itemHref, itemDate,
 } from '../core/portolan.js';
 import { PortolanCatalog, titilerTileUrl, defaultTooltip } from '../core/portolan-catalog.js';
 
@@ -53,7 +53,7 @@ const collection = {
 describe('findVectorSources', () => {
     it('merges the pmtiles link and the visual asset that point at one file', () => {
         const v = findVectorSources(collection, BASE);
-        expect(v).toEqual([{ key: 'data', url: 'https://example.org/cat/roads/data.pmtiles', layers: ['data'], title: null, columns: [] }]);
+        expect(v).toEqual([{ key: 'data', aliases: ['visual'], url: 'https://example.org/cat/roads/data.pmtiles', layers: ['data'], title: null, columns: [] }]);
     });
 
     it('ignores source-role archives and keeps several distinct archives', () => {
@@ -398,3 +398,121 @@ describe('our current STAC (#441)', () => {
     });
 });
 
+
+// #462: choosing a collection's assets, and drawing COGs that live in items.
+describe('assets and items of a collection (#462)', () => {
+    const CURL = 'https://example.org/cat/heat/collection.json';
+    const cog = (href, bands) => ({ href, type: 'image/tiff; application=geotiff; profile=cloud-optimized', roles: ['data'], bands });
+    const threeBands = [
+        { name: 'tmax_c', nodata: -9999, unit: 'Cel', statistics: { minimum: 10, maximum: 40, mean: 26, stddev: 5 } },
+        { name: 'tmin_c', nodata: -9999, unit: 'Cel', statistics: { minimum: 3, maximum: 25, mean: 15, stddev: 3 } },
+        { name: 'tmax_anom_c', nodata: -9999, unit: 'Cel', statistics: { minimum: -8, maximum: 12, mean: 2, stddev: 3 } },
+    ];
+    const item = (id, date) => ({
+        type: 'Feature', id, properties: { datetime: `${date}T12:00:00Z`, title: `Daily Tmax, ${date}` },
+        assets: { data: cog(`./${id}.tif`, threeBands), thumbnail: { href: `./${id}.jpg`, type: 'image/jpeg', roles: ['thumbnail'] } },
+        links: [],
+    });
+    const heat = {
+        type: 'Collection', id: 'heat', title: 'Daily heat',
+        links: [
+            { rel: 'item', href: './heat-2025-06-15/heat-2025-06-15.json' },
+            { rel: 'item', href: './other/heat-2025-06-16.json' },
+        ],
+        assets: { mirror: { href: './items.parquet', type: 'application/vnd.apache.parquet', roles: ['collection-mirror'] } },
+    };
+    const docs = {
+        [CURL]: heat,
+        'https://example.org/cat/heat/heat-2025-06-15/heat-2025-06-15.json': item('heat-2025-06-15', '2025-06-15'),
+        'https://example.org/cat/heat/other/heat-2025-06-16.json': item('heat-2025-06-16', '2025-06-16'),
+        'https://example.org/cat/heat/heat-2025-06-17/heat-2025-06-17.json': item('heat-2025-06-17', '2025-06-17'),
+    };
+    const deps = {
+        fetchJson: async (u) => { if (!docs[u]) throw new Error(`404 ${u}`); return structuredClone(docs[u]); },
+        pmtilesMetadata: async () => null,
+    };
+
+    it('finds an item by its link, by a folder named for it, or beside the collection', () => {
+        expect(itemHref(heat, CURL, 'heat-2025-06-15')).toBe('https://example.org/cat/heat/heat-2025-06-15/heat-2025-06-15.json');
+        expect(itemHref(heat, CURL, 'heat-2025-06-16')).toBe('https://example.org/cat/heat/other/heat-2025-06-16.json');
+        expect(itemHref(heat, CURL, 'heat-2025-06-17')).toBe('https://example.org/cat/heat/heat-2025-06-17/heat-2025-06-17.json');
+        expect(itemDate({ properties: { start_datetime: '2025-06-01T00:00:00Z', datetime: null } })).toBe('2025-06-01');
+        expect(itemDate({})).toBeNull();
+    });
+
+    it('selects assets in config order, by key or by the second key of a merged archive', () => {
+        const vectors = findVectorSources(collection, BASE);
+        const rasters = [{ key: 'pop', url: 'x' }];
+        const { picks, missing } = selectAssets(['pop', { id: 'visual', display_name: 'Roads' }, 'nope'], vectors, rasters);
+        expect(picks.map(p => [p.kind, p.src.key, p.entry.display_name])).toEqual([['raster', 'pop', undefined], ['vector', 'data', 'Roads']]);
+        expect(missing).toEqual(['nope']);
+        expect(selectAssets(undefined, vectors, rasters).picks.map(p => p.kind)).toEqual(['vector', 'raster']);
+    });
+
+    it('draws the items a collection entry lists, each with its own settings', async () => {
+        const c = new PortolanCatalog(deps);
+        await c.load({ collections: [{ url: CURL, colormap: 'reds', items: [
+            'heat-2025-06-15',
+            { id: 'heat-2025-06-16', display_name: 'Heat on 16 June', visible: true, colormap: 'magma', rescale: '15,40' },
+        ] }] });
+        expect(c.datasets.get('heat').layerIds).toEqual(['heat/heat-2025-06-15', 'heat/heat-2025-06-16']);
+        const [a, b] = c.getMapLayerConfigs();
+        expect(a).toMatchObject({ displayName: 'Daily Tmax, 2025-06-15', defaultVisible: false, colormap: 'reds', rescale: '10,36' });
+        expect(a.source.tiles[0]).toContain(encodeURIComponent('https://example.org/cat/heat/heat-2025-06-15/heat-2025-06-15.tif'));
+        expect(b).toMatchObject({ displayName: 'Heat on 16 June', defaultVisible: true, colormap: 'magma', rescale: '15,40' });
+        expect(c.generatePrompt()).toContain('`heat/heat-2025-06-16` — raster (COG), item `heat-2025-06-16` (2025-06-16)');
+    });
+
+    it('draws another band of an item COG when the entry names one', async () => {
+        const c = new PortolanCatalog(deps);
+        await c.load({ collections: [{ url: CURL, items: [
+            'heat-2025-06-15',
+            { id: 'heat-2025-06-15', bidx: 3, colormap: 'rdbu_r' },
+            'heat-2025-06-15',
+        ] }] });
+        // One COG listed once per band; the repeated plain listing is skipped.
+        expect(c.datasets.get('heat').layerIds).toEqual(['heat/heat-2025-06-15', 'heat/heat-2025-06-15/band-3']);
+        const l = c.layers.get('heat/heat-2025-06-15/band-3');
+        expect(l).toMatchObject({ itemId: 'heat-2025-06-15', date: '2025-06-15' });
+        expect(l.band).toMatchObject({ bidx: 3, min: -8, max: 12 });
+        expect(c.getMapLayerConfigs()[1].source.tiles[0]).toContain('bidx=3');
+        // A three-band COG with no band named draws band 1: TiTiler colours one band.
+        expect(c.getMapLayerConfigs()[0].source.tiles[0]).toContain('bidx=1');
+        expect(c.generatePrompt()).toContain('band 3');
+    });
+
+    it('skips an item it cannot read and draws the rest', async () => {
+        const c = new PortolanCatalog(deps);
+        await c.load({ collections: [{ url: CURL, items: ['missing-day', 'heat-2025-06-17'] }] });
+        expect(c.datasets.get('heat').layerIds).toEqual(['heat/heat-2025-06-17']);
+    });
+
+    it('draws no items unless config lists them', async () => {
+        const c = new PortolanCatalog(deps);
+        await c.load({ collections: [{ url: CURL }] });
+        expect(c.layers.size).toBe(0);
+    });
+
+    it('keeps only the assets a collection entry lists, in its order, with their own settings', async () => {
+        const two = {
+            type: 'Collection', id: 'two', title: 'Two', links: [],
+            assets: {
+                pop: cog('./pop.tif', [threeBands[0]]),
+                zones: { href: './zones.pmtiles', type: 'application/vnd.pmtiles', roles: ['visual'] },
+                idx: cog('./idx.tif', [threeBands[1]]),
+            },
+        };
+        const u = 'https://example.org/cat/two/collection.json';
+        const c = new PortolanCatalog({ fetchJson: async () => structuredClone(two), pmtilesMetadata: async () => null });
+        await c.load({ collections: [{ url: u, opacity: 0.5, assets: [
+            { id: 'idx', display_name: 'Index', opacity: 0.9, visible: true },
+            'zones',
+        ] }] });
+        // Ids keep the asset key, as when every asset is drawn.
+        expect(c.datasets.get('two').layerIds).toEqual(['two/idx', 'two/zones']);
+        const [idx, zones] = c.getMapLayerConfigs();
+        expect(idx).toMatchObject({ displayName: 'Index', defaultVisible: true, paint: { 'raster-opacity': 0.9 } });
+        expect(zones).toMatchObject({ type: 'vector', displayName: 'Two (zones)' });
+        expect(c.layers.has('two/pop')).toBe(false);
+    });
+});

@@ -1454,11 +1454,18 @@ describe('raster band settings (#357, #350, unscale)', () => {
         expect(b.legendClasses).toEqual([{ value: 4, 'color-hint': '00ff00' }]);
     });
 
-    it('defaults to band 1 and ignores a bidx that is not a positive integer', () => {
-        expect(resolveRasterBand(sixBands, {}).bidx).toBe(null);
-        expect(resolveRasterBand(sixBands, { bidx: 0 }).bidx).toBe(null);
-        expect(resolveRasterBand(sixBands, { bidx: 1.5 }).bidx).toBe(null);
+    it('draws band 1 of a multi-band COG when config names no band, or no valid one', () => {
+        // TiTiler cannot colour several bands, so without bidx every tile failed.
+        expect(resolveRasterBand(sixBands, {}).bidx).toBe(1);
+        expect(resolveRasterBand(sixBands, { bidx: 0 }).bidx).toBe(1);
+        expect(resolveRasterBand(sixBands, { bidx: 1.5 }).bidx).toBe(1);
         expect(resolveRasterBand(sixBands, {}).nodata).toBe(0);
+        expect(cogTileUrl('https://t', 'https://x/rap.tif', resolveRasterBand(sixBands, {}))).toContain('&bidx=1');
+    });
+
+    it('leaves bidx off a single-band COG', () => {
+        expect(resolveRasterBand({ href: 'x', bands: [{ nodata: 0 }] }, {}).bidx).toBe(null);
+        expect(resolveRasterBand({ href: 'x' }, {}).bidx).toBe(null);
     });
 
     it('config legend_classes replace the STAC classes', () => {

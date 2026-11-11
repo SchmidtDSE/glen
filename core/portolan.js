@@ -61,8 +61,9 @@ export function isCogAsset(asset) {
  *
  * @param {Object} collection - STAC collection
  * @param {string} collectionUrl - URL the collection was fetched from
- * @returns {Array<{key: string, url: string, layers: string[], title: string|null, columns: Object[]}>}
- *   `columns` is the asset's own `table:columns`, when it has them
+ * @returns {Array<{key: string, aliases: string[], url: string, layers: string[], title: string|null, columns: Object[]}>}
+ *   `columns` is the asset's own `table:columns`, when it has them; `aliases`
+ *   are other keys the same archive is listed under
  */
 export function findVectorSources(collection, collectionUrl) {
     const out = [];
@@ -72,12 +73,14 @@ export function findVectorSources(collection, collectionUrl) {
         if (!url) return;
         const existing = byUrl.get(url);
         if (existing) {
+            // The same archive listed twice (link and asset) answers to both keys.
+            if (key !== existing.key && !existing.aliases.includes(key)) existing.aliases.push(key);
             if (!existing.layers.length && layers?.length) existing.layers = [...layers];
             if (!existing.title && title) existing.title = title;
             if (!existing.columns.length && columns?.length) existing.columns = columns;
             return;
         }
-        const entry = { key, url, layers: layers ? [...layers] : [], title: title || null, columns: columns || [] };
+        const entry = { key, aliases: [], url, layers: layers ? [...layers] : [], title: title || null, columns: columns || [] };
         byUrl.set(url, entry);
         out.push(entry);
     };
@@ -124,7 +127,8 @@ export function collectionColumns(collection) {
 /**
  * The COG assets of a collection that hold the data itself.
  *
- * @returns {Array<{key, url, title, band}>} band from {@link rasterBand}
+ * @returns {Array<{key, url, title, band, render, asset}>} band 1 from
+ *   {@link rasterBand}; `asset` lets a config pick another band
  */
 export function findRasterAssets(collection, collectionUrl) {
     return Object.entries(collection?.assets || {})
@@ -138,27 +142,31 @@ export function findRasterAssets(collection, collectionUrl) {
                 band: rasterBand(a, render),
                 // The catalog's published look, as in the full app (#440).
                 render,
+                asset: a,
             };
         });
 }
 
 /**
- * Band 1 of a COG asset: nodata, statistics, categorical classes, and
- * whether TiTiler should apply the band's scale and offset.
+ * One band of a COG asset (band 1 unless `bidx` names another): nodata,
+ * statistics, categorical classes, and whether TiTiler should apply the
+ * band's scale and offset.
  * Reads STAC 1.1 `bands` first, then the raster extension's `raster:bands`.
  * nodata, the classes and `unscale` follow the full app's rules
  * (app/cog-tiles.js), so a class whose value is the nodata value is dropped,
  * and a published render's nodata and class colours win over the band's.
  */
-export function rasterBand(asset, render = null) {
-    const band = asset?.bands?.[0] || asset?.['raster:bands']?.[0] || {};
+export function rasterBand(asset, render = null, bidx = null) {
+    const i = Number.isInteger(Number(bidx)) && Number(bidx) >= 1 ? Number(bidx) : null;
+    const band = asset?.bands?.[(i ?? 1) - 1] || asset?.['raster:bands']?.[(i ?? 1) - 1] || {};
     const stats = band.statistics || {};
     const num = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
-    const shared = resolveRasterBand(asset, {}, render);
+    const shared = resolveRasterBand(asset, i ? { bidx: i } : {}, render);
     const nodata = shared.nodata ?? asset?.nodata ?? null;
     let classes = shared.legendClasses || asset?.['classification:classes'] || null;
     if (Array.isArray(classes) && nodata != null) classes = classes.filter(c => c.value == null || String(c.value) !== String(nodata));
     return {
+        bidx: shared.bidx,
         nodata,
         unscale: shared.unscale,
         min: num(stats.minimum),
@@ -169,6 +177,66 @@ export function rasterBand(asset, render = null) {
         dataType: band.data_type || null,
         classes: Array.isArray(classes) && classes.length ? classes : null,
     };
+}
+
+/**
+ * The drawable assets a collection entry asks for, in the entry's order, each
+ * with its own config entry. Without an `assets` list every drawable asset is
+ * drawn, vectors first, with no per-asset config, as before.
+ *
+ * @param {Array<string|Object>|undefined} entries - `assets` from config: asset
+ *   keys, or objects with an `id` and that asset's settings
+ * @param {Array} vectors - from {@link findVectorSources}
+ * @param {Array} rasters - from {@link findRasterAssets}
+ * @returns {{picks: Array<{kind: 'vector'|'raster', src: Object, entry: Object}>, missing: string[]}}
+ */
+export function selectAssets(entries, vectors, rasters) {
+    if (!Array.isArray(entries)) {
+        return {
+            picks: [
+                ...vectors.map(src => ({ kind: 'vector', src, entry: {} })),
+                ...rasters.map(src => ({ kind: 'raster', src, entry: {} })),
+            ],
+            missing: [],
+        };
+    }
+    const picks = [];
+    const missing = [];
+    for (const raw of entries) {
+        const entry = typeof raw === 'string' ? { id: raw } : { ...(raw || {}) };
+        const v = vectors.find(x => x.key === entry.id || x.aliases?.includes(entry.id));
+        const r = !v && rasters.find(x => x.key === entry.id);
+        if (v) picks.push({ kind: 'vector', src: v, entry });
+        else if (r) picks.push({ kind: 'raster', src: r, entry });
+        else missing.push(String(entry.id));
+    }
+    return { picks, missing };
+}
+
+/**
+ * Where a collection's item lives. The collection's `item` links are matched
+ * on the file name (`…/tmax-2025-06-15.json`) or a folder named for the item
+ * (`…/tmax-2025-06-15/item.json`); with no matching link the item is looked for
+ * in a folder of its own beside the collection, where Portolan puts it.
+ *
+ * @returns {string} the item's URL
+ */
+export function itemHref(collection, collectionUrl, itemId) {
+    const id = String(itemId);
+    for (const l of collection?.links || []) {
+        if (l.rel !== 'item' || typeof l.href !== 'string') continue;
+        const parts = l.href.split(/[?#]/)[0].split('/');
+        const file = parts[parts.length - 1].replace(/\.json$/i, '');
+        if (file === id || parts.slice(0, -1).includes(id)) return resolveHref(l.href, collectionUrl);
+    }
+    return resolveHref(`./${encodeURIComponent(id)}/${encodeURIComponent(id)}.json`, collectionUrl);
+}
+
+/** An item's date for the prompt and titles: its `datetime`, else its start. */
+export function itemDate(item) {
+    const p = item?.properties || {};
+    const d = p.datetime || p.start_datetime || null;
+    return typeof d === 'string' ? d.slice(0, 10) : null;
 }
 
 /**

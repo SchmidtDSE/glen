@@ -88,6 +88,8 @@ export function renderClasses(classColours, bandClasses = null) {
  *
  * - `bidx` (1-based) picks the band of a multi-band COG (#357); the band's own
  *   `nodata` and `classification:classes` are then read from that band.
+ *   A COG whose STAC lists more than one band and whose config names none
+ *   draws band 1, since TiTiler cannot apply a colour map to several bands.
  * - Config `legend_classes` overrides the STAC classes (#350). They also build
  *   the TiTiler colormap, so leaving a class out makes it transparent.
  * - A class whose value is the band's nodata is dropped, so fill codes such as
@@ -106,8 +108,11 @@ export function renderClasses(classColours, bandClasses = null) {
  * @returns {{bidx:number|null, nodata:*, legendClasses:Array|null, unscale:boolean}}
  */
 export function resolveRasterBand(asset, config = {}, render = null) {
-    const bidx = Number.isInteger(Number(config.bidx)) && Number(config.bidx) >= 1 ? Number(config.bidx) : null;
     const bands = asset?.bands || asset?.['raster:bands'];
+    // TiTiler colours one band only; a multi-band COG with no band named in
+    // config draws band 1 rather than failing every tile.
+    const bidx = Number.isInteger(Number(config.bidx)) && Number(config.bidx) >= 1 ? Number(config.bidx)
+        : (Array.isArray(bands) && bands.length > 1 ? 1 : null);
     const band = bands?.[(bidx ?? 1) - 1];
     const nodata = config.nodata ?? render?.nodata ?? band?.nodata ?? null;
     const bandClasses = band?.['classification:classes'] ?? null;
