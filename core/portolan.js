@@ -48,6 +48,11 @@ export function isPmtilesAsset(asset) {
     return String(asset.type || '').includes(PMTILES_TYPE) || /\.pmtiles$/i.test(asset.href || '');
 }
 
+export function isGeoJsonAsset(asset) {
+    if (!asset || isSource(asset)) return false;
+    return String(asset.type || '').includes('geo+json') || /\.geojson$/i.test(asset.href || '');
+}
+
 export function isCogAsset(asset) {
     if (!asset || isSource(asset)) return false;
     const t = String(asset.type || '').toLowerCase();
@@ -97,6 +102,15 @@ export function findVectorSources(collection, collectionUrl) {
         if (!isPmtilesAsset(asset)) continue;
         const layers = asset['pmtiles:layers'] || asset['vector:layers'];
         add(key, asset.href, Array.isArray(layers) ? layers : [], asset.title, tableColumns(asset));
+    }
+    // GeoJSON files are drawn whole, as the full app does for small vector data.
+    for (const [key, asset] of Object.entries(collection?.assets || {})) {
+        if (!isGeoJsonAsset(asset)) continue;
+        const url = resolveHref(asset.href, collectionUrl);
+        if (!url || byUrl.has(url)) continue;
+        const entry = { key, aliases: [], url, layers: [], title: asset.title || null, columns: tableColumns(asset), geojson: true };
+        byUrl.set(url, entry);
+        out.push(entry);
     }
     return out;
 }
@@ -150,18 +164,27 @@ export function findRasterAssets(collection, collectionUrl) {
 /**
  * One band of a COG asset (band 1 unless `bidx` names another): nodata,
  * statistics, categorical classes, and whether TiTiler should apply the
- * band's scale and offset.
+ * band's scale and offset. The third argument is `bidx`, or the layer's
+ * settings, whose `bidx`, `nodata`, `legend_classes` and `unscale` win over
+ * the catalog's, as in the full app.
  * Reads STAC 1.1 `bands` first, then the raster extension's `raster:bands`.
  * nodata, the classes and `unscale` follow the full app's rules
  * (app/cog-tiles.js), so a class whose value is the nodata value is dropped,
  * and a published render's nodata and class colours win over the band's.
  */
-export function rasterBand(asset, render = null, bidx = null) {
-    const i = Number.isInteger(Number(bidx)) && Number(bidx) >= 1 ? Number(bidx) : null;
+export function rasterBand(asset, render = null, opts = null) {
+    const cfg = opts && typeof opts === 'object' ? opts : { bidx: opts };
+    const bidx = cfg.bidx;
+    const i = bidx != null && Number.isInteger(Number(bidx)) && Number(bidx) >= 1 ? Number(bidx) : null;
     const band = asset?.bands?.[(i ?? 1) - 1] || asset?.['raster:bands']?.[(i ?? 1) - 1] || {};
     const stats = band.statistics || {};
     const num = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
-    const shared = resolveRasterBand(asset, i ? { bidx: i } : {}, render);
+    const shared = resolveRasterBand(asset, {
+        ...(i ? { bidx: i } : {}),
+        ...(cfg.nodata != null ? { nodata: cfg.nodata } : {}),
+        ...(cfg.legend_classes ? { legend_classes: cfg.legend_classes } : {}),
+        ...(typeof cfg.unscale === 'boolean' ? { unscale: cfg.unscale } : {}),
+    }, render);
     const nodata = shared.nodata ?? asset?.nodata ?? null;
     let classes = shared.legendClasses || asset?.['classification:classes'] || null;
     if (Array.isArray(classes) && nodata != null) classes = classes.filter(c => c.value == null || String(c.value) !== String(nodata));

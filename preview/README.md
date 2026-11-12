@@ -186,3 +186,6 @@ layers.
 `panel.json` shows the full app's layer panel settings in glen core, written as
 apps already write them (SchmidtDSE/glen#441): a versioned layer, a toggle group
 over two rasters, a collapsed group, and a layer with `"sidebar": false`.
+`template.json` is glen-template's layer config (the `template-today` variant)
+in glen core, changed only by renaming `collection_id` and `collection_url` to
+`id` and `url`, to compare the two apps side by side (SchmidtDSE/glen#441).

@@ -705,3 +705,75 @@ describe('the full app\'s layer settings in glen core', () => {
         expect(missing).toEqual(['c', 'b (a raster among vector versions)']);
     });
 });
+
+// SchmidtDSE/glen#441, step 2: legends, sliders, trajectories, GeoJSON and
+// raster overrides, by the full app's names.
+describe('the full app\'s legend, control and GeoJSON settings in glen core', () => {
+    const U = 'https://example.org/cat/c/collection.json';
+    const ramp = { version: 8, sources: { data: { type: 'vector', url: 'pmtiles://../a.pmtiles' } },
+        layers: [{ id: 'f', type: 'fill', source: 'data', 'source-layer': 'a', paint: { 'fill-color': ['interpolate', ['linear'], ['get', 'n'], 0, '#fff', 10, '#000'] } }] };
+    const col = {
+        type: 'Collection', id: 'c', title: 'C', links: [],
+        assets: {
+            a: { href: './a.pmtiles', type: 'application/vnd.pmtiles', roles: ['visual'], 'pmtiles:layers': ['a'] },
+            style: { href: './style.json', type: 'application/vnd.mapbox.style+json', roles: ['style', 'default'] },
+            tracks: { href: './tracks.geojson', type: 'application/geo+json', roles: ['data'] },
+            latest: { href: './latest.geojson', type: 'application/geo+json', roles: ['data'] },
+            lc: { href: './lc.tif', type: 'image/tiff; application=geotiff', roles: ['data'],
+                bands: [{ nodata: 0, unit: 'class', 'classification:classes': [{ value: 1, name: 'Forest', color_hint: '00aa00' }, { value: 2, name: 'Water', color_hint: '0000ff' }] }] },
+        },
+    };
+    const docs = { [U]: col, 'https://example.org/cat/c/style.json': ramp };
+    const make = () => new PortolanCatalog({ fetchJson: async (u) => structuredClone(docs[u]), pmtilesMetadata: async () => null });
+    const byId = (c) => Object.fromEntries(c.getMapLayerConfigs().map(x => [x.layerId, x]));
+
+    it('reads a legend from the catalog style, and lets config legend keys win', async () => {
+        const c = make();
+        await c.load({ collections: [{ url: U, assets: ['a'] }] });
+        expect(byId(c)['c/a']).toMatchObject({ legendType: 'continuous' });
+        const d = make();
+        await d.load({ collections: [{ url: U, assets: [{ id: 'a', legend_type: 'categorical', legend_label: 'kind',
+            legend_classes: [{ value: 'x', label: 'X', color: '#f00' }] }] }] });
+        expect(byId(d)['c/a']).toMatchObject({ legendType: 'categorical', legendLabel: 'kind',
+            legendClasses: [{ name: 'X', 'color-hint': '#f00', value: 'x' }] });
+    });
+
+    it('gives paint set in config a legend only when config asks for one', async () => {
+        const c = make();
+        await c.load({ collections: [{ url: U, assets: [{ id: 'a', default_style: { 'fill-color': ['interpolate', ['linear'], ['get', 'n'], 0, '#fff', 5, '#00f'] } }] }] });
+        expect(byId(c)['c/a'].legendType).toBeNull();
+        const d = make();
+        await d.load({ collections: [{ url: U, assets: [{ id: 'a', legend_type: 'continuous', legend_range: [0, 5], legend_gradient: ['#fff', '#00f'],
+            default_style: { 'fill-color': '#00f' } }] }] });
+        expect(byId(d)['c/a']).toMatchObject({ legendType: 'continuous', legendRange: [0, 5], legendGradient: ['#fff', '#00f'] });
+    });
+
+    it('passes a slider control on, and draws GeoJSON whole with its trajectory animation', async () => {
+        const c = make();
+        await c.load({ collections: [{ url: U, assets: [
+            { id: 'a', control: { type: 'slider', field: 'year', min: 1990, max: 2020 } },
+            { id: 'tracks', layer_type: 'line', animation: { type: 'trajectory', id_field: 'pack', static_positions_asset: 'latest' } },
+        ] }] });
+        const m = byId(c);
+        expect(m['c/a'].control).toMatchObject({ field: 'year', min: 1990 });
+        expect(m['c/tracks']).toMatchObject({
+            source: { type: 'geojson', data: 'https://example.org/cat/c/tracks.geojson' },
+            tracksUrl: 'https://example.org/cat/c/tracks.geojson', renderType: 'line',
+            animation: { type: 'trajectory', static_positions_url: 'https://example.org/cat/c/latest.geojson' },
+        });
+        expect(m['c/tracks'].sourceLayer).toBeUndefined();
+    });
+
+    it('lets config replace a raster\'s classes, nodata and legend label, and the tiles follow', async () => {
+        const c = make();
+        await c.load({ collections: [{ url: U, assets: [{ id: 'lc', legend_label: 'Land cover',
+            legend_classes: [{ value: 1, label: 'Woods', color: '#336633' }], nodata: 255 }] }] });
+        const lc = byId(c)['c/lc'];
+        expect(lc).toMatchObject({ legendType: 'categorical', legendLabel: 'Land cover' });
+        expect(lc.legendClasses).toEqual([{ value: 1, name: 'Woods', 'color-hint': '#336633' }]);
+        const url = decodeURIComponent(lc.source.tiles[0]);
+        expect(url).toContain('"1":[51,102,51,255]');
+        expect(url).not.toContain('"2":');
+        expect(url).toContain('nodata=255');
+    });
+});
