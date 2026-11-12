@@ -2,7 +2,7 @@
 
 glen core is a small GLEN app: a MapLibre map of the layers in a [Portolan](https://www.portolan-sdi.org/) catalog, and a chat agent that controls the map. It assumes no MCP server and no SQL engine. The agent's tools act on the page: show and hide layers, filter features, apply the publisher's styles or new paint, recolour rasters, label legends, set tooltips and move the view.
 
-Everything else the full app in `app/` does comes back as plugins: `plugins/mcp.js` adds MCP servers' tools, such as DuckDB queries, to the map tools, `plugins/charts.js` adds charts, and `plugins/draw.js` and `plugins/uploads.js` add drawing and uploads. Hex layers are still to come. The session export is a config setting (see below).
+Everything else the full app in `app/` does comes back as plugins: `plugins/mcp.js` adds MCP servers' tools, such as DuckDB queries, to the map tools, `plugins/charts.js` adds charts, `plugins/draw.js` and `plugins/uploads.js` add drawing and uploads, and `plugins/hex.js` adds hex tile layers. The session export is a config setting (see below).
 
 ## Use
 
@@ -166,6 +166,8 @@ When the first server is on another origin from the page and its entry sets no `
 ]
 ```
 
+`plugins/hex.js` adds the full app's `add_hex_tile_layer` and `remove_hex_tile_layer`, which draw the H3 tile pyramid an SQL server builds with `register_hex_tiles`. duckdb-mcp serves those tiles over https. geo-query-wasm, run in a worker by `plugins/mcp.js`, keeps them in the browser at `geoquerywasm://` URLs; the plugin then registers geo-query-wasm's MapLibre protocol for them and reads each tileset's `metadata.json` through the worker. Its `geo_query_wasm` option names the geo-query-wasm release whose protocol module to load (default `v0.6.0`); match the worker's.
+
 `setup` runs after the map and the map tools exist and before the agent is built. It receives:
 
 | Field | What it is |
@@ -195,6 +197,7 @@ The agent loop, tool registry and chat come from [glen-harness](https://github.c
 | `plugins/mcp.js` | Plugin that adds the tools of one or more MCP servers, filtered by `include` or `exclude`, and the collections' GeoParquet URLs |
 | `plugins/charts.js` | Plugin that adds `render_chart`, with SQL run through the registered `query` tool |
 | `plugins/draw.js` | Plugin that adds the polygon draw button and `get_drawn_region` |
+| `plugins/hex.js` | Plugin that adds `add_hex_tile_layer` and `remove_hex_tile_layer`, and geo-query-wasm's tile protocol with a worker server |
 | `plugins/uploads.js` | Plugin that adds the GeoJSON upload and `get_uploaded_dataset` |
 
 The core reuses these modules from `app/` unchanged: `map-control-tools.js` (the map tools both apps share), `catalog-tree.js` (finding collections by id at any depth, in our current STAC and the Portolan layout), `cog-tiles.js` (raster band settings and tile URLs), `map-manager.js` (layers, filters, styles, legend, tooltips), `layout-manager.js` with the header, theme and mobile sheet, `geocoder.js` and `data-page.js`.
