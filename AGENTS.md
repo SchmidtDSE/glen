@@ -52,6 +52,7 @@ Settled architectural calls are recorded in `docs/design/` so they aren't re-lit
 - [`docs/design/tool-call-parsing.md`](docs/design/tool-call-parsing.md) — why tool-call dialect recovery (`parseEmbeddedToolCalls` / `looksLikeAttemptedToolCall` in `app/agent.js`) lives in the harness and is kept, not moved to the server/proxy or replaced by a library.
 - [`docs/design/data-scope.md`](docs/design/data-scope.md) — why which-data-exists is a deployment property rather than a model-supplied tool argument, why the prompt's `discovery` flag is read off the tool registry instead of app config, and why the `query` escape hatch was deliberately left open.
 - [`docs/design/prompt-prefix-stability.md`](docs/design/prompt-prefix-stability.md) — why dynamic content stays out of the leading bytes of the request, so prompt-prefix caching keeps paying off.
+- [`docs/design/v4-layout.md`](docs/design/v4-layout.md) — why glen core's shared modules stay in `app/`, and why v4 deletes the full app's own 14 modules instead of moving the 32 shared ones.
 
 ## Configuration
 - `app/layers-input.json` — Static config: STAC catalog URL, collection IDs, map view
