@@ -178,3 +178,11 @@ describe('the full app\'s remaining map tools in glen core', () => {
         expect(createCoreMapTools(mapManager, catalog, { geolocateTool: true }).map(t => t.name)).toContain('get_user_location');
     });
 });
+
+describe('set_time for the full app\'s time series', () => {
+    it('is offered for a frame-list series too', () => {
+        const { mapManager, catalog } = setup();
+        catalog.layers.get('pop').frames = { control: { bind: 'frame', frames: 'x' }, source: { indexUrl: 'https://x' } };
+        expect(createCoreMapTools(mapManager, catalog).map(t => t.name)).toContain('set_time');
+    });
+});

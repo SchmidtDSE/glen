@@ -834,3 +834,22 @@ describe('PMTiles links of one file name in different folders', () => {
         expect(a.sourceId).not.toBe(b.sourceId);
     });
 });
+
+describe('the full app\'s raster time series in glen core (#421)', () => {
+    it('reads a frame-list asset, resolving its href against the collection', async () => {
+        const U = 'https://example.org/cat/crw/collection.json';
+        const col = { type: 'Collection', id: 'crw', title: 'CRW', links: [], assets: {
+            'ssta-cog': { href: './ssta-latest.tif', type: 'image/tiff; application=geotiff', roles: ['data'], bands: [{ statistics: { minimum: -5, maximum: 5 } }] },
+            'ssta-cog-frames': { href: './ssta-frames.json', type: 'application/json' },
+        } };
+        const c = new PortolanCatalog({ fetchJson: async () => structuredClone(col), pmtilesMetadata: async () => null });
+        await c.load({ collections: [{ url: U, assets: [{ id: 'ssta-cog', control: { bind: 'frame', frames: 'ssta-cog-frames', step: 4 } }] }] });
+        const [cfg] = c.getMapLayerConfigs();
+        expect(cfg.control).toEqual({ bind: 'frame', frames: 'ssta-cog-frames', step: 4 });
+        expect(cfg.frameSource).toEqual({ indexUrl: 'https://example.org/cat/crw/ssta-frames.json' });
+        expect(cfg.frameTileUrl('https://x/ssta-20250101.tif')).toContain(encodeURIComponent('https://x/ssta-20250101.tif'));
+        const list = new PortolanCatalog({ fetchJson: async () => structuredClone(col), pmtilesMetadata: async () => null });
+        await list.load({ collections: [{ url: U, assets: [{ id: 'ssta-cog', control: { bind: 'frame', frames: 'list' } }] }] });
+        expect(list.getMapLayerConfigs()[0].frameSource).toEqual({ listFrom: 'https://example.org/cat/crw/ssta-latest.tif' });
+    });
+});

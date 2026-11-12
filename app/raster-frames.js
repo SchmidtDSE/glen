@@ -21,6 +21,30 @@
  */
 
 /**
+ * Where a raster time series finds its frames (#421): a STAC frame-list asset
+ * named by `control.frames`, or a listing of the COG's directory for
+ * `frames: "list"`. Returns null when the control is not a frame control or
+ * the named asset is missing.
+ * @param {Object|null} control  the asset's `control` block
+ * @param {Object} asset         the layer's STAC asset
+ * @param {Object} stacAssets    every asset in the collection
+ * @param {string} [baseUrl]     the collection's URL, to resolve relative hrefs
+ *   (Portolan's); our current STAC's are absolute
+ * @returns {{indexUrl?: string, listFrom?: string}|null}
+ */
+export function resolveFrameSource(control, asset, stacAssets, baseUrl = null) {
+    const abs = (href) => { try { return baseUrl ? new URL(href, baseUrl).href : href; } catch { return href; } };
+    if (control?.bind !== 'frame') return null;
+    if (control.frames === 'list') return asset?.href ? { listFrom: abs(asset.href) } : null;
+    const href = stacAssets?.[control.frames]?.href;
+    if (!href) {
+        console.warn(`[catalog] Frame-list asset "${control.frames}" not found; the layer shows only its latest file.`);
+        return null;
+    }
+    return { indexUrl: abs(href) };
+}
+
+/**
  * @typedef {Object} Frame
  * @property {string} datetime  ISO date, YYYY-MM-DD
  * @property {string} href      absolute URL of the frame's COG

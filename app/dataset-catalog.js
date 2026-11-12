@@ -18,27 +18,9 @@ import { findStyleAssets, styleToLayer, stylesForFile, describeStyleColours } fr
 import { legendFromPaint } from './legend-helpers.js';
 
 export { resolveRasterBand, cogTileUrl };
-
-/**
- * Where a raster time series finds its frames (#421): a STAC frame-list asset
- * named by `control.frames`, or a listing of the COG's directory for
- * `frames: "list"`. Returns null when the control is not a frame control or
- * the named asset is missing.
- * @param {Object|null} control  the asset's `control` block
- * @param {Object} asset         the layer's STAC asset
- * @param {Object} stacAssets    every asset in the collection
- * @returns {{indexUrl?: string, listFrom?: string}|null}
- */
-export function resolveFrameSource(control, asset, stacAssets) {
-    if (control?.bind !== 'frame') return null;
-    if (control.frames === 'list') return asset?.href ? { listFrom: asset.href } : null;
-    const href = stacAssets?.[control.frames]?.href;
-    if (!href) {
-        console.warn(`[catalog] Frame-list asset "${control.frames}" not found; the layer shows only its latest file.`);
-        return null;
-    }
-    return { indexUrl: href };
-}
+// Shared with glen core; re-exported so imports keep working.
+export { resolveFrameSource } from './raster-frames.js';
+import { resolveFrameSource } from './raster-frames.js';
 
 export class DatasetCatalog {
     constructor() {

@@ -32,6 +32,7 @@ import {
 import { findCollections } from '../app/catalog-tree.js';
 import { cogTileUrl, normalizeLegendClasses } from '../app/cog-tiles.js';
 import { legendFromPaint } from '../app/legend-helpers.js';
+import { resolveFrameSource } from '../app/raster-frames.js';
 
 const DEFAULT_TITILER = 'https://titiler.nrp-nautilus.io';
 const DEFAULT_FILL = { 'fill-color': '#2E7D32', 'fill-opacity': 0.5 };
@@ -350,6 +351,11 @@ export class PortolanCatalog {
             ...panelFields(dataset, s),
             legendLabel: s.legend_label || null,
             legendType: s.legend_type || null,
+            // The full app's raster time series (#421): dates from a frame-list
+            // asset, or from a listing of the COG's folder. A series of items
+            // is built separately (_addSeries).
+            frames: s.control?.bind === 'frame' && s.control.frames !== 'items'
+                ? framesFor(s.control, r, dataset) : null,
         });
         dataset.layerIds.push(layerId);
         return layerId;
@@ -589,6 +595,12 @@ export class PortolanCatalog {
                         legendClasses: l.band?.classes
                             ? l.band.classes.map(c => ({ value: c.value, name: c.description || c.name || String(c.value), 'color-hint': c.color_hint || c['color-hint'] }))
                             : null,
+                        // The full app's time series, from a frame list or a listing.
+                        ...(l.frames && {
+                            control: l.frames.control,
+                            frameSource: l.frames.source,
+                            frameTileUrl: (href) => this.rasterTileUrl({ ...l, url: href }),
+                        }),
                         // A series of items plays in the full app's frame player.
                         ...(l.series && {
                             control: l.series.control,
@@ -740,6 +752,12 @@ function animationFor(animation, dataset) {
     const href = key && dataset.stac?.assets?.[key]?.href;
     if (href) out.static_positions_url = resolveHref(href, dataset.url);
     return out;
+}
+
+/** A raster's frame source for the full app's `control.frames`, or null. */
+function framesFor(control, r, dataset) {
+    const source = resolveFrameSource(control, { ...r.asset, href: r.url }, dataset.stac?.assets || {}, dataset.url);
+    return source ? { control: { ...control }, source } : null;
 }
 
 /** A COG's band, with the layer's band settings applied when it has any. */
