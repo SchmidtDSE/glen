@@ -167,6 +167,20 @@ describe('mcp plugin setup', () => {
         expect(tools.registerRemote.mock.calls.at(-1)[0].map(t => t.name)).toEqual(['query']);
     });
 
+    it('adds the full app\'s filter_by_query, its SQL through the servers\' query tool', async () => {
+        const { ctx, tools } = context();
+        const query = { inputSchema: { properties: { sql_query: {} } } };
+        tools.tools = new Map([['query', query]]);
+        tools.execute = vi.fn(async () => ({ success: true, result: '| ids |\n["a","b"]' }));
+        ctx.map = { setFilter: vi.fn(() => ({ success: true, layer: 'roads' })) };
+        await plugin.setup(ctx, { url: 'https://a/mcp' });
+        const fbq = tools.registerLocal.mock.calls.map(c => c[0]).find(t => t.name === 'filter_by_query');
+        const out = JSON.parse(await fbq.execute({ layer_id: 'roads', sql: 'SELECT id FROM t', id_property: 'id' }));
+        expect(out).toMatchObject({ success: true, idCount: 2 });
+        expect(tools.execute.mock.calls[0][1].sql_query).toContain('FROM (SELECT id FROM t) _filter_subquery');
+        expect(ctx.map.setFilter).toHaveBeenCalledWith('roads', ['in', ['get', 'id'], ['literal', ['a', 'b']]]);
+    });
+
     it('re-registers only the reconnecting server, with the same filters', async () => {
         const { ctx, tools } = context();
         await plugin.setup(ctx, { servers: [{ url: 'https://a/mcp', exclude: ['browse_stac_catalog'] }, { url: 'https://b/mcp' }] });

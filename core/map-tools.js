@@ -39,12 +39,14 @@ const json = (x) => JSON.stringify(x);
  * @param {{forwardGeocode: Function}|null} [options.geocoder]
  * @returns {Array<Object>} tool definitions for ToolRegistry.registerLocal
  */
-export function createCoreMapTools(mapManager, catalog, { geocoder = null } = {}) {
+export function createCoreMapTools(mapManager, catalog, { geocoder = null, geolocateTool = false } = {}) {
     const unknown = (id) => ({ success: false, error: `Unknown layer: ${id}. Available: ${[...catalog.layers.keys()].join(', ')}` });
 
     return [
         ...createMapControlTools(mapManager, {
             geocoder,
+            // The full app's get_user_location, on `geolocate.agent_tool` (a privacy opt-in).
+            geolocateTool,
             hints: PORTOLAN_HINTS,
             layerExtent: (id) => layerExtent(catalog, id),
             reportView: true,
@@ -105,9 +107,16 @@ Colour maps: viridis, magma, inferno, plasma, cividis, ylorrd, ylgnbu, blues, gr
                 return json({ success: true, ...describeLayer(catalog, l) });
             },
         },
+        {
+            // As in the full app, for an agent asked what data the app has.
+            name: 'list_datasets',
+            description: 'List the ids and titles of this app\'s datasets. Their layers are listed in your system prompt; call describe_layer for one layer\'s details.',
+            inputSchema: { type: 'object', properties: {}, required: [] },
+            execute: () => json({ success: true, datasets: catalog.getAll().map(ds => ({ id: ds.id, title: ds.title })) }),
+        },
         // Only an app with a series of items gets set_time (#462), as in the
         // full app, so other apps' tool lists are unchanged.
-        ...([...catalog.layers.values()].some(l => l.series) ? [createSetTimeTool(mapManager)] : []),
+        ...([...catalog.layers.values()].some(l => l.series || l.frames) ? [createSetTimeTool(mapManager)] : []),
     ];
 }
 
@@ -151,7 +160,7 @@ export function setRasterColormap(mapManager, catalog, layerId, { colormap, resc
     if (l.kind !== 'raster') return { success: false, error: `${layerId} is a vector layer; use set_style or apply_style.` };
     if (l.band?.classes) return { success: false, error: `${layerId} is categorical; its colours come from the publisher's class list.` };
     if (l.versions) return { success: false, error: `${layerId} has versions; each version's colour map and range are set in the app's config.` };
-    if (l.series) return { success: false, error: `${layerId} is a time series; its colour map and range are set in the app's config and stay the same on every date.` };
+    if (l.series || l.frames) return { success: false, error: `${layerId} is a time series; its colour map and range are set in the app's config and stay the same on every date.` };
     if (colormap) l.colormap = String(colormap).toLowerCase();
     if (rescale) l.rescale = rescale;
     const state = mapManager.layers.get(layerId);

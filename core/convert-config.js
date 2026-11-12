@@ -62,6 +62,8 @@ export function convertConfig(v3, { pluginBase = 'https://cdn.jsdelivr.net/gh/Sc
     }
     plugins.push({ url: `${base}/mcp.js`, options: servers.length === 1 ? servers[0] : { servers } });
 
+    // Every v3 app had the hex tile tools.
+    plugins.push(`${base}/hex.js`);
     if (v3.charts?.enabled) plugins.push(`${base}/charts.js`);
     if (v3.draw_enabled) plugins.push(`${base}/draw.js`);
     if (v3.upload_enabled) {

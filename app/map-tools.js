@@ -1,5 +1,5 @@
-import { extractJsonArray } from './chart-tool.js';
 import { createHexTileTools } from './hex-tools.js';
+import { createFilterByQueryTool } from './query-filter-tool.js';
 import { legendFromPaint } from './legend-helpers.js';
 import { describeColor } from './published-styles.js';
 import {
@@ -61,82 +61,8 @@ export function createMapTools(mapManager, catalog, mcpClient, geocoder, options
         // ---- Dynamic Hex Tile Layers ----
         ...createHexTileTools(mapManager),
 
-        // ---- Query-driven Filter Tool ----
-        ...(mcpClient ? [{
-            name: 'filter_by_query',
-            description: `Filter a vector layer to features whose ID property matches the results of a SQL query — without passing thousands of IDs through the LLM.
-
-Use this instead of set_filter when:
-- The matching set comes from an MCP SQL query (e.g. "show parcels inside protected areas", "highlight counties above median income")
-- The result set could be large (hundreds to tens of thousands of features)
-
-How it works:
-1. Executes your SQL via the MCP query tool
-2. Extracts the ID column
-3. Applies a MapLibre filter programmatically — IDs never pass through the LLM output
-
-Parameters:
-- layer_id: the vector layer to filter (must already be loaded)
-- sql: a SELECT query returning ONE column — the feature ID values to keep. Alias that column to match id_property exactly. Example: SELECT GEOID FROM read_parquet('s3://...') WHERE ...
-- id_property: the property name in the vector tile features to match against. Check get_stac_details for the correct column — CNG-processed datasets use "_cng_fid"; source datasets vary (e.g. "OBJECTID", "HOLDING_ID").
-
-IMPORTANT: The sql must return only the id column — no extra columns. Write it as a plain SELECT, not wrapped in array_agg.
-
-${pickLayerNudge}`,
-            inputSchema: {
-                type: 'object',
-                properties: {
-                    layer_id: { type: 'string', description: 'Vector layer ID to filter' },
-                    sql: { type: 'string', description: 'SELECT query returning a single column of ID values to keep' },
-                    id_property: { type: 'string', description: 'Feature property name in the vector tile to match against — check get_stac_details (CNG-processed datasets use "_cng_fid"; source datasets vary)' },
-                },
-                required: ['layer_id', 'sql', 'id_property'],
-            },
-            execute: async (args) => {
-                if (!mcpClient) return JSON.stringify({ success: false, error: 'MCP client not available' });
-
-                // Wrap user SQL to aggregate non-null IDs into a JSON array via DuckDB.
-                // to_json() is required because DuckDB's native array display format
-                // (space-separated, no commas — e.g. "[ 1  2  3]") is not valid JSON,
-                // so without it the extractJsonArray() call below fails to parse.
-                const col = args.id_property;
-                // col is quoted into wrappedSql — restrict to plain identifier chars.
-                if (!/^[A-Za-z0-9_]+$/.test(col || '')) {
-                    return JSON.stringify({
-                        success: false,
-                        error: `Invalid id_property "${col}" — must contain only letters, digits, or underscores. Check get_stac_details for the feature ID column name.`,
-                    });
-                }
-                const wrappedSql = `SELECT to_json(array_agg("${col}") FILTER (WHERE "${col}" IS NOT NULL)) AS ids FROM (${args.sql}) _filter_subquery`;
-
-                let rawResult;
-                try {
-                    rawResult = await mcpClient.callTool('query', { sql_query: wrappedSql });
-                } catch (err) {
-                    return JSON.stringify({ success: false, error: `SQL execution failed: ${err.message}` });
-                }
-
-                // DuckDB returns NULL (not []) when no rows match — treat as empty
-                if (!rawResult || /\bnull\b/i.test(rawResult.trim().replace(/.*\n/, ''))) {
-                    return JSON.stringify({ success: true, idCount: 0, featuresInView: 0, message: 'Query matched no features — filter not applied.' });
-                }
-
-                const ids = extractJsonArray(rawResult);
-                if (!ids) {
-                    return JSON.stringify({
-                        success: false,
-                        error: `Could not parse ID list from query result. Check that id_property ("${col}") exactly matches the column name in the SQL output — verify via get_stac_details (CNG-processed datasets use "_cng_fid"). Raw: ${rawResult.substring(0, 300)}`
-                    });
-                }
-                if (ids.length === 0) {
-                    return JSON.stringify({ success: true, idCount: 0, featuresInView: 0, message: 'Query matched no features — filter not applied.' });
-                }
-
-                const filter = ['in', ['get', col], ['literal', ids]];
-                const result = mapManager.setFilter(args.layer_id, filter);
-                return JSON.stringify({ ...result, idCount: ids.length });
-            },
-        }] : []),
+        // ---- Query-driven Filter Tool ---- (shared with glen core: query-filter-tool.js)
+        ...(mcpClient ? [createFilterByQueryTool(mapManager, mcpClient, pickLayerNudge)] : []),
 
         // ---- Dataset Knowledge Tools ----
         // get_schema and get_stac_details live in catalog-tools.js (#441).
