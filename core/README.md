@@ -90,6 +90,19 @@ A collection whose data is in items, such as a daily raster series, draws nothin
 }
 ```
 
+## Moving a v3 app to glen core
+
+`scripts/convert-to-core.mjs` converts an app's two files:
+
+```bash
+node scripts/convert-to-core.mjs layers-input.json --ref <glen tag> > layers-input.core.json
+node scripts/convert-to-core.mjs index.html --ref <glen tag> > index.core.html
+```
+
+glen core reads the full app's layer settings by the same names, `collection_id` and `collection_url` included, so collections pass through unchanged. The opt-in features become plugins: the MCP server (every v3 app had one, `duckdb-mcp.nrp-nautilus.io` when it named none), with its `geospatial-analyst` prompt; `charts`; `draw_enabled`; and `upload_enabled` with its settings. `catalog_index_threshold`, `client_header_hosts` and collections' `preload` are dropped, with a note for each. The page's module script loads `core/main.js`, and its glen URLs move to the release.
+
+The deploy-time `config.json` needs no change: `plugins/mcp.js` takes `mcp_server_url` and `mcp_auth_token` from it for the first server, and core reads `llm_models`, `llm_model`, `transcription_model`, `geolocate`, `export` and the tool-call limits, as the full app does. A `draw_enabled` set only in `config.json` has no effect in core; list `plugins/draw.js` instead.
+
 ## Session export
 
 `"export": true` adds the full app's session export: a button under the chat that downloads the session as an HTML report, with each question, the SQL that answered it, a snapshot of the map, the charts drawn, and a Data sources section citing the datasets the session queried or showed. The report comes from glen-harness, which loads it on first use, and it takes the same `export` settings as the full app ([configuration guide](../docs/guide/configuration.md)). It is off by default, since a map-only app has little to report. With `plugins/charts.js` the report redraws the session's charts. A dataset counts as queried when a query read one of its Parquet assets; Portolan writes those hrefs relative to the collection, so core resolves them before the report matches them.
@@ -120,7 +133,7 @@ A plugin is an ES module whose default export is `{ name, setup(ctx, options) }`
 ]
 ```
 
-`plugins/mcp.js` takes one server as above or several as `"servers": [{ "url": …, "headers": …, "prompt": … }, …]`; when two servers list a tool of the same name, the one listed first keeps it. Each server entry can also take `include` or `exclude`, a list of tool names, to register only some of its tools. MCP gives a client no way to ask a server for part of its tool list, so the filter runs here, and the server still offers every tool to other clients. A server that cannot be reached is skipped.
+Each server entry may also give `auth_token`, sent to that server alone as a bearer token, as in the full app's `mcp_servers`; the deploy-time `config.json` sets the first server's URL and token with `mcp_server_url` and `mcp_auth_token`. `plugins/mcp.js` takes one server as above or several as `"servers": [{ "url": …, "headers": …, "prompt": … }, …]`; when two servers list a tool of the same name, the one listed first keeps it. Each server entry can also take `include` or `exclude`, a list of tool names, to register only some of its tools. MCP gives a client no way to ask a server for part of its tool list, so the filter runs here, and the server still offers every tool to other clients. A server that cannot be reached is skipped.
 
 A server can also run in the page, in a Web Worker, such as [geo-query-wasm](https://github.com/SchmidtDSE/geo-query-wasm), which runs geo-query's tools on DuckDB-wasm in the visitor's browser. Its entry takes `worker`, the path of a worker file the app serves, in place of `url`, and `worker_config`, which the worker receives as JSON in a `config` search parameter:
 
