@@ -94,8 +94,13 @@ export function findVectorSources(collection, collectionUrl) {
         if (link.rel !== 'pmtiles') continue;
         const layers = link['pmtiles:layers'];
         // The link has no key; name it after the file so a second archive
-        // gets a distinct, stable layer id.
-        const key = (link.href || '').split('/').pop().replace(/\.pmtiles$/i, '') || 'pmtiles';
+        // gets a distinct, stable layer id. Files of one name in different
+        // folders (dac-2023/tract.pmtiles, eda-2023/tract.pmtiles) take the
+        // folder too, or they would share a layer id and a map source.
+        const parts = (link.href || '').split(/[?#]/)[0].split('/').filter(Boolean);
+        let key = (parts.pop() || '').replace(/\.pmtiles$/i, '') || 'pmtiles';
+        if (out.some(e => e.key === key) && parts.length) key = `${parts.pop()}-${key}`;
+        while (out.some(e => e.key === key)) key = `${key}-2`;
         add(key, link.href, Array.isArray(layers) ? layers : [], link.title);
     }
     for (const [key, asset] of Object.entries(collection?.assets || {})) {
