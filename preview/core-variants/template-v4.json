@@ -1,0 +1,1050 @@
+{
+  "catalog": "https://s3-west.nrp-nautilus.io/public-data/stac/catalog.json",
+  "titiler_url": "https://titiler.nrp-nautilus.io",
+  "auto_approve": true,
+  "geocoder": {
+    "provider": "nominatim",
+    "search_box": true
+  },
+  "geolocate": {
+    "button": true,
+    "agent_tool": true
+  },
+  "sidebar": {
+    "enabled": true,
+    "chat_title": "Chat"
+  },
+  "view": {
+    "center": [
+      -98,
+      39
+    ],
+    "zoom": 4
+  },
+  "llm": {
+    "user_provided": true,
+    "transcription_model": {
+      "value": "gemma"
+    },
+    "default_endpoint": "https://openrouter.ai/api/v1",
+    "models": [
+      {
+        "value": "~deepseek/deepseek-v4-flash-latest",
+        "label": "DeepSeek V4 Flash"
+      },
+      {
+        "value": "nvidia/nemotron-3.5-super-vl",
+        "label": "Nemotron 3.5 Super"
+      },
+      {
+        "value": "z-ai/glm-5.3-flash",
+        "label": "GLM-5.3 Flash"
+      },
+      {
+        "value": "minimax/minimax-m3.1-flash",
+        "label": "MiniMax M3.1 Flash"
+      }
+    ]
+  },
+  "welcome": {
+    "message": "Hi! I can help you explore protected areas, land cover, biodiversity, water, hazards, and demographic data across the United States. Try asking:",
+    "examples": [
+      "How many acres of GAP Status 1 land does California have?",
+      "What's the average irrecoverable carbon in California's GAP 1+2 protected lands?",
+      "Find the top 5 states by conservation easement acreage.",
+      "Color the fee lands by management type and tell me the top 3 management agencies by acreage."
+    ]
+  },
+  "links": {
+    "github": "https://github.com/SchmidtDSE/glen-template",
+    "docs": "https://schmidtdse.github.io/glen/",
+    "carbon": true
+  },
+  "collections": [
+    {
+      "collection_id": "pad-us-4.1-fee",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-padus/padus-4-1/fee/stac-collection.json",
+      "assets": [
+        {
+          "id": "fee-pmtiles",
+          "display_name": "Fee Lands",
+          "group": "Protected Areas",
+          "visible": true,
+          "default_style": {
+            "fill-color": [
+              "match",
+              [
+                "get",
+                "GAP_Sts"
+              ],
+              "1",
+              "#26633A",
+              "2",
+              "#3E9C47",
+              "3",
+              "#7EB3D3",
+              "4",
+              "#BDBDBD",
+              "#888888"
+            ],
+            "fill-opacity": 0.7
+          },
+          "default_filter": [
+            "match",
+            [
+              "get",
+              "GAP_Sts"
+            ],
+            [
+              "1",
+              "2"
+            ],
+            true,
+            false
+          ],
+          "tooltip_fields": [
+            "Unit_Nm",
+            "GAP_Sts",
+            "Mang_Type"
+          ],
+          "legend_type": "categorical",
+          "legend_classes": [
+            {
+              "label": "GAP Status 1 — managed for biodiversity",
+              "color": "#26633A"
+            },
+            {
+              "label": "GAP Status 2 — managed, some extractive use",
+              "color": "#3E9C47"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "pad-us-4.1-easement",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-padus/padus-4-1/easement/stac-collection.json",
+      "assets": [
+        {
+          "id": "easement-pmtiles",
+          "display_name": "Easements",
+          "group": "Protected Areas",
+          "visible": false,
+          "default_style": {
+            "fill-color": [
+              "match",
+              [
+                "get",
+                "GAP_Sts"
+              ],
+              "1",
+              "#26633A",
+              "2",
+              "#3E9C47",
+              "3",
+              "#7EB3D3",
+              "4",
+              "#BDBDBD",
+              "#888888"
+            ],
+            "fill-opacity": 0.7
+          },
+          "tooltip_fields": [
+            "Unit_Nm",
+            "GAP_Sts",
+            "Mang_Type"
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "usfws-critical-habitat-final",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-usfws/critical-habitat/final/stac-collection.json",
+      "assets": [
+        {
+          "id": "final-pmtiles",
+          "display_name": "Critical Habitat — Final (USFWS)",
+          "group": "Protected Areas",
+          "visible": false,
+          "default_style": {
+            "fill-color": "#AD1457",
+            "fill-opacity": 0.45
+          },
+          "outline_style": {
+            "line-color": "#880E4F",
+            "line-width": 0.5,
+            "line-opacity": 0.7
+          },
+          "tooltip_fields": [
+            "comname",
+            "sciname",
+            "unitname",
+            "status"
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "usfws-critical-habitat-proposed",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-usfws/critical-habitat/proposed/stac-collection.json",
+      "assets": [
+        {
+          "id": "proposed-pmtiles",
+          "display_name": "Critical Habitat — Proposed (USFWS)",
+          "group": "Protected Areas",
+          "visible": false,
+          "default_style": {
+            "fill-color": "#F9A825",
+            "fill-opacity": 0.35
+          },
+          "outline_style": {
+            "line-color": "#F57F17",
+            "line-width": 0.5,
+            "line-opacity": 0.7
+          },
+          "tooltip_fields": [
+            "comname",
+            "sciname",
+            "unitname",
+            "status"
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "federal-trails-2026",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-trails/federal-trails-2026/stac-collection.json",
+      "assets": [
+        {
+          "id": "federal-trails-2026-pmtiles",
+          "display_name": "Federal Trails (USFS / NPS / BLM)",
+          "group": "Trails",
+          "visible": true,
+          "layer_type": "line",
+          "default_style": {
+            "line-color": [
+              "match",
+              [
+                "get",
+                "admin_agency"
+              ],
+              "USFS",
+              "#1565C0",
+              "NPS",
+              "#5D4037",
+              "BLM",
+              "#E65100",
+              "#888888"
+            ],
+            "line-width": 1.2,
+            "line-opacity": 0.9
+          },
+          "tooltip_fields": [
+            "trail_name",
+            "admin_agency",
+            "admin_unit",
+            "length_miles"
+          ],
+          "legend_type": "categorical",
+          "legend_classes": [
+            {
+              "label": "USFS",
+              "color": "#1565C0"
+            },
+            {
+              "label": "NPS",
+              "color": "#5D4037"
+            },
+            {
+              "label": "BLM",
+              "color": "#E65100"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "irrecoverable-carbon",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-carbon/stac-collection.json",
+      "assets": [
+        {
+          "id": "v2-irrecoverable-2024-cog",
+          "display_name": "Irrecoverable Carbon (2024)",
+          "group": "Carbon",
+          "colormap": "reds",
+          "rescale": "0,150",
+          "legend_label": "Mg C / ha"
+        },
+        {
+          "id": "v2-vulnerable-2024-cog",
+          "display_name": "Vulnerable Carbon (2024)",
+          "group": "Carbon",
+          "visible": false,
+          "colormap": "oranges",
+          "rescale": "0,300",
+          "legend_label": "Mg C / ha"
+        },
+        {
+          "id": "v2-manageable-2024-cog",
+          "display_name": "Manageable Carbon (2024)",
+          "group": "Carbon",
+          "visible": false,
+          "colormap": "greens",
+          "rescale": "0,500",
+          "legend_label": "Mg C / ha"
+        }
+      ]
+    },
+    {
+      "collection_id": "nlcd",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-land-cover/nlcd/stac-collection.json",
+      "assets": [
+        {
+          "id": "nlcd-cog-2024",
+          "display_name": "Land Cover (NLCD 2024)",
+          "group": "Land Cover",
+          "legend_type": "categorical"
+        }
+      ]
+    },
+    {
+      "collection_id": "rap-pfg-cover",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-rap/rap-pfg-cover/stac-collection.json",
+      "assets": [
+        {
+          "id": "rap-pfg-cover-cog",
+          "display_name": "Perennial Forb & Grass Cover (RAP 2025)",
+          "group": "Land Cover",
+          "colormap": "greens",
+          "rescale": "0,100",
+          "legend_label": "% cover"
+        }
+      ]
+    },
+    {
+      "collection_id": "wetlands-nwi",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-wetlands/nwi/stac-collection.json",
+      "assets": [
+        {
+          "id": "nwi-pmtiles",
+          "display_name": "Wetlands (NWI)",
+          "group": "Wetlands",
+          "visible": false,
+          "default_style": {
+            "fill-color": [
+              "match",
+              [
+                "get",
+                "WETLAND_TYPE"
+              ],
+              "Freshwater Emergent Wetland",
+              "#66C2A5",
+              "Freshwater Forested/Shrub Wetland",
+              "#1B7837",
+              "Freshwater Pond",
+              "#41B6C4",
+              "Lake",
+              "#225EA8",
+              "Riverine",
+              "#7FCDBB",
+              "Estuarine and Marine Wetland",
+              "#8C6BB1",
+              "Estuarine and Marine Deepwater",
+              "#4D004B",
+              "#969696"
+            ],
+            "fill-opacity": 0.7
+          },
+          "tooltip_fields": [
+            "WETLAND_TYPE",
+            "ATTRIBUTE",
+            "state_code"
+          ],
+          "legend_type": "categorical",
+          "legend_classes": [
+            {
+              "label": "Freshwater Emergent",
+              "color": "#66C2A5"
+            },
+            {
+              "label": "Freshwater Forested/Shrub",
+              "color": "#1B7837"
+            },
+            {
+              "label": "Freshwater Pond",
+              "color": "#41B6C4"
+            },
+            {
+              "label": "Lake",
+              "color": "#225EA8"
+            },
+            {
+              "label": "Riverine",
+              "color": "#7FCDBB"
+            },
+            {
+              "label": "Estuarine & Marine Wetland",
+              "color": "#8C6BB1"
+            },
+            {
+              "label": "Estuarine & Marine Deepwater",
+              "color": "#4D004B"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "usgs-wbd-hu8",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-usgs-wbd/wbd/hu8/stac-collection.json",
+      "assets": [
+        {
+          "id": "hu8-pmtiles",
+          "display_name": "Watersheds — HUC8 (WBD)",
+          "group": "Watersheds",
+          "visible": false,
+          "default_style": {
+            "fill-color": "#0277BD",
+            "fill-opacity": 0
+          },
+          "outline_style": {
+            "line-color": "#0277BD",
+            "line-width": 0.7,
+            "line-opacity": 0.6
+          },
+          "tooltip_fields": [
+            "name",
+            "huc8",
+            "areasqkm",
+            "states"
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "usgs-wbd-hu12",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-usgs-wbd/wbd/hu12/stac-collection.json",
+      "assets": [
+        {
+          "id": "hu12-pmtiles",
+          "display_name": "Subwatersheds — HUC12 (WBD)",
+          "group": "Watersheds",
+          "visible": false,
+          "default_style": {
+            "fill-color": "#039BE5",
+            "fill-opacity": 0
+          },
+          "outline_style": {
+            "line-color": "#039BE5",
+            "line-width": 0.35,
+            "line-opacity": 0.5
+          },
+          "tooltip_fields": [
+            "name",
+            "huc12",
+            "areasqkm",
+            "hutype"
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "epa-sab-v3-cws",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-epa-water/epa-sab-v3/cws/stac-collection.json",
+      "assets": [
+        {
+          "id": "sab-cws-pmtiles",
+          "display_name": "Community Water Systems (EPA)",
+          "group": "Water Systems",
+          "visible": false,
+          "default_style": {
+            "fill-color": "#5C6BC0",
+            "fill-opacity": 0.35
+          },
+          "outline_style": {
+            "line-color": "#283593",
+            "line-width": 0.4,
+            "line-opacity": 0.6
+          },
+          "tooltip_fields": [
+            "PWS_Name",
+            "PWSID",
+            "Population_Served_Count",
+            "Service_Area_Type"
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "gbif-derived",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-gbif/stac-collection.json",
+      "assets": []
+    },
+    {
+      "collection_id": "mobi-species-richness-all",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-mobi/mobi-species-richness-all/stac-collection.json",
+      "assets": [
+        {
+          "id": "species-richness-all-cog",
+          "display_name": "Imperiled Species Richness (MOBI)",
+          "group": "Biodiversity",
+          "colormap": "viridis",
+          "rescale": "0,32",
+          "legend_label": "species"
+        }
+      ]
+    },
+    {
+      "collection_id": "iucn-richness-2025",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-iucn/stac-collection.json",
+      "assets": [
+        {
+          "id": "combined-sr-cog",
+          "display_name": "Species Richness — All Taxa (IUCN 2025)",
+          "group": "Biodiversity",
+          "colormap": "viridis",
+          "rescale": "0,1000",
+          "legend_label": "species"
+        }
+      ]
+    },
+    {
+      "collection_id": "iucn-ranges-2025",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-iucn/iucn-ranges-2025/stac-collection.json",
+      "assets": []
+    },
+    {
+      "collection_id": "wwf-ecoregions-2017",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-ecoregion/wwf-ecoregions-2017/stac-collection.json",
+      "assets": [
+        {
+          "id": "ecoregion-pmtiles",
+          "display_name": "Terrestrial Ecoregions (WWF)",
+          "group": "Biodiversity",
+          "visible": false,
+          "default_style": {
+            "fill-color": "#8D6E63",
+            "fill-opacity": 0.15
+          },
+          "outline_style": {
+            "line-color": "#5D4037",
+            "line-width": 0.5,
+            "line-opacity": 0.6
+          },
+          "tooltip_fields": [
+            "ECO_NAME",
+            "BIOME_NAME",
+            "REALM",
+            "NNH_NAME"
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "ghs-pop-2020",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-population/ghs-pop-2020/stac-collection.json",
+      "assets": [
+        {
+          "id": "ghs-pop-2020-cog",
+          "display_name": "Population Density (GHS-POP 2020)",
+          "group": "Population",
+          "colormap": "magma",
+          "rescale": "0,200",
+          "nodata": 0,
+          "legend_label": "people per 90m cell"
+        }
+      ]
+    },
+    {
+      "collection_id": "svi-2022",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-social-vulnerability/2022/stac-collection.json",
+      "assets": [
+        {
+          "id": "county-pmtiles",
+          "display_name": "Social Vulnerability (SVI 2022, county)",
+          "group": "Social Vulnerability",
+          "visible": false,
+          "default_style": {
+            "fill-color": [
+              "interpolate",
+              [
+                "linear"
+              ],
+              [
+                "get",
+                "RPL_THEMES"
+              ],
+              0,
+              "#ffffcc",
+              0.5,
+              "#fd8d3c",
+              1,
+              "#bd0026"
+            ],
+            "fill-opacity": 0.7
+          },
+          "default_filter": [
+            ">=",
+            [
+              "get",
+              "RPL_THEMES"
+            ],
+            0
+          ],
+          "tooltip_fields": [
+            "COUNTY",
+            "ST_ABBR",
+            "RPL_THEMES"
+          ],
+          "legend_type": "continuous",
+          "legend_label": "SVI percentile"
+        },
+        {
+          "id": "tract-pmtiles",
+          "display_name": "Social Vulnerability (SVI 2022, tract)",
+          "group": "Social Vulnerability",
+          "visible": false,
+          "default_style": {
+            "fill-color": [
+              "interpolate",
+              [
+                "linear"
+              ],
+              [
+                "get",
+                "RPL_THEMES"
+              ],
+              0,
+              "#ffffcc",
+              0.5,
+              "#fd8d3c",
+              1,
+              "#bd0026"
+            ],
+            "fill-opacity": 0.75
+          },
+          "default_filter": [
+            ">=",
+            [
+              "get",
+              "RPL_THEMES"
+            ],
+            0
+          ],
+          "tooltip_fields": [
+            "COUNTY",
+            "ST_ABBR",
+            "RPL_THEMES"
+          ],
+          "legend_type": "continuous",
+          "legend_label": "SVI percentile"
+        }
+      ]
+    },
+    {
+      "collection_id": "mappinginequality",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-mappinginequality/stac-collection.json",
+      "assets": [
+        {
+          "id": "mappinginequality-pmtiles",
+          "display_name": "Redlining — HOLC Grades (1930s–40s)",
+          "group": "Environmental Justice",
+          "visible": false,
+          "default_style": {
+            "fill-color": [
+              "match",
+              [
+                "get",
+                "grade"
+              ],
+              "A",
+              "#76A865",
+              "B",
+              "#7CB5BD",
+              "C",
+              "#F0DE6C",
+              "D",
+              "#D9838D",
+              "#BDBDBD"
+            ],
+            "fill-opacity": 0.7
+          },
+          "tooltip_fields": [
+            "grade",
+            "city",
+            "label",
+            "category"
+          ],
+          "legend_type": "categorical",
+          "legend_classes": [
+            {
+              "label": "A — Best",
+              "color": "#76A865"
+            },
+            {
+              "label": "B — Still Desirable",
+              "color": "#7CB5BD"
+            },
+            {
+              "label": "C — Definitely Declining",
+              "color": "#F0DE6C"
+            },
+            {
+              "label": "D — Hazardous",
+              "color": "#D9838D"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "flood-hazard",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-hazard/flood-hazard/stac-collection.json",
+      "assets": [
+        {
+          "id": "flood-hazard-pmtiles",
+          "display_name": "Flood Hazard Zones (FEMA)",
+          "group": "Hazards",
+          "visible": false,
+          "default_style": {
+            "fill-color": [
+              "match",
+              [
+                "get",
+                "FLD_ZONE"
+              ],
+              "A",
+              "#0D47A1",
+              "AE",
+              "#0D47A1",
+              "AH",
+              "#1565C0",
+              "AO",
+              "#1565C0",
+              "A99",
+              "#1565C0",
+              "V",
+              "#B71C1C",
+              "VE",
+              "#B71C1C",
+              "X",
+              "#90CAF9",
+              "#B0BEC5"
+            ],
+            "fill-opacity": 0.5
+          },
+          "tooltip_fields": [
+            "FLD_ZONE",
+            "ZONE_SUBTY",
+            "SFHA_TF",
+            "STATIC_BFE"
+          ],
+          "legend_type": "categorical",
+          "legend_classes": [
+            {
+              "label": "High risk (A / AE — 1% annual)",
+              "color": "#0D47A1"
+            },
+            {
+              "label": "Coastal high hazard (V / VE)",
+              "color": "#B71C1C"
+            },
+            {
+              "label": "Minimal risk (X)",
+              "color": "#90CAF9"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "sea-level-rise",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-hazard/sea-level-rise/stac-collection.json",
+      "assets": [
+        {
+          "id": "sea-level-rise-pmtiles",
+          "display_name": "Sea Level Rise — 5 ft (NOAA)",
+          "group": "Hazards",
+          "visible": false,
+          "default_style": {
+            "fill-color": "#01579B",
+            "fill-opacity": 0.55
+          },
+          "tooltip_fields": [
+            "state",
+            "region",
+            "slr_ft"
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "usgs-fires-2021-combined",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-fire/usgs-fires-2021/combined/stac-collection.json",
+      "assets": [
+        {
+          "id": "combined-pmtiles",
+          "display_name": "Wildfire Perimeters (USGS, through 2021)",
+          "group": "Fire",
+          "visible": false,
+          "default_style": {
+            "fill-color": "#E64A19",
+            "fill-opacity": 0.45
+          },
+          "outline_style": {
+            "line-color": "#BF360C",
+            "line-width": 0.4,
+            "line-opacity": 0.6
+          },
+          "tooltip_fields": [
+            "Listed_Fire_Names",
+            "Fire_Year",
+            "GIS_Acres",
+            "Assigned_Fire_Type"
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "landmark-iplc-poly",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-indigenous/landmark/iplc-poly-stac.json",
+      "assets": [
+        {
+          "id": "iplc-poly-pmtiles",
+          "display_name": "Indigenous & Community Lands (LandMark)",
+          "group": "Indigenous & Community Lands",
+          "visible": false,
+          "default_style": {
+            "fill-color": "#EF6C00",
+            "fill-opacity": 0.35
+          },
+          "outline_style": {
+            "line-color": "#E65100",
+            "line-width": 0.5,
+            "line-opacity": 0.6
+          },
+          "tooltip_fields": [
+            "name",
+            "identity",
+            "country",
+            "category"
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "overture-divisions-countries-2026-02-18",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-overturemaps/2026-02-18.0/countries/stac-collection.json",
+      "group": {
+        "name": "Administrative Boundaries",
+        "collapsed": true
+      },
+      "assets": [
+        {
+          "id": "countries-pmtiles",
+          "display_name": "Countries",
+          "visible": false,
+          "default_style": {
+            "fill-color": "#6A1B9A",
+            "fill-opacity": 0.03
+          },
+          "outline_style": {
+            "line-color": "#6A1B9A",
+            "line-width": 1.2,
+            "line-opacity": 0.7
+          }
+        }
+      ]
+    },
+    {
+      "collection_id": "census-2024-state",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-census/census-2024/state/stac-collection.json",
+      "group": {
+        "name": "Administrative Boundaries",
+        "collapsed": true
+      },
+      "assets": [
+        {
+          "id": "state-pmtiles",
+          "display_name": "States (US Census)",
+          "visible": false,
+          "default_style": {
+            "fill-color": "#6A1B9A",
+            "fill-opacity": 0.03
+          },
+          "outline_style": {
+            "line-color": "#6A1B9A",
+            "line-width": 0.8,
+            "line-opacity": 0.6
+          },
+          "tooltip_fields": [
+            "NAME",
+            "STUSPS",
+            "GEOID"
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "census-2024-county",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-census/census-2024/county/stac-collection.json",
+      "group": {
+        "name": "Administrative Boundaries",
+        "collapsed": true
+      },
+      "assets": [
+        {
+          "id": "county-pmtiles",
+          "display_name": "Counties (US Census)",
+          "visible": false,
+          "default_style": {
+            "fill-color": "#6A1B9A",
+            "fill-opacity": 0.03
+          },
+          "outline_style": {
+            "line-color": "#6A1B9A",
+            "line-width": 0.4,
+            "line-opacity": 0.5
+          },
+          "tooltip_fields": [
+            "NAMELSAD",
+            "STATEFP",
+            "GEOID"
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "census-2024-tract",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-census/census-2024/tract/stac-collection.json",
+      "group": {
+        "name": "Administrative Boundaries",
+        "collapsed": true
+      },
+      "assets": [
+        {
+          "id": "tract-pmtiles",
+          "display_name": "Census Tracts (US Census)",
+          "visible": false,
+          "default_style": {
+            "fill-color": "#6A1B9A",
+            "fill-opacity": 0.03
+          },
+          "outline_style": {
+            "line-color": "#6A1B9A",
+            "line-width": 0.25,
+            "line-opacity": 0.4
+          },
+          "tooltip_fields": [
+            "NAMELSAD",
+            "GEOID",
+            "COUNTYFP"
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "census-2024-cd",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-census/census-2024/cd/stac-collection.json",
+      "group": {
+        "name": "Administrative Boundaries",
+        "collapsed": true
+      },
+      "assets": [
+        {
+          "id": "cd-pmtiles",
+          "display_name": "Congressional Districts (119th)",
+          "visible": false,
+          "default_style": {
+            "fill-color": "#00796B",
+            "fill-opacity": 0.03
+          },
+          "outline_style": {
+            "line-color": "#00796B",
+            "line-width": 0.8,
+            "line-opacity": 0.7
+          },
+          "tooltip_fields": [
+            "NAMELSAD",
+            "STATEFP",
+            "GEOID"
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "census-2025-sldu",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-census/census-2025/sldu/stac-collection.json",
+      "group": {
+        "name": "Administrative Boundaries",
+        "collapsed": true
+      },
+      "assets": [
+        {
+          "id": "sldu-pmtiles",
+          "display_name": "State Legislative — Upper (Senate)",
+          "visible": false,
+          "default_style": {
+            "fill-color": "#00897B",
+            "fill-opacity": 0.03
+          },
+          "outline_style": {
+            "line-color": "#00897B",
+            "line-width": 0.5,
+            "line-opacity": 0.6
+          },
+          "tooltip_fields": [
+            "NAMELSAD",
+            "STATEFP",
+            "GEOID"
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": "census-2025-sldl",
+      "collection_url": "https://s3-west.nrp-nautilus.io/public-census/census-2025/sldl/stac-collection.json",
+      "group": {
+        "name": "Administrative Boundaries",
+        "collapsed": true
+      },
+      "assets": [
+        {
+          "id": "sldl-pmtiles",
+          "display_name": "State Legislative — Lower (House)",
+          "visible": false,
+          "default_style": {
+            "fill-color": "#26A69A",
+            "fill-opacity": 0.03
+          },
+          "outline_style": {
+            "line-color": "#26A69A",
+            "line-width": 0.35,
+            "line-opacity": 0.55
+          },
+          "tooltip_fields": [
+            "NAMELSAD",
+            "STATEFP",
+            "GEOID"
+          ]
+        }
+      ]
+    }
+  ],
+  "plugins": [
+    {
+      "url": "plugins/mcp.js",
+      "options": {
+        "url": "https://duckdb-mcp.nrp-nautilus.io/mcp",
+        "prompt": "geospatial-analyst"
+      }
+    },
+    "plugins/charts.js",
+    "plugins/draw.js",
+    {
+      "url": "plugins/uploads.js",
+      "options": {}
+    }
+  ],
+  "default_basemap": "natgeo"
+}

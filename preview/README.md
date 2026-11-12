@@ -189,3 +189,8 @@ over two rasters, a collapsed group, and a layer with `"sidebar": false`.
 `template.json` is glen-template's layer config (the `template-today` variant)
 in glen core, changed only by renaming `collection_id` and `collection_url` to
 `id` and `url`, to compare the two apps side by side (SchmidtDSE/glen#441).
+`template-v4.json` is glen-template's current `layers-input.json` run through
+`scripts/convert-to-core.mjs`, as it would ship at the v4 switch, to compare
+with the live template (SchmidtDSE/glen#441). Its plugins load from the
+preview's own copy, and `default_basemap` is set because variants patch core's
+demo config.
