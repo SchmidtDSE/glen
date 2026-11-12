@@ -106,7 +106,7 @@ export async function start({ plugins: extraPlugins = [] } = {}) {
             console.warn('[core] Geocoder off:', err.message);
         }
     }
-    for (const t of createCoreMapTools(mapManager, catalog, { geocoder })) tools.registerLocal(t);
+    for (const t of createCoreMapTools(mapManager, catalog, { geocoder, geolocateTool: !!appConfig.geolocate?.agent_tool })) tools.registerLocal(t);
 
     /* ── 4. Plugins ────────────────────────────────────────────────────── */
     const promptParts = [];

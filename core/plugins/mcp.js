@@ -52,6 +52,9 @@
 
 import { resolveHref } from '../portolan.js';
 import { createCatalogTools, MCP_CATALOG_TOOLS } from '../../app/catalog-tools.js';
+import { createFilterByQueryTool } from '../../app/query-filter-tool.js';
+import { PICK_LAYER_NUDGE } from '../../app/map-control-tools.js';
+import { runQuery } from '../run-query.js';
 
 // The same glen-harness tag as the imports in core/main.js; a test checks.
 export const HARNESS_MCP_CLIENT = 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.4.0/src/mcp-client.js';
@@ -149,6 +152,8 @@ export default {
             }));
         }
         for (const t of createCatalogTools(ctx.catalog, { s3Sources: ctx.config?.s3_sources })) ctx.tools.registerLocal(t);
+        // The full app's filter_by_query, its SQL run through the servers' `query`.
+        if (ctx.map) ctx.tools.registerLocal(createFilterByQueryTool(ctx.map, (sql) => runQuery(ctx.tools, sql), PICK_LAYER_NUDGE));
         // A server's own catalog tools would replace the local ones and reach
         // beyond this app's collections.
         const computeOnly = (tools) => tools.filter((t) => !MCP_CATALOG_TOOLS.includes(t.name));

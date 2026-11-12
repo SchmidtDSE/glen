@@ -39,12 +39,14 @@ const json = (x) => JSON.stringify(x);
  * @param {{forwardGeocode: Function}|null} [options.geocoder]
  * @returns {Array<Object>} tool definitions for ToolRegistry.registerLocal
  */
-export function createCoreMapTools(mapManager, catalog, { geocoder = null } = {}) {
+export function createCoreMapTools(mapManager, catalog, { geocoder = null, geolocateTool = false } = {}) {
     const unknown = (id) => ({ success: false, error: `Unknown layer: ${id}. Available: ${[...catalog.layers.keys()].join(', ')}` });
 
     return [
         ...createMapControlTools(mapManager, {
             geocoder,
+            // The full app's get_user_location, on `geolocate.agent_tool` (a privacy opt-in).
+            geolocateTool,
             hints: PORTOLAN_HINTS,
             layerExtent: (id) => layerExtent(catalog, id),
             reportView: true,
@@ -104,6 +106,13 @@ Colour maps: viridis, magma, inferno, plasma, cividis, ylorrd, ylgnbu, blues, gr
                 if (!l) return json(unknown(args.layer_id));
                 return json({ success: true, ...describeLayer(catalog, l) });
             },
+        },
+        {
+            // As in the full app, for an agent asked what data the app has.
+            name: 'list_datasets',
+            description: 'List the ids and titles of this app\'s datasets. Their layers are listed in your system prompt; call describe_layer for one layer\'s details.',
+            inputSchema: { type: 'object', properties: {}, required: [] },
+            execute: () => json({ success: true, datasets: catalog.getAll().map(ds => ({ id: ds.id, title: ds.title })) }),
         },
         // Only an app with a series of items gets set_time (#462), as in the
         // full app, so other apps' tool lists are unchanged.

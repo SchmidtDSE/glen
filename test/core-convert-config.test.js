@@ -18,6 +18,8 @@ describe('converting a v3 layers-input.json to glen core (#441)', () => {
         for (const k of ['mcp_url', 'charts', 'draw_enabled', 'upload_enabled']) expect(config).not.toHaveProperty(k);
         expect(config.plugins).toEqual([
             { url: `${B}/mcp.js`, options: { url: 'https://mcp/mcp', prompt: 'geospatial-analyst' } },
+            // Every v3 app had the hex tile tools.
+            `${B}/hex.js`,
             `${B}/charts.js`,
             `${B}/draw.js`,
             { url: `${B}/uploads.js`, options: { max_features: 9 } },

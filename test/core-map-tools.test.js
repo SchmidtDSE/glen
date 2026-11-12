@@ -167,3 +167,14 @@ describe('a versioned raster', () => {
         expect(setRasterColormap(mapManager, catalog, 'pop', { colormap: 'magma' })).toMatchObject({ success: false });
     });
 });
+
+describe('the full app\'s remaining map tools in glen core', () => {
+    it('lists the datasets, and offers get_user_location only when geolocate.agent_tool asks', () => {
+        const { mapManager, catalog } = setup();
+        catalog.getAll = () => [{ id: 'roads', title: 'Roads' }];
+        const tools = createCoreMapTools(mapManager, catalog);
+        expect(JSON.parse(tools.find(t => t.name === 'list_datasets').execute())).toEqual({ success: true, datasets: [{ id: 'roads', title: 'Roads' }] });
+        expect(tools.map(t => t.name)).not.toContain('get_user_location');
+        expect(createCoreMapTools(mapManager, catalog, { geolocateTool: true }).map(t => t.name)).toContain('get_user_location');
+    });
+});
