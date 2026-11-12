@@ -1035,7 +1035,173 @@
     {
       "url": "plugins/mcp.js",
       "options": {
-        "url": "https://duckdb-mcp.nrp-nautilus.io/mcp",
+        "worker": "../geo-query-worker.js",
+        "worker_config": {
+          "discovery": false,
+          "workers": 2,
+          "rewrite": [
+            {
+              "from": "s3://public-carbon/",
+              "to": "s3://us-west-2.opendata.source.coop/cboettig/carbon/"
+            },
+            {
+              "from": "https://s3-west.nrp-nautilus.io/public-carbon/",
+              "to": "https://data.source.coop/cboettig/carbon/"
+            },
+            {
+              "from": "s3://public-census/",
+              "to": "s3://us-west-2.opendata.source.coop/cboettig/census/"
+            },
+            {
+              "from": "https://s3-west.nrp-nautilus.io/public-census/",
+              "to": "https://data.source.coop/cboettig/census/"
+            },
+            {
+              "from": "s3://public-ecoregion/",
+              "to": "s3://us-west-2.opendata.source.coop/cboettig/ecoregion/"
+            },
+            {
+              "from": "https://s3-west.nrp-nautilus.io/public-ecoregion/",
+              "to": "https://data.source.coop/cboettig/ecoregion/"
+            },
+            {
+              "from": "s3://public-epa-water/",
+              "to": "s3://us-west-2.opendata.source.coop/cboettig/epa-water/"
+            },
+            {
+              "from": "https://s3-west.nrp-nautilus.io/public-epa-water/",
+              "to": "https://data.source.coop/cboettig/epa-water/"
+            },
+            {
+              "from": "s3://public-fire/",
+              "to": "s3://us-west-2.opendata.source.coop/cboettig/fire/"
+            },
+            {
+              "from": "https://s3-west.nrp-nautilus.io/public-fire/",
+              "to": "https://data.source.coop/cboettig/fire/"
+            },
+            {
+              "from": "s3://public-gbif/",
+              "to": "s3://us-west-2.opendata.source.coop/cboettig/gbif/"
+            },
+            {
+              "from": "https://s3-west.nrp-nautilus.io/public-gbif/",
+              "to": "https://data.source.coop/cboettig/gbif/"
+            },
+            {
+              "from": "s3://public-hazard/",
+              "to": "s3://us-west-2.opendata.source.coop/cboettig/hazard/"
+            },
+            {
+              "from": "https://s3-west.nrp-nautilus.io/public-hazard/",
+              "to": "https://data.source.coop/cboettig/hazard/"
+            },
+            {
+              "from": "s3://public-indigenous/",
+              "to": "s3://us-west-2.opendata.source.coop/cboettig/indigenous/"
+            },
+            {
+              "from": "https://s3-west.nrp-nautilus.io/public-indigenous/",
+              "to": "https://data.source.coop/cboettig/indigenous/"
+            },
+            {
+              "from": "s3://public-land-cover/",
+              "to": "s3://us-west-2.opendata.source.coop/cboettig/land-cover/"
+            },
+            {
+              "from": "https://s3-west.nrp-nautilus.io/public-land-cover/",
+              "to": "https://data.source.coop/cboettig/land-cover/"
+            },
+            {
+              "from": "s3://public-mappinginequality/",
+              "to": "s3://us-west-2.opendata.source.coop/cboettig/mappinginequality/"
+            },
+            {
+              "from": "https://s3-west.nrp-nautilus.io/public-mappinginequality/",
+              "to": "https://data.source.coop/cboettig/mappinginequality/"
+            },
+            {
+              "from": "s3://public-mobi/",
+              "to": "s3://us-west-2.opendata.source.coop/cboettig/mobi/"
+            },
+            {
+              "from": "https://s3-west.nrp-nautilus.io/public-mobi/",
+              "to": "https://data.source.coop/cboettig/mobi/"
+            },
+            {
+              "from": "s3://public-overturemaps/",
+              "to": "s3://us-west-2.opendata.source.coop/cboettig/overturemaps/"
+            },
+            {
+              "from": "https://s3-west.nrp-nautilus.io/public-overturemaps/",
+              "to": "https://data.source.coop/cboettig/overturemaps/"
+            },
+            {
+              "from": "s3://public-padus/",
+              "to": "s3://us-west-2.opendata.source.coop/cboettig/padus/"
+            },
+            {
+              "from": "https://s3-west.nrp-nautilus.io/public-padus/",
+              "to": "https://data.source.coop/cboettig/padus/"
+            },
+            {
+              "from": "s3://public-population/",
+              "to": "s3://us-west-2.opendata.source.coop/cboettig/population/"
+            },
+            {
+              "from": "https://s3-west.nrp-nautilus.io/public-population/",
+              "to": "https://data.source.coop/cboettig/population/"
+            },
+            {
+              "from": "s3://public-rap/",
+              "to": "s3://us-west-2.opendata.source.coop/cboettig/rap/"
+            },
+            {
+              "from": "https://s3-west.nrp-nautilus.io/public-rap/",
+              "to": "https://data.source.coop/cboettig/rap/"
+            },
+            {
+              "from": "s3://public-social-vulnerability/",
+              "to": "s3://us-west-2.opendata.source.coop/cboettig/social-vulnerability/"
+            },
+            {
+              "from": "https://s3-west.nrp-nautilus.io/public-social-vulnerability/",
+              "to": "https://data.source.coop/cboettig/social-vulnerability/"
+            },
+            {
+              "from": "s3://public-trails/",
+              "to": "s3://us-west-2.opendata.source.coop/cboettig/trails/"
+            },
+            {
+              "from": "https://s3-west.nrp-nautilus.io/public-trails/",
+              "to": "https://data.source.coop/cboettig/trails/"
+            },
+            {
+              "from": "s3://public-usfws/",
+              "to": "s3://us-west-2.opendata.source.coop/cboettig/usfws/"
+            },
+            {
+              "from": "https://s3-west.nrp-nautilus.io/public-usfws/",
+              "to": "https://data.source.coop/cboettig/usfws/"
+            },
+            {
+              "from": "s3://public-usgs-wbd/",
+              "to": "s3://us-west-2.opendata.source.coop/cboettig/usgs-wbd/"
+            },
+            {
+              "from": "https://s3-west.nrp-nautilus.io/public-usgs-wbd/",
+              "to": "https://data.source.coop/cboettig/usgs-wbd/"
+            },
+            {
+              "from": "s3://public-wetlands/",
+              "to": "s3://us-west-2.opendata.source.coop/cboettig/wetlands/"
+            },
+            {
+              "from": "https://s3-west.nrp-nautilus.io/public-wetlands/",
+              "to": "https://data.source.coop/cboettig/wetlands/"
+            }
+          ]
+        },
         "prompt": "geospatial-analyst"
       }
     },

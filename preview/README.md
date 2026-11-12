@@ -193,4 +193,6 @@ in glen core, changed only by renaming `collection_id` and `collection_url` to
 `scripts/convert-to-core.mjs`, as it would ship at the v4 switch, to compare
 with the live template (SchmidtDSE/glen#441). Its plugins load from the
 preview's own copy, and `default_basemap` is set because variants patch core's
-demo config.
+demo config. Like glen-template's GitHub Pages copy, it runs its SQL in the page
+with geo-query-wasm: the MCP plugin's `worker` entry starts
+`geo-query-worker.js`, with the Pages copy's worker settings.
