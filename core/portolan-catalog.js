@@ -217,8 +217,14 @@ export class PortolanCatalog {
                 await this._addVersioned(dataset, `${id}/${entry.id}`, entry.display_name || dataset.title, pick, settings, usableStyles);
                 continue;
             }
-            const layerId = many ? `${id}/${src.key}` : id;
-            const title = entry.display_name || (many ? (src.title || `${dataset.title} (${src.key})`) : dataset.title);
+            // The full app's `alias` draws one asset as several layers (other
+            // filters or styles of one file), each named by its alias.
+            const alias = typeof entry.alias === 'string' && entry.alias.trim() ? entry.alias.trim() : null;
+            // A config naming another key of the same file (two STAC assets
+            // with one href, drawn twice) gets a layer of its own under that key.
+            const key = entry.id != null && String(entry.id) !== src.key ? String(entry.id) : src.key;
+            const layerId = alias ? `${id}/${alias}` : (many || key !== src.key ? `${id}/${key}` : id);
+            const title = entry.display_name || (many || alias ? (src.title || `${dataset.title} (${key})`) : dataset.title);
             if (kind === 'vector') await this._addVector(dataset, layerId, title, src, settings, usableStyles);
             else this._addRaster(dataset, layerId, title, src, settings);
         }
@@ -291,6 +297,8 @@ export class PortolanCatalog {
             visible: s.visible === true,
             url: v.url,
             sourceLayer,
+            // Layers drawn from one file share its source, as the full app's aliases do.
+            sourceId: `src-${dataset.id.replace(/[^a-zA-Z0-9]/g, '-')}-${v.key.replace(/[^a-zA-Z0-9]/g, '-')}`,
             geometryType: info.geometryType,
             fields: info.fields,
             renderType,
@@ -551,6 +559,7 @@ export class PortolanCatalog {
                         ...base,
                         type: 'vector',
                         source: l.geojson ? { type: 'geojson', data: l.url } : { type: 'vector', url: `pmtiles://${l.url}` },
+                        ...(l.sourceId ? { sourceId: l.sourceId } : {}),
                         ...(l.geojson ? {} : { sourceLayer: l.sourceLayer }),
                         legendLabel: l.legendLabel,
                         legendType: l.legendType,

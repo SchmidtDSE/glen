@@ -68,18 +68,28 @@ const HARNESS_POST_MESSAGE = new URL('post-message-transport.js', HARNESS_MCP_CL
  *   include?: string[], exclude?: string[], worker?: string,
  *   worker_config?: Object}>}
  */
-export function resolveServers(options = {}, config = {}) {
-    const listed = Array.isArray(options.servers)
-        ? options.servers
+export function resolveServers(options = {}, config = {}, runtime = {}) {
+    let listed = Array.isArray(options.servers)
+        ? options.servers.map((s) => ({ ...s }))
         : [{ ...options, url: options.worker ? undefined : (options.url || config.mcp_url) }];
+    // The deploy-time config.json addresses the primary (first) server, as in
+    // the full app: `mcp_server_url` replaces its URL and `mcp_auth_token`
+    // its token, so a deployment's secret never sits in layers-input.json.
+    if (listed[0] && !listed[0].worker) {
+        if (runtime?.mcp_server_url) listed[0].url = runtime.mcp_server_url;
+        if (runtime?.mcp_auth_token) listed[0].auth_token = runtime.mcp_auth_token;
+    }
     const given = (v) => typeof v === 'string' && v.trim();
     const servers = listed.filter((s) => s && (given(s.worker) || given(s.url)));
     if (!servers.length) throw new Error('mcp plugin: options.url, options.worker or options.servers is required');
     const both = servers.find((s) => given(s.url) && given(s.worker));
     if (both) throw new Error(`mcp plugin: a server takes url or worker, not both (${both.url}, ${both.worker})`);
-    return servers.map(({ url, headers, prompt, include, exclude, worker, worker_config }) => (given(worker)
+    // The full app's `auth_token` is a bearer token for that server alone.
+    const withToken = (headers, token) => (token && !Object.keys(headers || {}).some((k) => k.toLowerCase() === 'authorization')
+        ? { ...(headers || {}), Authorization: `Bearer ${token}` } : (headers || {}));
+    return servers.map(({ url, headers, auth_token: token, prompt, include, exclude, worker, worker_config }) => (given(worker)
         ? { url: `worker:${worker}`, worker, worker_config: worker_config || {}, headers: {}, prompt, include, exclude }
-        : { url, headers: headers || {}, prompt, include, exclude }));
+        : { url, headers: withToken(headers, token), prompt, include, exclude }));
 }
 
 /** The URL a worker entry starts from: its path against the page, with its configuration. */
@@ -120,7 +130,7 @@ export default {
     },
 
     async setup(ctx, options = {}) {
-        const servers = resolveServers(options, ctx.config);
+        const servers = resolveServers(options, ctx.config, ctx.runtimeConfig || {});
         const MCPClient = await this.loadClient();
         const token = await this.loadTokenHelpers();
         // Only the first server takes a visitor's token.

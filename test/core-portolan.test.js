@@ -777,3 +777,60 @@ describe('the full app\'s legend, control and GeoJSON settings in glen core', ()
         expect(url).toContain('nodata=255');
     });
 });
+
+describe('aliases: one asset drawn as several layers (the full app\'s `alias`)', () => {
+    it('gives each alias its own layer, filter and name over one shared source', async () => {
+        const U = 'https://example.org/cat/f/collection.json';
+        const col = { type: 'Collection', id: 'fmmp', title: 'FMMP', links: [],
+            assets: { pm: { href: './fmmp.pmtiles', type: 'application/vnd.pmtiles', roles: ['visual'], 'pmtiles:layers': ['fmmp'] } } };
+        const c = new PortolanCatalog({ fetchJson: async () => structuredClone(col), pmtilesMetadata: async () => null });
+        await c.load({ collections: [{ url: U, assets: [
+            { id: 'pm', alias: 'farmland', display_name: 'Farmland', default_filter: ['in', ['get', 't'], ['literal', ['P', 'U']]] },
+            { id: 'pm', alias: 'grazing', display_name: 'Grazing land', default_filter: ['==', ['get', 't'], 'G'] },
+        ] }] });
+        const [a, b] = c.getMapLayerConfigs();
+        expect([a.layerId, b.layerId]).toEqual(['fmmp/farmland', 'fmmp/grazing']);
+        expect([a.displayName, b.displayName]).toEqual(['Farmland', 'Grazing land']);
+        expect(b.defaultFilter).toEqual(['==', ['get', 't'], 'G']);
+        expect(a.sourceId).toBe(b.sourceId);
+    });
+});
+
+describe('two asset keys for one file, both drawn', () => {
+    it('gives each key its own layer over the shared source', async () => {
+        const U = 'https://example.org/cat/d/collection.json';
+        const col = { type: 'Collection', id: 'dac', title: 'DAC', links: [], assets: {
+            'dac-tract': { href: './tract.pmtiles', type: 'application/vnd.pmtiles', roles: ['visual'] },
+            'eda-tract': { href: './tract.pmtiles', type: 'application/vnd.pmtiles', roles: ['visual'] },
+        } };
+        const c = new PortolanCatalog({ fetchJson: async () => structuredClone(col), pmtilesMetadata: async () => null });
+        await c.load({ collections: [{ url: U, assets: [
+            { id: 'dac-tract', display_name: 'DAC', default_filter: ['==', ['get', 'DAC23'], 'Y'] },
+            { id: 'eda-tract', display_name: 'EDA', default_filter: ['==', ['get', 'Flag_MHI_P'], 'Y'] },
+        ] }] });
+        const [a, b] = c.getMapLayerConfigs();
+        expect([a.layerId, b.layerId]).toEqual(['dac', 'dac/eda-tract']);
+        expect(b.displayName).toBe('EDA');
+        expect(a.sourceId).toBe(b.sourceId);
+    });
+});
+
+describe('PMTiles links of one file name in different folders', () => {
+    it('keep distinct keys, so their layers keep distinct sources', async () => {
+        const U = 'https://example.org/cat/ej/collection.json';
+        const col = { type: 'Collection', id: 'ej', title: 'EJ', assets: {
+            'dac-tract': { href: './dac-2023/tract.pmtiles', type: 'application/vnd.pmtiles', roles: ['visual'] },
+            'eda-tract': { href: './eda-2023/tract.pmtiles', type: 'application/vnd.pmtiles', roles: ['visual'] },
+        }, links: [
+            { rel: 'pmtiles', href: './dac-2023/tract.pmtiles' },
+            { rel: 'pmtiles', href: './eda-2023/tract.pmtiles' },
+        ] };
+        expect(findVectorSources(col, U).map(v => [v.key, v.aliases])).toEqual([['tract', ['dac-tract']], ['eda-2023-tract', ['eda-tract']]]);
+        const c = new PortolanCatalog({ fetchJson: async () => structuredClone(col), pmtilesMetadata: async () => null });
+        await c.load({ collections: [{ url: U, assets: ['dac-tract', 'eda-tract'] }] });
+        const [a, b] = c.getMapLayerConfigs();
+        expect(a.source.url).toContain('dac-2023/tract.pmtiles');
+        expect(b.source.url).toContain('eda-2023/tract.pmtiles');
+        expect(a.sourceId).not.toBe(b.sourceId);
+    });
+});

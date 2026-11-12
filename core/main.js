@@ -163,7 +163,9 @@ export async function start({ plugins: extraPlugins = [] } = {}) {
 /** Copy the deploy-time settings (models, keys) over the static config. */
 export function mergeRuntimeConfig(appConfig, runtimeConfig) {
     if (!runtimeConfig) return appConfig;
-    for (const k of ['llm_models', 'llm_model', 'transcription_model', 'max_tool_calls', 'max_tool_calls_manual']) {
+    // As in the full app. The MCP server's URL and token reach plugins/mcp.js
+    // through ctx.runtimeConfig instead.
+    for (const k of ['llm_models', 'llm_model', 'transcription_model', 'max_tool_calls', 'max_tool_calls_manual', 'geolocate', 'export']) {
         if (runtimeConfig[k] != null) appConfig[k] = runtimeConfig[k];
     }
     return appConfig;
