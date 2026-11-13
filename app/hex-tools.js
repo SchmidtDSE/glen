@@ -32,7 +32,53 @@ function isUsableStats(vs) {
  * whatever the caller did supply, and returns `{ error }` only when neither
  * source yields the fields the renderer needs — never a silent blank layer.
  */
-async function resolveHexMetadata(args, fetchFn = globalThis.fetch) {
+// register_hex_tiles waits a few seconds for its build, then returns
+// `status: "running"` with the tile URL already set; metadata.json exists only
+// once the build is done, and a longer build can take minutes. So a missing
+// metadata.json is waited for: with the server's get_hex_tile_status when the
+// app has it, else by retrying a 404 or a 5xx for about ten seconds.
+const METADATA_RETRY_DELAYS_MS = [500, 1000, 2000, 3000, 4000];
+const BUILD_WAIT_SECONDS = 30;      // per get_hex_tile_status call, as its description advises
+const BUILD_WAIT_ROUNDS = 10;       // about five minutes in all
+
+/** The tileset's content hash, from a `…/tiles/hex/<hash>/{z}/{x}/{y}.pbf` URL. */
+export function tilesetHash(tileUrl) {
+    const m = String(tileUrl || '').match(/\/tiles\/hex\/([^/]+)\//);
+    return m ? m[1] : null;
+}
+
+/**
+ * Wait for a tileset's build with get_hex_tile_status, long-polling while it
+ * reports "running".
+ * @param {(args: Object) => Promise<string|Object>} callStatus - runs get_hex_tile_status
+ * @returns {(hash: string) => Promise<{status: string, error?: string}>}
+ */
+export function hexBuildWaiter(callStatus, { rounds = BUILD_WAIT_ROUNDS, waitSeconds = BUILD_WAIT_SECONDS } = {}) {
+    return async (hash) => {
+        let last = { status: 'unknown' };
+        for (let i = 0; i < rounds; i++) {
+            let raw;
+            try { raw = await callStatus({ hash, wait_seconds: waitSeconds }); } catch (err) { return { status: 'unknown', error: err.message }; }
+            const text = typeof raw === 'string' ? raw : JSON.stringify(raw);
+            try { last = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)); } catch { return { status: 'unknown' }; }
+            if (last?.status !== 'running') return last;
+        }
+        return last;
+    };
+}
+
+/** GET the tileset's metadata.json, retrying a 404 or a 5xx with backoff. */
+async function fetchMetadata(fetchFn, url, delays = METADATA_RETRY_DELAYS_MS, first = null) {
+    let resp = first || await fetchFn(url);
+    for (const ms of delays) {
+        if (resp?.ok || !(resp?.status === 404 || resp?.status >= 500)) break;
+        await new Promise(r => setTimeout(r, ms));
+        resp = await fetchFn(url);
+    }
+    return resp;
+}
+
+async function resolveHexMetadata(args, fetchFn = globalThis.fetch, retryDelays = METADATA_RETRY_DELAYS_MS, waitForBuild = null) {
     let valueColumn = args.value_column;
     let valueStats = args.value_stats;
     let bounds = (Array.isArray(args.bounds) && args.bounds.length === 4) ? args.bounds : undefined;
@@ -47,8 +93,25 @@ async function resolveHexMetadata(args, fetchFn = globalThis.fetch) {
     const metaUrl = metadataUrlFromTileUrl(args.tile_url);
     if (metaUrl && typeof fetchFn === 'function') {
         try {
-            const resp = await fetchFn(metaUrl);
-            if (resp.ok) {
+            let resp = await fetchFn(metaUrl);
+            const hash = tilesetHash(args.tile_url);
+            // 404 today; 202 {"status":"running"} once geo-query answers that way
+            // during a build (SchmidtDSE/geo-query#500).
+            const building = resp?.status === 202 || resp?.status === 404;
+            if (building && waitForBuild && hash) {
+                // Still building: wait for it, then read the metadata it writes.
+                const build = await waitForBuild(hash);
+                if (build?.status === 'running') {
+                    return { error: `add_hex_tile_layer: the hex tiles for ${hash} are still being built after ${BUILD_WAIT_ROUNDS * BUILD_WAIT_SECONDS / 60} minutes. Call get_hex_tile_status with this hash, and add the layer once it reports done.` };
+                }
+                if (build?.status === 'failed' || build?.status === 'error') {
+                    return { error: `add_hex_tile_layer: the hex tile build for ${hash} failed${build.error ? `: ${build.error}` : ''}.` };
+                }
+                resp = await fetchMetadata(fetchFn, metaUrl, retryDelays.slice(0, 2));
+            } else if (!resp?.ok) {
+                resp = await fetchMetadata(fetchFn, metaUrl, retryDelays, resp);
+            }
+            if (resp?.ok && resp.status !== 202) {
                 const meta = await resp.json();
                 valueColumn = valueColumn || meta.value_columns?.[0];
                 if (!isUsableStats(valueStats)) valueStats = meta.value_stats?.[valueColumn];
@@ -82,9 +145,12 @@ async function resolveHexMetadata(args, fetchFn = globalThis.fetch) {
  * @param {import('./map-manager.js').MapManager} mapManager
  * @param {Object} [options]
  * @param {Function} [options.fetchFn] - reads a tileset's metadata.json (default: fetch)
+ * @param {number[]} [options.retryDelays] - waits, in ms, before retrying a 404 or 5xx
+ * @param {Function} [options.waitForBuild] - from {@link hexBuildWaiter}: waits for
+ *   a build still running when metadata.json is missing
  * @returns {Array<Object>} tool definitions
  */
-export function createHexTileTools(mapManager, { fetchFn = (...a) => globalThis.fetch(...a) } = {}) {
+export function createHexTileTools(mapManager, { fetchFn = (...a) => globalThis.fetch(...a), retryDelays = METADATA_RETRY_DELAYS_MS, waitForBuild = null } = {}) {
     return [
         {
             name: 'add_hex_tile_layer',
@@ -153,7 +219,7 @@ The returned layer_id can be used with show_layer / hide_layer / set_style / set
                 required: ['tile_url'],
             },
             execute: async (args) => {
-                const meta = await resolveHexMetadata(args, fetchFn);
+                const meta = await resolveHexMetadata(args, fetchFn, retryDelays, waitForBuild);
                 if (meta.error) return JSON.stringify({ success: false, error: meta.error });
                 const displayName = args.display_name || `Hex: ${meta.valueColumn}`;
                 const result = mapManager.addHexTileLayer({

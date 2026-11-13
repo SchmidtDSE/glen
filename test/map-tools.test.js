@@ -665,8 +665,15 @@ describe('add_hex_tile_layer — fetch color-scale metadata by hash (#276)', () 
         global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 404, json: async () => ({}) });
         const { tool, mapManager } = getTool();
 
-        const out = JSON.parse(await tool.execute({ tile_url: TILE_URL }));
+        // A 404 is retried for about ten seconds (a tileset can become readable
+        // a moment after register_hex_tiles returns); fake timers skip the waits.
+        vi.useFakeTimers();
+        const pending = tool.execute({ tile_url: TILE_URL });
+        await vi.runAllTimersAsync();
+        const out = JSON.parse(await pending);
+        vi.useRealTimers();
 
+        expect(global.fetch).toHaveBeenCalledTimes(6);
         expect(out.success).toBe(false);
         expect(out.error).toMatch(/value_stats/);
         expect(mapManager.addHexTileLayer).not.toHaveBeenCalled();

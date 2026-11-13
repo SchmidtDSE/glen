@@ -1,4 +1,4 @@
-import { createHexTileTools } from './hex-tools.js';
+import { createHexTileTools, hexBuildWaiter } from './hex-tools.js';
 import { createFilterByQueryTool } from './query-filter-tool.js';
 import { legendFromPaint } from './legend-helpers.js';
 import { describeColor } from './published-styles.js';
@@ -59,7 +59,9 @@ export function createMapTools(mapManager, catalog, mcpClient, geocoder, options
         ...createMapControlTools(mapManager, { geocoder, geolocateTool: options.geolocateTool, hints: SQL_HINTS }),
 
         // ---- Dynamic Hex Tile Layers ----
-        ...createHexTileTools(mapManager),
+        ...createHexTileTools(mapManager, mcpClient ? {
+            waitForBuild: hexBuildWaiter((args) => mcpClient.callTool('get_hex_tile_status', args)),
+        } : {}),
 
         // ---- Query-driven Filter Tool ---- (shared with glen core: query-filter-tool.js)
         ...(mcpClient ? [createFilterByQueryTool(mapManager, mcpClient, pickLayerNudge)] : []),
