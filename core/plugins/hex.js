@@ -54,7 +54,15 @@ const plugin = {
     },
 
     async setup(ctx, options = {}) {
-        const { createHexTileTools } = await import('../../app/hex-tools.js');
+        const { createHexTileTools, hexBuildWaiter } = await import('../../app/hex-tools.js');
+        // A build still running when its metadata is read is waited for with
+        // the server's get_hex_tile_status, if a plugin registered it.
+        const waitForBuild = hexBuildWaiter(async (args) => {
+            if (!ctx.tools.tools?.get?.('get_hex_tile_status')) throw new Error('no get_hex_tile_status tool');
+            const r = await ctx.tools.execute('get_hex_tile_status', args);
+            if (!r?.success) throw new Error(String(r?.result ?? 'get_hex_tile_status failed'));
+            return r.result;
+        });
         let fetchFn;
         if (hasWorkerServer(ctx.config)) {
             const { addHexTileProtocol, hexFetch } = await this.loadHexProtocol(options.geo_query_wasm || DEFAULT_GEO_QUERY_WASM);
@@ -63,7 +71,7 @@ const plugin = {
             if (maplibre) addHexTileProtocol(maplibre, live);
             fetchFn = hexFetch(live, (...a) => globalThis.fetch(...a));
         }
-        for (const t of createHexTileTools(ctx.map, fetchFn ? { fetchFn } : {})) ctx.tools.registerLocal(t);
+        for (const t of createHexTileTools(ctx.map, { ...(fetchFn ? { fetchFn } : {}), waitForBuild })) ctx.tools.registerLocal(t);
     },
 };
 
