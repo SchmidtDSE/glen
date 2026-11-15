@@ -174,3 +174,68 @@ describe('STAC items (#462)', () => {
         expect(formatCollection({ id: 'x', links: [] }, {})).not.toContain('Items');
     });
 });
+
+describe('formatCollection citation section (#482)', () => {
+    const cited = {
+        id: 'ghm', title: 'Global Human Modification', description: 'Human pressure on land.',
+        license: 'CC-BY-4.0',
+        'sci:citation': 'Kennedy, C. et al. 2019. Global human modification. figshare. https://doi.org/10.6084/m9.figshare.7283087',
+        'sci:doi': '10.6084/m9.figshare.7283087',
+        'sci:publications': [
+            { citation: 'Kennedy, C. et al. 2019. Managing the middle. Global Change Biology 25:811-826.', doi: '10.1111/gcb.14549' },
+            { doi: 'https://doi.org/10.1000/xyz' },
+            {},
+        ],
+        links: [
+            { rel: 'cite-as', href: 'https://doi.org/10.6084/m9.figshare.7283087' },
+            { rel: 'license', href: 'https://creativecommons.org/licenses/by/4.0/' },
+        ],
+        assets: { parquet: { href: 'https://s3-west.nrp-nautilus.io/b/ghm.parquet', type: 'application/vnd.apache.parquet' } },
+    };
+
+    it('prints the citation, publications and license after the description, before the SQL data', () => {
+        const text = formatCollection(cited, {});
+        expect(text).toContain('**Citation**\nKennedy, C. et al. 2019. Global human modification.');
+        expect(text).toContain('- Kennedy, C. et al. 2019. Managing the middle. Global Change Biology 25:811-826. https://doi.org/10.1111/gcb.14549');
+        expect(text).toContain('- https://doi.org/10.1000/xyz');
+        expect(text).toContain('License: CC-BY-4.0 (https://creativecommons.org/licenses/by/4.0/)');
+        expect(text.indexOf('Human pressure')).toBeLessThan(text.indexOf('**Citation**'));
+        expect(text.indexOf('**Citation**')).toBeLessThan(text.indexOf('SQL data'));
+    });
+
+    it('does not repeat a DOI the citation carries, or a cite-as link that is the DOI', () => {
+        const text = formatCollection(cited, {});
+        expect(text).not.toContain('DOI: ');
+        expect(text).not.toContain('Cite as: ');
+    });
+
+    it('shows the DOI and a distinct cite-as link when there is no citation text', () => {
+        const text = formatCollection({
+            id: 'x', 'sci:doi': '10.5/abc',
+            links: [{ rel: 'cite-as', href: 'https://zenodo.org/records/1' }],
+        }, {});
+        expect(text).toContain('DOI: https://doi.org/10.5/abc');
+        expect(text).toContain('Cite as: https://zenodo.org/records/1');
+    });
+
+    it('does not repeat a cite-as link that a listed publication shows', () => {
+        const text = formatCollection({
+            id: 'x', 'sci:citation': 'Data citation.',
+            'sci:publications': [{ citation: 'Paper.', doi: '10.1186/abc' }],
+            links: [{ rel: 'cite-as', href: 'https://doi.org/10.1186/abc' }],
+        }, {});
+        expect(text).not.toContain('Cite as: ');
+        expect(text).toContain('- Paper. https://doi.org/10.1186/abc');
+    });
+
+    it('prints a cite-as link alone', () => {
+        const text = formatCollection({ id: 'x', links: [{ rel: 'cite-as', href: 'https://doi.org/10.5/abc' }] }, {});
+        expect(text).toContain('**Citation**\nCite as: https://doi.org/10.5/abc');
+    });
+
+    it('prints no section when the collection carries no citation fields', () => {
+        const text = formatCollection({ id: 'x', license: 'CC0-1.0', 'sci:publications': [{}], links: [] }, {});
+        expect(text).not.toContain('Citation');
+        expect(text).not.toContain('License');
+    });
+});
