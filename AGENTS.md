@@ -235,7 +235,7 @@ When a PR touches a covered module, expect tests to change too. When it touches 
 | `app/export-report.js` | 99% | `test/export-report.test.js`, `test/chat-export*.test.js` — step classification, report shape, disclosure, the ChatUI session record. Regenerate `preview/sample-export.html` after a change. |
 | `app/cog-tiles.js` | covered | `test/dataset-catalog.test.js` (band settings, tile URLs) and `test/core-portolan.test.js` (the same rules in glen core). |
 | `app/dataset-catalog.js` | 89% | `test/dataset-catalog.test.js` — STAC parsing, layer config shape, prompt rendering |
-| `app/agent.js` | 48% | `test/agent-retry.test.js` — retry / abort / timeout. The conversation loop is uncovered (tested manually). |
+| `app/agent.js` | 48% | `test/agent-retry.test.js` — retry / abort / timeout, the full budget and backoff on every retry (#437). The conversation loop is uncovered (tested manually). |
 | `core/portolan.js`, `core/portolan-catalog.js` | covered | `test/core-portolan.test.js` — tile, style and raster discovery, style conversion, the missing-value guard, catalog walk, prompt |
 | `core/map-tools.js` | covered | `test/core-map-tools.test.js` — published styles and their filters, raster recolouring, fly_to forms, `set_time` only with a series of items. Rendering is browser-bound; verify at `/core/`. |
 | `core/main.js` | 0% | Bootstrap — verify by loading `/core/` locally. `test/core-module-graph.test.js` checks that it loads no MCP, SQL or export code. |
