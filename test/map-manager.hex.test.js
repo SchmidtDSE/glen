@@ -347,6 +347,54 @@ describe('MapManager.addHexTileLayer', () => {
     });
 });
 
+describe('MapManager.addHexTileLayer scale (SchmidtDSE/glen#481)', () => {
+    let mm;
+    beforeEach(() => { mm = createManager(); });
+    const base = {
+        valueColumn: 'count',
+        valueStats: { by_res: { '10': { min: 1, max: 220474 } } },
+        bounds: [-122.3, 37.7, -122.1, 37.9], palette: 'viridis',
+        opacity: 0.7, displayName: 'Birds', fitBounds: false,
+    };
+    const logInput = ['ln', ['+', 1, ['get', 'count']]];
+
+    it('draws colour and height on a log scale and says so in the result', () => {
+        const r = mm.addHexTileLayer({ ...base, tileUrl: 'https://h/tiles/hex/e5b1/{z}/{x}/{y}.pbf', extrude: true, scale: 'log' });
+        expect(r).toMatchObject({ success: true, scale: 'log' });
+        expect(r.scale_note).toBeUndefined();
+        const paint = mm.map._layers.get('hex-e5b1').paint;
+        expect(paint['fill-extrusion-color'][3][3][2]).toEqual(logInput);
+        expect(paint['fill-extrusion-height'][3][3][2]).toEqual(logInput);
+        expect(mm.layers.get('hex-e5b1').hexScale).toBe('log');
+        // The idempotent re-add reports the scale already drawn.
+        expect(mm.addHexTileLayer({ ...base, tileUrl: 'https://h/tiles/hex/e5b1/{z}/{x}/{y}.pbf' }).scale).toBe('log');
+    });
+
+    it('stays linear by default', () => {
+        const r = mm.addHexTileLayer({ ...base, tileUrl: 'https://h/tiles/hex/lin/{z}/{x}/{y}.pbf' });
+        expect(r.scale).toBe('linear');
+        expect(mm.map._layers.get('hex-lin').paint['fill-color'][3][3][2]).toEqual(['get', 'count']);
+    });
+
+    it('falls back to linear, with a note, when values reach -1 or below', () => {
+        const r = mm.addHexTileLayer({ ...base, tileUrl: 'https://h/tiles/hex/neg/{z}/{x}/{y}.pbf', valueStats: { by_res: { '8': { min: -5, max: 5 } } }, scale: 'log' });
+        expect(r.scale).toBe('linear');
+        expect(r.scale_note).toMatch(/linear/);
+        expect(mm.layers.get('hex-neg').hexScale).toBe('linear');
+    });
+
+    it('notes a log scale under the legend, beside the resolution', () => {
+        mm._colorPaintChanged = () => false;
+        mm.addHexTileLayer({ ...base, tileUrl: 'https://h/tiles/hex/leg/{z}/{x}/{y}.pbf', scale: 'log' });
+        const state = mm.layers.get('hex-leg');
+        expect(mm._hexLegendNote(state, { res: 10 })).toBe('H3 resolution 10 · log scale');
+        expect(mm._hexLegendNote({ ...state, hexScale: 'linear' }, { res: 10 })).toBe('H3 resolution 10');
+        // A restyled layer no longer has the ramp it was added with.
+        mm._colorPaintChanged = () => true;
+        expect(mm._hexLegendNote(state, { res: 10 })).toBe('H3 resolution 10');
+    });
+});
+
 describe('MapManager.addHexTileLayer (format: geojson)', () => {
     let mm;
     beforeEach(() => { mm = createManager(); });

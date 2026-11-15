@@ -51,6 +51,57 @@ export const PALETTES = {
 };
 
 /**
+ * The scales a hex ramp can spread over (SchmidtDSE/glen#481).
+ *
+ * `log` maps ln(1 + value), so counts and sums that include 0 stay finite, and
+ * spreads the ramp evenly over that. The stops are still placed at each
+ * resolution's real min and max, transformed, so the legend keeps labelling
+ * original values. It needs every value above -1; {@link applicableScale}
+ * falls back to linear when a domain reaches -1 or below.
+ */
+export const HEX_SCALES = ['linear', 'log'];
+
+/**
+ * The scale a hex layer can actually use over these stats: `log` only when
+ * every resolution's min is above -1, so ln(1 + value) is defined for all of
+ * them. Anything that isn't `log` is linear.
+ *
+ * @param {string} scale - requested scale
+ * @param {{by_res: Object<string, {min: number, max: number}>}} valueStats
+ * @returns {'linear'|'log'}
+ */
+export function applicableScale(scale, valueStats) {
+    if (scale !== 'log') return 'linear';
+    const mins = Object.values(valueStats?.by_res || {}).map(s => s?.min);
+    return mins.length > 0 && mins.every(m => typeof m === 'number' && m > -1) ? 'log' : 'linear';
+}
+
+/** The ramp's input: the value, or ln(1 + value) on a log scale. */
+function rampInput(valueColumn, scale) {
+    return scale === 'log'
+        ? ['ln', ['+', 1, ['get', valueColumn]]]
+        : ['get', valueColumn];
+}
+
+/** A domain bound on the ramp's input axis: the value, or ln(1 + value). */
+function rampStop(v, scale) {
+    return scale === 'log' ? Math.log1p(v) : v;
+}
+
+/** Three colour stops over [min, max]: low, middle and high on the input axis. */
+function colorRamp(valueColumn, min, max, [c0, c1, c2], scale) {
+    const lo = rampStop(min, scale);
+    const hi = rampStop(max, scale);
+    return ['interpolate', ['linear'], rampInput(valueColumn, scale), lo, c0, (lo + hi) / 2, c1, hi, c2];
+}
+
+/** Height from 0 at min to maxHeight at max, on the input axis. */
+function heightRamp(valueColumn, min, max, maxHeight, scale) {
+    return ['interpolate', ['linear'], rampInput(valueColumn, scale),
+        rampStop(min, scale), 0, rampStop(max, scale), maxHeight];
+}
+
+/**
  * Build a MapLibre `fill-color` paint expression for a hex layer.
  *
  * The MCP pyramid stores hexes at multiple H3 resolutions; aggregate magnitudes
@@ -66,9 +117,11 @@ export const PALETTES = {
  * @param {{by_res: Object<string, {min: number, max: number}>}} valueStats
  *   Per-resolution stats as returned by `register_hex_tiles.value_stats[column]`.
  * @param {string} palette - One of the keys in PALETTES.
+ * @param {'linear'|'log'} [scale='linear'] - how the ramp spreads over each
+ *   domain (#481); pass the result of {@link applicableScale}.
  * @returns {Array} MapLibre expression.
  */
-export function buildFillColorExpression(valueColumn, valueStats, palette) {
+export function buildFillColorExpression(valueColumn, valueStats, palette, scale = 'linear') {
     if (!(palette in PALETTES)) {
         throw new Error(`Unknown palette '${palette}'. Valid: ${Object.keys(PALETTES).join(', ')}`);
     }
@@ -77,22 +130,14 @@ export function buildFillColorExpression(valueColumn, valueStats, palette) {
         throw new Error('value_stats.by_res must contain at least one resolution');
     }
 
-    const [c0, c1, c2] = PALETTES[palette];
+    const colors = PALETTES[palette];
     const resKeys = Object.keys(byRes).sort((a, b) => Number(a) - Number(b));
 
     const branches = [];
     for (const resStr of resKeys) {
         const { min, max } = byRes[resStr];
-        const res = Number(resStr);
-        let branch;
-        if (!(min < max)) {
-            branch = c1;
-        } else {
-            const mid = (min + max) / 2;
-            branch = ['interpolate', ['linear'], ['get', valueColumn],
-                min, c0, mid, c1, max, c2];
-        }
-        branches.push(res, branch);
+        const branch = (min < max) ? colorRamp(valueColumn, min, max, colors, scale) : colors[1];
+        branches.push(Number(resStr), branch);
     }
 
     return [
@@ -158,9 +203,10 @@ export function rewriteValueColumn(expr, valueColumn) {
  * @param {string} valueColumn - Feature property to color by.
  * @param {{min: number, max: number}} stats - Single-resolution value range.
  * @param {string} palette - One of the keys in PALETTES.
+ * @param {'linear'|'log'} [scale='linear'] - see {@link buildFillColorExpression}
  * @returns {Array} MapLibre expression.
  */
-export function buildFlatFillColorExpression(valueColumn, stats, palette) {
+export function buildFlatFillColorExpression(valueColumn, stats, palette, scale = 'linear') {
     if (!(palette in PALETTES)) {
         throw new Error(`Unknown palette '${palette}'. Valid: ${Object.keys(PALETTES).join(', ')}`);
     }
@@ -168,16 +214,16 @@ export function buildFlatFillColorExpression(valueColumn, stats, palette) {
         throw new Error('stats must contain numeric min and max');
     }
 
-    const [c0, c1, c2] = PALETTES[palette];
+    const colors = PALETTES[palette];
     const { min, max } = stats;
     const branch = (min < max)
-        ? ['interpolate', ['linear'], ['get', valueColumn], min, c0, (min + max) / 2, c1, max, c2]
+        ? colorRamp(valueColumn, min, max, colors, scale)
         // A single value over the whole layer is a mask (glen-sdm's modelled
         // range), not one zoom level of a varying layer as in
         // buildFillColorExpression, where the neutral midpoint stays. Paint it
         // the top stop: the middle can vanish (bluered's is near-white) or
         // blend into an overlay beneath.
-        : c2;
+        : colors[2];
 
     return [
         'case',
@@ -222,9 +268,11 @@ export function defaultExtrusionMaxHeight(bounds) {
  * @param {string} valueColumn - MVT feature property to encode.
  * @param {{by_res: Object<string, {min: number, max: number}>}} valueStats
  * @param {number} maxHeight - metres at the top of each resolution's domain.
+ * @param {'linear'|'log'} [scale='linear'] - the fill's scale, so height and
+ *   colour stay in lockstep
  * @returns {Array} MapLibre expression.
  */
-export function buildHeightExpression(valueColumn, valueStats, maxHeight) {
+export function buildHeightExpression(valueColumn, valueStats, maxHeight, scale = 'linear') {
     const byRes = valueStats && valueStats.by_res;
     if (!byRes || Object.keys(byRes).length === 0) {
         throw new Error('value_stats.by_res must contain at least one resolution');
@@ -234,11 +282,8 @@ export function buildHeightExpression(valueColumn, valueStats, maxHeight) {
     const branches = [];
     for (const resStr of resKeys) {
         const { min, max } = byRes[resStr];
-        const res = Number(resStr);
-        const branch = (min < max)
-            ? ['interpolate', ['linear'], ['get', valueColumn], min, 0, max, maxHeight]
-            : maxHeight / 2;
-        branches.push(res, branch);
+        const branch = (min < max) ? heightRamp(valueColumn, min, max, maxHeight, scale) : maxHeight / 2;
+        branches.push(Number(resStr), branch);
     }
 
     return [
@@ -258,16 +303,15 @@ export function buildHeightExpression(valueColumn, valueStats, maxHeight) {
  * @param {string} valueColumn - Feature property to encode.
  * @param {{min: number, max: number}} stats - Single-resolution value range.
  * @param {number} maxHeight - metres at the top of the domain.
+ * @param {'linear'|'log'} [scale='linear'] - the fill's scale
  * @returns {Array} MapLibre expression.
  */
-export function buildFlatHeightExpression(valueColumn, stats, maxHeight) {
+export function buildFlatHeightExpression(valueColumn, stats, maxHeight, scale = 'linear') {
     if (!stats || stats.min == null || stats.max == null) {
         throw new Error('stats must contain numeric min and max');
     }
     const { min, max } = stats;
-    const branch = (min < max)
-        ? ['interpolate', ['linear'], ['get', valueColumn], min, 0, max, maxHeight]
-        : maxHeight / 2;
+    const branch = (min < max) ? heightRamp(valueColumn, min, max, maxHeight, scale) : maxHeight / 2;
 
     return [
         'case',

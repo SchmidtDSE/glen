@@ -5,12 +5,27 @@
  *
  * A hex layer draws the H3 tile pyramid an SQL server built with
  * `register_hex_tiles`. Its colour scale comes from the tileset's
- * metadata.json, read by content hash. The full app reads it with fetch();
+ * metadata.json, read by content hash: the value range per resolution, and
+ * whether to spread the ramp on a log scale (`suggested_scale`, #481) unless
+ * the call says otherwise. The full app reads it with fetch();
  * glen core passes a fetch that also answers geo-query-wasm's
  * `geoquerywasm:` URLs from the worker.
  */
 
-import { metadataUrlFromTileUrl } from './hex-layer-helpers.js';
+import { metadataUrlFromTileUrl, HEX_SCALES } from './hex-layer-helpers.js';
+
+/**
+ * The scale for a hex layer (#481): the call's `scale` when it names one, else
+ * the tileset's `suggested_scale` from metadata.json, else linear. The server
+ * suggests log for right-skewed values (finest max over ten times the mean).
+ * It never records the `color_scale` the agent gave `register_hex_tiles`,
+ * which only restyles the recipe the server returns, so the agent repeats a
+ * scale it wants here.
+ */
+export function chooseHexScale(requested, valueStats) {
+    if (HEX_SCALES.includes(requested)) return requested;
+    return valueStats?.suggested_scale === 'log' ? 'log' : 'linear';
+}
 
 /**
  * Whether a value_stats object is usable for building a hex color ramp (#276):
@@ -173,6 +188,11 @@ Optional inputs:
   - value_column          which value_columns entry to color by (default: first; "count" for agg=COUNT)
   - palette / opacity / display_name / fit_bounds    styling (see below)
   - extrude               true → 3D extruded hexes (value → height + color) and a tilted camera (default false)
+  - scale                 "linear" or "log" — how color and height spread over the values. Omit it to use the
+                          tileset's suggested_scale (log for right-skewed counts and sums). Pass the same scale you
+                          gave register_hex_tiles' color_scale: that argument only restyles the server's recipe,
+                          and this tool does not see it. The result's \`scale\` is the scale actually drawn — report
+                          that one to the user.
   - value_stats / bounds / layer_name    accepted as explicit overrides, but normally OMIT — they are fetched
   - format                ← format ("geojson" or "vector"; defaults to "vector")
   - geojson_url           ← geojson_url (REQUIRED when format="geojson"; ignored otherwise)
@@ -215,6 +235,11 @@ The returned layer_id can be used with show_layer / hide_layer / set_style / set
                     fit_bounds: { type: 'boolean', description: 'Fly the camera to fit bounds (default true)' },
                     extrude: { type: 'boolean', description: 'Render as 3D extruded hexes — value encoded as height as well as color — and tilt the camera. Default false (flat 2D fill). Use when the user asks for a 3D / extruded / "height" view.' },
                     extrude_max_height: { type: 'number', description: 'Optional height (metres) of the tallest hex when extrude=true. Omit for an auto default scaled to the data extent.' },
+                    scale: {
+                        type: 'string',
+                        enum: HEX_SCALES,
+                        description: 'Optional: "linear" or "log" spread of color (and height when extruded). Omit to use the tileset\'s suggested_scale. The result\'s `scale` says which was drawn.'
+                    },
                 },
                 required: ['tile_url'],
             },
@@ -236,6 +261,7 @@ The returned layer_id can be used with show_layer / hide_layer / set_style / set
                     geojsonUrl: args.geojson_url,
                     extrude: args.extrude === true,
                     extrudeMaxHeight: args.extrude_max_height,
+                    scale: chooseHexScale(args.scale, meta.valueStats),
                 });
                 return JSON.stringify(result);
             },
