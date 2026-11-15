@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractHashFromUrl, rewriteValueColumn, metadataUrlFromTileUrl, buildHeightExpression, buildFlatHeightExpression, defaultExtrusionMaxHeight } from '../app/hex-layer-helpers.js';
+import { extractHashFromUrl, rewriteValueColumn, metadataUrlFromTileUrl, buildHeightExpression, buildFlatHeightExpression, defaultExtrusionMaxHeight, buildFillColorExpression, buildFlatFillColorExpression, applicableScale, PALETTES } from '../app/hex-layer-helpers.js';
 
 describe('extractHashFromUrl', () => {
   it('extracts hash from a valid MCP tile URL template', () => {
@@ -274,5 +274,60 @@ describe('defaultExtrusionMaxHeight (#317)', () => {
 
   it('never returns below the 1 km floor for a tiny extent', () => {
     expect(defaultExtrusionMaxHeight([0, 0, 0.0001, 0.0001])).toBe(1000);
+  });
+});
+
+describe('log scale ramps (SchmidtDSE/glen#481)', () => {
+  // The repro tileset: counts from 1 to 220,474 at resolution 10.
+  const stats = { by_res: { '9': { min: 3, max: 900000 }, '10': { min: 1, max: 220474 } } };
+  const ln1p = Math.log1p;
+
+  it('keeps the linear ramp by default', () => {
+    const expr = buildFillColorExpression('count', stats, 'viridis');
+    const branch = expr[3][expr[3].indexOf(10) + 1];
+    expect(branch.slice(0, 3)).toEqual(['interpolate', ['linear'], ['get', 'count']]);
+    expect(branch[3]).toBe(1);
+    expect(branch[7]).toBe(220474);
+  });
+
+  it('spreads colour over ln(1 + value), with stops at each resolution\'s transformed min, middle and max', () => {
+    const expr = buildFillColorExpression('count', stats, 'viridis', 'log');
+    const [c0, c1, c2] = PALETTES.viridis;
+    const branch = expr[3][expr[3].indexOf(10) + 1];
+    const lo = ln1p(1), hi = ln1p(220474);
+    expect(branch).toEqual(['interpolate', ['linear'], ['ln', ['+', 1, ['get', 'count']]], lo, c0, (lo + hi) / 2, c1, hi, c2]);
+    expect(expr[3][expr[3].indexOf(9) + 1][7]).toBeCloseTo(ln1p(900000));
+    // Nulls stay transparent.
+    expect(expr.slice(0, 3)).toEqual(['case', ['==', ['get', 'count'], null], 'rgba(0,0,0,0)']);
+  });
+
+  it('extrudes on the same log axis as the colour', () => {
+    const expr = buildHeightExpression('count', stats, 5000, 'log');
+    const branch = expr[3][expr[3].indexOf(10) + 1];
+    expect(branch).toEqual(['interpolate', ['linear'], ['ln', ['+', 1, ['get', 'count']]], ln1p(1), 0, ln1p(220474), 5000]);
+  });
+
+  it('applies to the flat single-resolution ramps too', () => {
+    const fill = buildFlatFillColorExpression('v', { min: 0, max: 99 }, 'ylorrd', 'log');
+    expect(fill[3][2]).toEqual(['ln', ['+', 1, ['get', 'v']]]);
+    expect(fill[3][3]).toBe(0);
+    expect(fill[3][7]).toBeCloseTo(ln1p(99));
+    const height = buildFlatHeightExpression('v', { min: 0, max: 99 }, 100, 'log');
+    expect(height[3]).toEqual(['interpolate', ['linear'], ['ln', ['+', 1, ['get', 'v']]], 0, 0, ln1p(99), 100]);
+  });
+
+  it('leaves a collapsed range flat on either scale', () => {
+    const one = { by_res: { '10': { min: 1, max: 1 } } };
+    expect(buildFillColorExpression('n', one, 'viridis', 'log')[3][3]).toBe(PALETTES.viridis[1]);
+    expect(buildHeightExpression('n', one, 100, 'log')[3][3]).toBe(50);
+  });
+
+  it('uses log only when every value is above -1', () => {
+    expect(applicableScale('log', stats)).toBe('log');
+    expect(applicableScale('log', { by_res: { '8': { min: -0.5, max: 3 } } })).toBe('log');
+    expect(applicableScale('log', { by_res: { '8': { min: 0, max: 3 }, '9': { min: -4, max: 3 } } })).toBe('linear');
+    expect(applicableScale('linear', stats)).toBe('linear');
+    expect(applicableScale(undefined, stats)).toBe('linear');
+    expect(applicableScale('log', { by_res: {} })).toBe('linear');
   });
 });

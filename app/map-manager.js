@@ -12,7 +12,7 @@
  * No knowledge of LLMs, tools, or chat — pure map operations.
  */
 
-import { extractHashFromUrl, buildFillColorExpression, buildFlatFillColorExpression, rewriteValueColumn, PALETTES, buildHeightExpression, buildFlatHeightExpression, defaultExtrusionMaxHeight } from './hex-layer-helpers.js';
+import { extractHashFromUrl, buildFillColorExpression, buildFlatFillColorExpression, rewriteValueColumn, PALETTES, buildHeightExpression, buildFlatHeightExpression, defaultExtrusionMaxHeight, applicableScale } from './hex-layer-helpers.js';
 import { deriveCategoricalLegend, deriveContinuousLegend, primaryColorValue } from './legend-helpers.js';
 import { mountOverlay, SLOT } from './overlay-rail.js';
 import { ensurePanelActions } from './panel-actions.js';
@@ -1074,10 +1074,14 @@ export class MapManager {
      *   per tile from zoom, so we don't apply a client-side `res` filter. Kept on
      *   the surface for forward compatibility with a future tile-URL `?res=N`
      *   override.
-     * @returns {{success: boolean, layer_id?: string, error?: string}}
+     * @param {'linear'|'log'} [opts.scale='linear'] - how colour and height
+     *   spread over each resolution's domain (#481). `log` falls back to
+     *   linear when a domain reaches -1 or below; the result says which applied.
+     * @returns {{success: boolean, layer_id?: string, scale?: string, error?: string}}
      */
     addHexTileLayer(opts) {
         const { tileUrl, valueColumn, valueStats, bounds, palette, opacity, displayName, fitBounds, layerName, resolution, format, geojsonUrl, extrude, extrudeMaxHeight } = opts;
+        const requestedScale = opts.scale === 'log' ? 'log' : 'linear';
         const isGeoJson = format === 'geojson';
         const is3D = extrude === true;
         const sourceLayer = isGeoJson ? null : (layerName || 'layer');
@@ -1103,6 +1107,7 @@ export class MapManager {
                 display_name: state.displayName,
                 value_column: valueColumn,
                 bounds,
+                scale: state.hexScale || 'linear',
                 already_exists: true,
                 message: 'Layer already registered. Use remove_hex_tile_layer first to re-add with different styling.',
             };
@@ -1115,6 +1120,8 @@ export class MapManager {
         if (resolution != null && !availableRes.includes(Number(resolution))) {
             return { success: false, error: `resolution ${resolution} not in value_stats.by_res — available: ${availableRes.join(', ')}` };
         }
+
+        const scale = applicableScale(requestedScale, valueStats);
 
         const maxHeight = is3D
             ? (typeof extrudeMaxHeight === 'number' && extrudeMaxHeight > 0
@@ -1130,11 +1137,11 @@ export class MapManager {
                 // per-res `match` would render everything transparent. Paint a
                 // flat ramp over the finest (largest) resolution's stats.
                 const finestRes = availableRes[availableRes.length - 1];
-                fillColor = buildFlatFillColorExpression(valueColumn, valueStats.by_res[finestRes], palette);
-                if (is3D) heightExpr = buildFlatHeightExpression(valueColumn, valueStats.by_res[finestRes], maxHeight);
+                fillColor = buildFlatFillColorExpression(valueColumn, valueStats.by_res[finestRes], palette, scale);
+                if (is3D) heightExpr = buildFlatHeightExpression(valueColumn, valueStats.by_res[finestRes], maxHeight, scale);
             } else {
-                fillColor = buildFillColorExpression(valueColumn, valueStats, palette);
-                if (is3D) heightExpr = buildHeightExpression(valueColumn, valueStats, maxHeight);
+                fillColor = buildFillColorExpression(valueColumn, valueStats, palette, scale);
+                if (is3D) heightExpr = buildHeightExpression(valueColumn, valueStats, maxHeight, scale);
             }
         } catch (err) {
             return { success: false, error: err.message };
@@ -1208,6 +1215,7 @@ export class MapManager {
             hexValueStats: valueStats,
             hexPalette: palette,
             hexFlat: isGeoJson,   // one flat ramp (buildFlatFillColorExpression)
+            hexScale: scale,      // 'linear' | 'log' (#481); the legend notes a log scale
             hexCurrentRes: null,
             extruded: is3D,
         });
@@ -1250,6 +1258,12 @@ export class MapManager {
             display_name: displayName,
             value_column: valueColumn,
             bounds,
+            // The scale actually drawn, so the agent reports that and not the
+            // one it asked for (#481).
+            scale,
+            ...(scale !== requestedScale
+                ? { scale_note: 'A log scale needs every value above -1; this layer has lower values, so it is drawn on a linear scale.' }
+                : {}),
             already_exists: false,
         };
     }
@@ -2824,6 +2838,19 @@ export class MapManager {
         return hex.colors[state.hexFlat ? hex.colors.length - 1 : 1] ?? null;
     }
 
+    /**
+     * The note under a hex colorbar: the resolution on screen, and "log scale"
+     * when the layer's own ramp is logarithmic (#481). The end labels stay the
+     * real min and max either way. A restyled layer's ramp is no longer the
+     * one it was added with, so it gets no scale note.
+     */
+    _hexLegendNote(state, hex) {
+        const parts = [];
+        if (hex?.res != null) parts.push(`H3 resolution ${hex.res}`);
+        if (state.hexScale === 'log' && !this._colorPaintChanged(state)) parts.push('log scale');
+        return parts.join(' · ');
+    }
+
     /** Format a legend value: grouped integers, floats to 3 significant digits. */
     _fmtLegendValue(v) {
         if (typeof v !== 'number' || !isFinite(v)) return String(v);
@@ -3048,7 +3075,7 @@ export class MapManager {
             resNote.className = 'legend-hex-res';
             // A restyled hex layer can report a legend with no resolution (its
             // ramp is now fixed rather than per-res) — leave the note blank.
-            if (hex?.res != null) resNote.textContent = `H3 resolution ${hex.res}`;
+            resNote.textContent = this._hexLegendNote(state, hex);
             item.appendChild(bar);
             item.appendChild(labels);
             item.appendChild(resNote);
@@ -3185,7 +3212,7 @@ export class MapManager {
             const unit = state.legendLabel ? ` ${state.legendLabel}` : '';
             refs.minSpan.textContent = `${this._fmtLegendValue(hex.range[0])}${unit}`;
             refs.maxSpan.textContent = `${this._fmtLegendValue(hex.range[1])}${unit}`;
-            if (refs.resNote) refs.resNote.textContent = hex.res != null ? `H3 resolution ${hex.res}` : '';
+            if (refs.resNote) refs.resNote.textContent = this._hexLegendNote(state, hex);
         }
     }
 

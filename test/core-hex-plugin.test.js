@@ -112,3 +112,52 @@ describe('waiting for a hex build that is still running', () => {
         expect(JSON.parse(await add2.execute({ tile_url: URL_ })).error).toMatch(/still being built/);
     });
 });
+
+describe('the scale add_hex_tile_layer draws (SchmidtDSE/glen#481)', () => {
+    const URL_ = 'https://h/tiles/hex/e5b145bc976682a5/{z}/{x}/{y}.pbf';
+    const metaWith = (suggested) => ({
+        value_columns: ['count'],
+        value_stats: { count: { by_res: { 10: { min: 1, max: 220474, mean: 275 } }, ...(suggested ? { suggested_scale: suggested } : {}) } },
+        bounds: [0, 0, 1, 1],
+    });
+    const run = async (meta, args = {}) => {
+        const { createHexTileTools } = await import('../app/hex-tools.js');
+        const mm = mapWith();
+        const [add] = createHexTileTools(mm, { fetchFn: async () => ({ ok: true, status: 200, json: async () => meta }), retryDelays: [0] });
+        await add.execute({ tile_url: URL_, ...args });
+        return mm.addHexTileLayer.mock.calls[0][0].scale;
+    };
+
+    it('uses the tileset\'s suggested_scale when the call names none', async () => {
+        expect(await run(metaWith('log'))).toBe('log');
+        expect(await run(metaWith('linear'))).toBe('linear');
+        expect(await run(metaWith(null))).toBe('linear');
+    });
+
+    it('lets the call\'s scale override the suggestion, either way', async () => {
+        expect(await run(metaWith('log'), { scale: 'linear' })).toBe('linear');
+        expect(await run(metaWith('linear'), { scale: 'log' })).toBe('log');
+        expect(await run(metaWith('log'), { scale: 'quantile' })).toBe('log');
+    });
+
+    it('offers the scale argument in the tool schema, and the tool text tells the agent to report the result\'s scale', async () => {
+        const { createHexTileTools } = await import('../app/hex-tools.js');
+        const [add] = createHexTileTools(mapWith());
+        expect(add.inputSchema.properties.scale.enum).toEqual(['linear', 'log']);
+        expect(add.description).toMatch(/result's `scale` is the scale actually drawn/);
+    });
+
+    it('returns the scale the map drew, end to end through a real MapManager', async () => {
+        const { createHexTileTools } = await import('../app/hex-tools.js');
+        const { MapManager } = await import('../app/map-manager.js');
+        const mm = Object.create(MapManager.prototype);
+        const layers = new Map();
+        mm.map = { addSource() {}, addLayer(l) { layers.set(l.id, l); }, on() {}, getPitch: () => 0 };
+        mm.layers = new Map();
+        mm._wireTooltip = () => {}; mm._addLayerControl = () => {}; mm._showLegendIfVisible = () => {};
+        const [add] = createHexTileTools(mm, { fetchFn: async () => ({ ok: true, status: 200, json: async () => metaWith('log') }), retryDelays: [0] });
+        const out = JSON.parse(await add.execute({ tile_url: URL_, fit_bounds: false }));
+        expect(out).toMatchObject({ success: true, scale: 'log' });
+        expect(layers.get('hex-e5b145bc976682a5').paint['fill-color'][3][3][2]).toEqual(['ln', ['+', 1, ['get', 'count']]]);
+    });
+});
