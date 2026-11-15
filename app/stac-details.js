@@ -14,6 +14,7 @@
  */
 
 import { resolveHref } from './catalog-tree.js';
+import { citationLines } from './dataset-citations.js';
 
 /**
  * HTTPS prefixes that DuckDB should read as s3:// paths. These match the MCP
@@ -253,6 +254,7 @@ export function formatCollection(col, { url = null, children = [], sources = DEF
     const self = url || (col.links || []).find(l => l.rel === 'self')?.href;
     if (self) lines.push(`collection_url: \`${self}\``);
     if (col.description) lines.push(col.description);
+    lines.push(...citationLines(col));
 
     const parquet = formatParquetAssets(col, { sources, url: self || null });
     const keyColumns = !hasQueryableAsset(col) && Array.isArray(col['table:columns']) && col['table:columns'].length

@@ -24,7 +24,7 @@
 export function datasetCitation(stac, fallbackUrl = null) {
     const links = Array.isArray(stac?.links) ? stac.links : [];
     const link = (...rels) => links.find(l => rels.includes(l.rel) && l.href)?.href || null;
-    const doi = typeof stac?.['sci:doi'] === 'string' && stac['sci:doi'].trim();
+    const doi = doiLink(stac?.['sci:doi']);
     const producers = (stac?.providers || [])
         .filter(p => p?.name && (p.roles || []).some(r => r === 'producer' || r === 'licensor'))
         .map(p => p.name);
@@ -37,7 +37,7 @@ export function datasetCitation(stac, fallbackUrl = null) {
         license: stac?.license || null,
         licenseUrl: link('license'),
         citation: typeof stac?.['sci:citation'] === 'string' ? stac['sci:citation'].trim() || null : null,
-        doiUrl: doi ? (/^https?:\/\//.test(doi) ? doi : `https://doi.org/${doi}`) : link('cite-as'),
+        doiUrl: doi || link('cite-as'),
     };
 }
 
@@ -53,6 +53,64 @@ export function datasetTextLines(d) {
     if (d.doiUrl && !doiInCitation(d)) lines.push(`Cite as: ${d.doiUrl}`);
     if (d.license) lines.push(`License: ${d.license}${d.licenseUrl ? ` (${d.licenseUrl})` : ''}`);
     if (d.stacUrl) lines.push(`STAC: ${d.stacUrl}`);
+    return lines;
+}
+
+/** A DOI as a resolver URL; a URL passes through. */
+function doiLink(doi) {
+    const s = typeof doi === 'string' ? doi.trim() : '';
+    return s ? (/^https?:\/\//.test(s) ? s : `https://doi.org/${s}`) : null;
+}
+
+/**
+ * The papers a collection's `sci:publications` names, each with its citation
+ * text and DOI link. Entries with neither are dropped.
+ *
+ * @param {object} stac - a STAC collection
+ * @returns {Array<{citation: string|null, doiUrl: string|null}>}
+ */
+export function datasetPublications(stac) {
+    const pubs = Array.isArray(stac?.['sci:publications']) ? stac['sci:publications'] : [];
+    return pubs
+        .map(p => ({
+            citation: typeof p?.citation === 'string' ? p.citation.trim() || null : null,
+            doiUrl: doiLink(p?.doi),
+        }))
+        .filter(p => p.citation || p.doiUrl);
+}
+
+/**
+ * The citation section the catalog tool (`get_stac_details`) prints, so the
+ * agent can cite the data it queried (#482). Empty when the collection
+ * carries none of `sci:citation`, `sci:doi`, a `cite-as` link or
+ * `sci:publications`. Each link is shown once: a DOI already in the citation
+ * text, or a `cite-as` link that is the DOI or a listed publication, is not
+ * repeated.
+ *
+ * @param {object} stac - a STAC collection
+ * @returns {string[]} markdown lines
+ */
+export function citationLines(stac) {
+    const d = datasetCitation(stac);
+    const doi = doiLink(stac?.['sci:doi']);
+    const citeAs = (Array.isArray(stac?.links) ? stac.links : []).find(l => l?.rel === 'cite-as' && l.href)?.href || null;
+    const pubs = datasetPublications(stac);
+    if (!d.citation && !doi && !citeAs && !pubs.length) return [];
+
+    const lines = ['\n**Citation**'];
+    if (d.citation) lines.push(d.citation);
+    if (doi && !doiInCitation({ citation: d.citation, doiUrl: doi })) lines.push(`DOI: ${doi}`);
+    const citeAsShown = citeAs && (citeAs === doi || (d.citation || '').includes(citeAs)
+        || pubs.some(p => p.doiUrl === citeAs || (p.citation || '').includes(citeAs)));
+    if (citeAs && !citeAsShown) lines.push(`Cite as: ${citeAs}`);
+    if (pubs.length) {
+        lines.push('Publications describing the data:');
+        for (const p of pubs) {
+            const showDoi = p.doiUrl && !doiInCitation(p);
+            lines.push(`- ${[p.citation, showDoi ? p.doiUrl : null].filter(Boolean).join(' ')}`);
+        }
+    }
+    if (d.license) lines.push(`License: ${d.license}${d.licenseUrl ? ` (${d.licenseUrl})` : ''}`);
     return lines;
 }
 
