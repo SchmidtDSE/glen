@@ -218,7 +218,7 @@ When a PR touches a covered module, expect tests to change too. When it touches 
 | Module | Coverage | What changes here should be tested |
 |---|---:|---|
 | `app/llm-auth.js` | 100% | `test/llm-auth.test.js` — no `Authorization` header without a key (basic-auth deployments, #420) |
-| `app/llm-models.js` | 100% | `test/llm-models.test.js` — tier list vs config, fallbacks, BYOK model id; `test/chat-ui-model-settings.test.js` — the settings panel field |
+| `app/llm-models.js` | 100% | `test/llm-models.test.js` — tier list vs config, fallbacks, the proxy's per-model settings under the app's (#461), BYOK model id; `test/chat-ui-model-settings.test.js` — the settings panel field |
 | `app/transcriber.js` | 100% | `test/transcriber.test.js` — endpoint resolution, error paths, abort signal |
 | `app/overlay-rail.js` | 100% | `test/overlay-rail.test.js` — rail creation, slot ordering, mount/remove, per-document mounting |
 | `app/app-header.js` | 100% | `test/app-header.test.js` — config resolution, nav derivation from `links`, logo slots, mobile takeover |
