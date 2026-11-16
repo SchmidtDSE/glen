@@ -59,6 +59,14 @@ describe('converting a v3 layers-input.json to glen core (#441)', () => {
     });
 });
 
+describe('the session export in a converted app', () => {
+    it('stays on, as v3 had it by default, unless the app turned it off', () => {
+        expect(convertConfig({ collections: [] }, { pluginBase: B }).config.export).toBe(true);
+        expect(convertConfig({ export: false }, { pluginBase: B }).config.export).toBe(false);
+        expect(convertConfig({ export: { default_code_language: 'r' } }, { pluginBase: B }).config.export).toEqual({ default_code_language: 'r' });
+    });
+});
+
 describe('converting a v3 index.html to glen core', () => {
     it('loads core/main.js and moves every glen URL to the release', () => {
         const page = `<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.45.1/app/style.css">

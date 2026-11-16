@@ -18,6 +18,7 @@
       "options": {}
     }
   ],
+  "export": true,
   "llm": {
     "user_provided": true,
     "transcription_model": {

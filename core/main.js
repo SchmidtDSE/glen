@@ -33,7 +33,7 @@ import {
 } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.5.0/src/core.js';
 import { ChatUI } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.5.0/ui/chat-ui.js';
 import { PortolanCatalog, exportCatalogView } from './portolan-catalog.js';
-import { createCoreMapTools } from './map-tools.js';
+import { createCoreMapTools, geolocateSettings } from './map-tools.js';
 import { loadPrompts } from './prompt.js';
 
 /** The ref this module was loaded at (a tag or SHA on jsDelivr), or 'dev'. */
@@ -109,7 +109,20 @@ export async function start({ plugins: extraPlugins = [] } = {}) {
             console.warn('[core] Geocoder off:', err.message);
         }
     }
-    for (const t of createCoreMapTools(mapManager, catalog, { geocoder, geolocateTool: !!appConfig.geolocate?.agent_tool })) tools.registerLocal(t);
+    const geolocate = geolocateSettings(appConfig.geolocate);
+    for (const t of createCoreMapTools(mapManager, catalog, { geocoder, geolocateTool: geolocate.agent_tool })) tools.registerLocal(t);
+    // The locate-me button ships with MapLibre, so there is nothing to load.
+    if (geolocate.button) {
+        try {
+            mapManager.map.addControl(new maplibregl.GeolocateControl({
+                positionOptions: { enableHighAccuracy: true },
+                trackUserLocation: true,
+                showUserLocation: true,
+            }), 'top-left');
+        } catch (err) {
+            console.warn('[core] Geolocate button failed:', err.message);
+        }
+    }
 
     /* ── 4. Plugins ────────────────────────────────────────────────────── */
     const promptParts = [];

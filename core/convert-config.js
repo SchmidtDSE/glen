@@ -72,6 +72,13 @@ export function convertConfig(v3, { pluginBase = 'https://cdn.jsdelivr.net/gh/Sc
     }
     config.plugins = plugins;
 
+    // The v3 full app saved sessions unless an app turned it off; glen core
+    // leaves the export off unless the config turns it on.
+    if (v3.export === undefined) {
+        config.export = true;
+        notes.push('export is set to true: the v3 full app offered session export by default, and glen core does not.');
+    }
+
     for (const k of Object.keys(v3)) {
         if (k in DROPPED && !/^(mcp_|charts$|draw_enabled$|upload)/.test(k)) notes.push(`Dropped ${k}: ${DROPPED[k]}.`);
     }

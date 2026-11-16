@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { applyPublishedStyle, setRasterColormap, layerExtent, createCoreMapTools } from '../core/map-tools.js';
+import { applyPublishedStyle, setRasterColormap, layerExtent, createCoreMapTools, geolocateSettings } from '../core/map-tools.js';
 import { flyTo } from '../app/map-control-tools.js';
 
 function fakeMap() {
@@ -184,5 +184,14 @@ describe('set_time for the full app\'s time series', () => {
         const { mapManager, catalog } = setup();
         catalog.layers.get('pop').frames = { control: { bind: 'frame', frames: 'x' }, source: { indexUrl: 'https://x' } };
         expect(createCoreMapTools(mapManager, catalog).map(t => t.name)).toContain('set_time');
+    });
+});
+
+describe('geolocate settings', () => {
+    it('reads true as the locate button alone, as v3 did', () => {
+        expect(geolocateSettings(true)).toEqual({ button: true, agent_tool: false });
+        expect(geolocateSettings({ button: true, agent_tool: true })).toEqual({ button: true, agent_tool: true });
+        expect(geolocateSettings({ agent_tool: true })).toEqual({ button: false, agent_tool: true });
+        expect(geolocateSettings(undefined)).toEqual({ button: false, agent_tool: false });
     });
 });

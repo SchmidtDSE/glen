@@ -218,3 +218,15 @@ export function describeLayer(catalog, l) {
         active_style: l.activeStyle || l.defaultStyle,
     };
 }
+
+/**
+ * An app's `geolocate` setting: `true` is shorthand for the locate button
+ * alone, as in v3. `agent_tool` reaches the device's location, so it is never
+ * implied.
+ * @returns {{ button: boolean, agent_tool: boolean }}
+ */
+export function geolocateSettings(value) {
+    if (value === true) return { button: true, agent_tool: false };
+    const o = value && typeof value === 'object' ? value : {};
+    return { button: !!o.button, agent_tool: !!o.agent_tool };
+}

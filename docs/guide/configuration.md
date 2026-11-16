@@ -1778,7 +1778,7 @@ node scripts/convert-to-core.mjs layers-input.json --ref <glen tag> > layers-inp
 node scripts/convert-to-core.mjs index.html --ref <glen tag> > index.core.html
 ```
 
-Collections pass through unchanged, since glen core reads the v3 layer settings by the same names. The opt-in features become plugins: the MCP server (every v3 app had one, `duckdb-mcp.nrp-nautilus.io` when it named none) with its `geospatial-analyst` prompt, the hex tile tools, `charts`, `draw_enabled`, and `upload_enabled` with its settings. The keys glen core does not use are dropped, with a note for each (see [Settings the v3 full app had](#settings-the-v3-full-app-had)). The page's module script loads `core/main.js`, and its glen URLs move to the release.
+Collections pass through unchanged, since glen core reads the v3 layer settings by the same names. The opt-in features become plugins: the MCP server (every v3 app had one, `duckdb-mcp.nrp-nautilus.io` when it named none) with its `geospatial-analyst` prompt, the hex tile tools, `charts`, `draw_enabled`, and `upload_enabled` with its settings. The keys glen core does not use are dropped, with a note for each (see [Settings the v3 full app had](#settings-the-v3-full-app-had)). The v3 session export, on by default there, is kept with `"export": true` unless the app turned it off. The page's module script loads `core/main.js`, and its glen URLs move to the release.
 
 The deploy-time `config.json` needs no change. A `draw_enabled` set only in `config.json` has no effect in glen core; list `plugins/draw.js` instead.
 
