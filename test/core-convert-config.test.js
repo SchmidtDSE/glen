@@ -59,6 +59,24 @@ describe('converting a v3 layers-input.json to glen core (#441)', () => {
     });
 });
 
+describe('geolocation in a converted app', () => {
+    it('becomes the geolocate plugin, with true as the button alone', () => {
+        const find = (cfg) => cfg.plugins.find(p => typeof p === 'object' && p.url.endsWith('/geolocate.js'));
+        expect(find(convertConfig({ geolocate: true }, { pluginBase: B }).config).options).toEqual({ button: true, agent_tool: false });
+        expect(find(convertConfig({ geolocate: { button: true, agent_tool: true } }, { pluginBase: B }).config).options).toEqual({ button: true, agent_tool: true });
+        expect(find(convertConfig({}, { pluginBase: B }).config)).toBeUndefined();
+        expect(convertConfig({ geolocate: true }, { pluginBase: B }).config).not.toHaveProperty('geolocate');
+    });
+});
+
+describe('the session export in a converted app', () => {
+    it('stays on, as v3 had it by default, unless the app turned it off', () => {
+        expect(convertConfig({ collections: [] }, { pluginBase: B }).config.export).toBe(true);
+        expect(convertConfig({ export: false }, { pluginBase: B }).config.export).toBe(false);
+        expect(convertConfig({ export: { default_code_language: 'r' } }, { pluginBase: B }).config.export).toEqual({ default_code_language: 'r' });
+    });
+});
+
 describe('converting a v3 index.html to glen core', () => {
     it('loads core/main.js and moves every glen URL to the release', () => {
         const page = `<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.45.1/app/style.css">

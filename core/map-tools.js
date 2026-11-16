@@ -39,14 +39,12 @@ const json = (x) => JSON.stringify(x);
  * @param {{forwardGeocode: Function}|null} [options.geocoder]
  * @returns {Array<Object>} tool definitions for ToolRegistry.registerLocal
  */
-export function createCoreMapTools(mapManager, catalog, { geocoder = null, geolocateTool = false } = {}) {
+export function createCoreMapTools(mapManager, catalog, { geocoder = null } = {}) {
     const unknown = (id) => ({ success: false, error: `Unknown layer: ${id}. Available: ${[...catalog.layers.keys()].join(', ')}` });
 
     return [
         ...createMapControlTools(mapManager, {
             geocoder,
-            // The full app's get_user_location, on `geolocate.agent_tool` (a privacy opt-in).
-            geolocateTool,
             hints: PORTOLAN_HINTS,
             layerExtent: (id) => layerExtent(catalog, id),
             reportView: true,

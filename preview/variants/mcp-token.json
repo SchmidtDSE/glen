@@ -13,6 +13,13 @@
     {
       "url": "core/plugins/uploads.js",
       "options": {}
+    },
+    {
+      "url": "core/plugins/geolocate.js",
+      "options": {
+        "button": true,
+        "agent_tool": true
+      }
     }
   ]
 }

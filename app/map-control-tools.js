@@ -457,32 +457,7 @@ ${h.styleNotes}${pickLayerNudge}`,
         }] : []),
 
         // ---- Geolocation (device location; opt-in) ----
-        ...(geolocateTool ? [{
-            name: 'get_user_location',
-            description: `Get the user's CURRENT PHYSICAL location from their device (GPS/network), returning { latitude, longitude, accuracy_m }. Use this when the relevant place is *where the user is* — "near me", "my area", "what county/district am I in", "carbon here". For a place the user NAMES (a city, address, landmark), use \`geocode\` instead.
-
-The browser asks the user for permission. If they deny it (success:false), tell them you couldn't access their location and offer to let them name a place instead (\`geocode\`).
-
-Returns a single point. This tool does NOT move the map — call \`fly_to\` yourself if you want to recenter. To answer "what's here", feed the coordinate into a containing-polygon / point-in-hex query.`,
-            inputSchema: { type: 'object', properties: {} },
-            execute: async () => {
-                try {
-                    const pos = await getCurrentPositionAsync();
-                    return JSON.stringify({
-                        success: true,
-                        latitude: pos.coords.latitude,
-                        longitude: pos.coords.longitude,
-                        accuracy_m: pos.coords.accuracy,
-                    });
-                } catch (err) {
-                    const reason = err?.code === 1 ? 'The user denied location permission.'
-                        : err?.code === 2 ? 'The location is currently unavailable.'
-                        : err?.code === 3 ? 'The location request timed out.'
-                        : (err?.message || 'Unknown error.');
-                    return JSON.stringify({ success: false, error: `Could not get the user's location: ${reason}` });
-                }
-            },
-        }] : []),
+        ...(geolocateTool ? [createUserLocationTool()] : []),
     ];
 }
 
@@ -581,4 +556,38 @@ function withView(mapManager) {
 function round(v, d) {
     const f = 10 ** d;
     return Math.round(v * f) / f;
+}
+
+/**
+ * `get_user_location`: the device's location, for "near me" questions. It
+ * reaches the user's physical location, so an app opts in (glen core's
+ * geolocate plugin, `agent_tool`).
+ */
+export function createUserLocationTool() {
+    return {
+        name: 'get_user_location',
+        description: `Get the user's CURRENT PHYSICAL location from their device (GPS/network), returning { latitude, longitude, accuracy_m }. Use this when the relevant place is *where the user is* — "near me", "my area", "what county/district am I in", "carbon here". For a place the user NAMES (a city, address, landmark), use \`geocode\` instead.
+
+The browser asks the user for permission. If they deny it (success:false), tell them you couldn't access their location and offer to let them name a place instead (\`geocode\`).
+
+Returns a single point. This tool does NOT move the map — call \`fly_to\` yourself if you want to recenter. To answer "what's here", feed the coordinate into a containing-polygon / point-in-hex query.`,
+        inputSchema: { type: 'object', properties: {} },
+        execute: async () => {
+            try {
+                const pos = await getCurrentPositionAsync();
+                return JSON.stringify({
+                    success: true,
+                    latitude: pos.coords.latitude,
+                    longitude: pos.coords.longitude,
+                    accuracy_m: pos.coords.accuracy,
+                });
+            } catch (err) {
+                const reason = err?.code === 1 ? 'The user denied location permission.'
+                    : err?.code === 2 ? 'The location is currently unavailable.'
+                    : err?.code === 3 ? 'The location request timed out.'
+                    : (err?.message || 'Unknown error.');
+                return JSON.stringify({ success: false, error: `Could not get the user's location: ${reason}` });
+            }
+        },
+    };
 }

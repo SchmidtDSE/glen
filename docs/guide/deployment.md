@@ -55,7 +55,7 @@ The deploy-time `config.json` sits beside `layers-input.json` and is merged over
 | `mcp_server_url` | URL of the first (primary) server of [`plugins/mcp.js`](./configuration#mcp-servers), in place of the one in `layers-input.json`. |
 | `mcp_auth_token` | Sent to the primary MCP server as `Authorization: Bearer …`. |
 | `transcription_model` | Enables voice input. See [Voice input](./configuration#voice-input-optional). |
-| `geolocate` | Overrides the same key in `layers-input.json`. (v3's `draw_enabled` has no effect here; list `plugins/draw.js` instead.) |
+| `geolocate` | The geolocate plugin's settings, when the plugin is listed without options. See [Geolocation](./configuration#geolocation). (v3's `draw_enabled` has no effect here; list `plugins/draw.js` instead.) |
 | `max_tool_calls`, `max_tool_calls_manual` | Override the checkpoint caps. `0` disables a cap. |
 | `export` | Overrides the [export settings](./configuration#chat-export). |
 | `maptiler_key` | MapTiler key for the basemap, and for the `maptiler` geocoder when it has none of its own. |

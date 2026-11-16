@@ -26,7 +26,7 @@ glen core reads the layer settings of the v3 full app (`app/main.js`) by the sam
 | `header` | App chrome band across the top: logos and top-level nav. Off unless configured. See below. |
 | `theme` | Chrome colour scheme: a mode string, or an object that also sets brand colours. See below. |
 | `sidebar` | Full-height resizable sidebar instead of the floating chat panel. See [Sidebar layout](#sidebar-layout). |
-| `geocoder`, `geolocate` | Place-name search and device location. See [Geocoding](#geocoding-optional) and [Geolocation](#geolocation-optional). |
+| `geocoder` | Place-name search. See [Geocoding](#geocoding-optional). |
 | `export` | The saved session report. Off by default. See [Chat export](#chat-export). |
 | `s3_sources` | Extra https → `s3://` rules for the catalog tools. See [Dataset metadata tools](#dataset-metadata-tools). |
 
@@ -40,6 +40,7 @@ These v3 keys have no effect in glen core. `scripts/convert-to-core.mjs` turns t
 | `charts` | `plugins/charts.js`. See [Charts](#charts). |
 | `draw_enabled` | `plugins/draw.js`. See [Draw tool](#draw-tool). |
 | `upload_enabled` | `plugins/uploads.js`, with the same settings as its options. See [GeoJSON upload](#geojson-upload). |
+| `geolocate` | `plugins/geolocate.js`, with the same settings as its options. See [Geolocation](#geolocation). |
 | Hex tile tools (always on in v3) | `plugins/hex.js`. See [Hex tile layers](#hex-tile-layers). |
 | `catalog_index_threshold` | Dropped. glen core lists every layer in the prompt, and `get_schema` gives the details. |
 | `client_header_hosts` | Dropped. The harness sends its client header itself. |
@@ -623,6 +624,10 @@ Both fields are optional independently — you can swap the URL without changing
 }
 ```
 
+## Hex grid
+
+The **Hex grid** button beside **Globe** draws the H3 grid over the map, so a reader can see what size of H3 cell a raster pixel or a feature corresponds to. A badge names the resolution. The resolution follows the cells' size on screen, so it changes with zoom and latitude, and a wide view uses a coarser resolution rather than drawing thousands of cells. It needs no configuration: h3-js loads the first time the grid is turned on.
+
 ## Sidebar layout
 
 By default, GLEN renders a small translucent chat panel floating in the
@@ -1007,7 +1012,7 @@ working.
 
 ## Plugins
 
-A plugin adds tools, controls or prompt text to glen core. List the plugins an app uses in `plugins`, each as a URL or as an object with `url` and `options`. Load them from jsDelivr at the same ref as `core/main.js`:
+A plugin adds tools, controls or prompt text to glen core: SQL through MCP servers, charts, drawing, uploads, hex tile layers and geolocation. List the plugins an app uses in `plugins`, each as a URL or as an object with `url` and `options`. Load them from jsDelivr at the same ref as `core/main.js`:
 
 ```json
 "plugins": [
@@ -1143,6 +1148,24 @@ The browser writes the file directly, so the bucket needs anonymous `PUT` **and*
 ### Hex tile layers
 
 `plugins/hex.js` adds `add_hex_tile_layer` and `remove_hex_tile_layer`, which draw the H3 tile pyramid an SQL server builds with `register_hex_tiles`. duckdb-mcp serves those tiles over https. geo-query-wasm, run in a worker by `plugins/mcp.js`, keeps them in the browser; the plugin then registers geo-query-wasm's MapLibre protocol for them. Its `geo_query_wasm` option names the geo-query-wasm release whose protocol module to load (default `v0.6.0`); match the worker's.
+
+### Geolocation
+
+`plugins/geolocate.js` answers "where am *I*?" from the device's location. Its two parts are opted into separately:
+
+| Option | Default | Description |
+|---|---|---|
+| `button` | `false` | "Locate me" button ([MapLibre `GeolocateControl`](https://maplibre.org/maplibre-gl-js/docs/API/classes/GeolocateControl/)) in the top-left map controls; recenters the map on the user. Ships with MapLibre, so there is nothing to pin. |
+| `agent_tool` | `false` | Registers the `get_user_location` tool, which reads the device's coordinate so the agent can answer "what county am I in?" or "carbon near me". |
+
+```json
+{ "url": "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/core/plugins/geolocate.js",
+  "options": { "button": true, "agent_tool": true } }
+```
+
+Listed without options, the plugin reads the app's `geolocate` setting, so a deploy-time `config.json` can set it; `"geolocate": true` there is the button alone, and with no setting at all the plugin adds the button.
+
+The [`geocode` tool](#geocoding-optional) is on by default, but `get_user_location` reaches the user's actual location, so it is off unless an app opts in. Both need a secure context (HTTPS) and the browser's permission. The tool returns `{ latitude, longitude, accuracy_m }` only and does not move the map.
 
 ### Writing a plugin
 
@@ -1357,23 +1380,6 @@ So `search_box: true` alone gives you the box *and* the tool; `enabled: false` +
 ```
 
 **Provider notes.** `nominatim` and `photon` are both free OpenStreetMap-based services with no key — Nominatim returns richer confidence signals, Photon is more lenient on request volume. `maptiler` is higher quality but needs an API key. All three are global (not US-only) and work directly from a static browser app.
-
-## Geolocation (optional)
-
-Answers "where am *I*?" using the device's location. Two **independently opt-in** surfaces, both off by default:
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `geolocate.button` | boolean | `false` | "Locate me" button ([MapLibre `GeolocateControl`](https://maplibre.org/maplibre-gl-js/docs/API/classes/GeolocateControl/)) in the top-left map controls; recenters the map on the user. Ships with MapLibre — nothing to pin. |
-| `geolocate.agent_tool` | boolean | `false` | Register the `get_user_location` agent tool, which reads the device's coordinate so the agent can answer "what county/district am I in?", "carbon near me", etc. |
-
-```json
-{ "geolocate": { "button": true, "agent_tool": true } }
-```
-
-The shorthand `"geolocate": true` is equivalent to `{ "button": true }`.
-
-Note the deliberate asymmetry with the [`geocode` tool](#geocoding-optional), which is **on** by default: `get_user_location` reaches into the user's *actual device location*, so it stays **off** unless an app opts in — even though, like `geocode`, it's an invisible agent tool. Both require a secure context (HTTPS) and a browser permission prompt. The `get_user_location` tool returns `{ latitude, longitude, accuracy_m }` only — it does not move the map; the agent calls `fly_to` itself if it wants to recenter.
 
 ## Tool call auto-approve
 
@@ -1778,7 +1784,7 @@ node scripts/convert-to-core.mjs layers-input.json --ref <glen tag> > layers-inp
 node scripts/convert-to-core.mjs index.html --ref <glen tag> > index.core.html
 ```
 
-Collections pass through unchanged, since glen core reads the v3 layer settings by the same names. The opt-in features become plugins: the MCP server (every v3 app had one, `duckdb-mcp.nrp-nautilus.io` when it named none) with its `geospatial-analyst` prompt, the hex tile tools, `charts`, `draw_enabled`, and `upload_enabled` with its settings. The keys glen core does not use are dropped, with a note for each (see [Settings the v3 full app had](#settings-the-v3-full-app-had)). The page's module script loads `core/main.js`, and its glen URLs move to the release.
+Collections pass through unchanged, since glen core reads the v3 layer settings by the same names. The opt-in features become plugins: the MCP server (every v3 app had one, `duckdb-mcp.nrp-nautilus.io` when it named none) with its `geospatial-analyst` prompt, the hex tile tools, `charts`, `draw_enabled`, `upload_enabled` with its settings, and `geolocate`. The keys glen core does not use are dropped, with a note for each (see [Settings the v3 full app had](#settings-the-v3-full-app-had)). The v3 session export, on by default there, is kept with `"export": true` unless the app turned it off. The page's module script loads `core/main.js`, and its glen URLs move to the release.
 
 The deploy-time `config.json` needs no change. A `draw_enabled` set only in `config.json` has no effect in glen core; list `plugins/draw.js` instead.
 

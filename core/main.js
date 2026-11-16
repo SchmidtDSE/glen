@@ -25,6 +25,7 @@ import { MapManager } from '../app/map-manager.js';
 import { buildLayout, sidebarHooks } from '../app/layout-manager.js';
 import { createGeocoder } from '../app/geocoder.js';
 import { mountDataPage } from '../app/data-page.js';
+import { mountH3GridToggle } from '../app/h3-grid.js';
 // glen-harness, loaded from jsDelivr at a release tag, as apps load glen
 // itself. Its ./core entry is the agent loop and tool registry without the MCP
 // client. Both URLs name the same tag; bump them together.
@@ -95,6 +96,8 @@ export async function start({ plugins: extraPlugins = [] } = {}) {
     mapManager.generateMenu(layoutRefs.menuMountId);
     mapManager.addLayersFromCatalog(catalog.getMapLayerConfigs());
     mapManager.generateControls('layer-controls-container');
+    // The H3 grid, a reference for what size of cell a pixel or feature is.
+    try { mountH3GridToggle(mapManager.map); } catch (err) { console.error('[core] Hex grid button failed:', err); }
     // With no view configured, open on the data.
     if (!appConfig.view) fitToCatalog(mapManager, catalog);
 
@@ -109,7 +112,7 @@ export async function start({ plugins: extraPlugins = [] } = {}) {
             console.warn('[core] Geocoder off:', err.message);
         }
     }
-    for (const t of createCoreMapTools(mapManager, catalog, { geocoder, geolocateTool: !!appConfig.geolocate?.agent_tool })) tools.registerLocal(t);
+    for (const t of createCoreMapTools(mapManager, catalog, { geocoder })) tools.registerLocal(t);
 
     /* ── 4. Plugins ────────────────────────────────────────────────────── */
     const promptParts = [];
