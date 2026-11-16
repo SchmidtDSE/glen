@@ -28,6 +28,7 @@ const DROPPED = Object.freeze({
     draw_enabled: 'now plugins/draw.js',
     upload_enabled: 'now plugins/uploads.js',
     upload: 'now the options of plugins/uploads.js',
+    geolocate: 'now plugins/geolocate.js',
 });
 
 /**
@@ -66,6 +67,10 @@ export function convertConfig(v3, { pluginBase = 'https://cdn.jsdelivr.net/gh/Sc
     plugins.push(`${base}/hex.js`);
     if (v3.charts?.enabled) plugins.push(`${base}/charts.js`);
     if (v3.draw_enabled) plugins.push(`${base}/draw.js`);
+    if (v3.geolocate) {
+        const g = v3.geolocate === true ? { button: true } : v3.geolocate;
+        plugins.push({ url: `${base}/geolocate.js`, options: { button: !!g.button, agent_tool: !!g.agent_tool } });
+    }
     if (v3.upload_enabled) {
         const opts = typeof v3.upload_enabled === 'object' ? v3.upload_enabled : (v3.upload || {});
         plugins.push({ url: `${base}/uploads.js`, options: opts });
@@ -80,7 +85,7 @@ export function convertConfig(v3, { pluginBase = 'https://cdn.jsdelivr.net/gh/Sc
     }
 
     for (const k of Object.keys(v3)) {
-        if (k in DROPPED && !/^(mcp_|charts$|draw_enabled$|upload)/.test(k)) notes.push(`Dropped ${k}: ${DROPPED[k]}.`);
+        if (k in DROPPED && !/^(mcp_|charts$|draw_enabled$|upload|geolocate$)/.test(k)) notes.push(`Dropped ${k}: ${DROPPED[k]}.`);
     }
     const preload = (v3.collections || []).filter(c => c && typeof c === 'object' && c.preload).map(c => c.collection_id || c.id);
     if (preload.length) notes.push(`preload is ignored in glen core (${preload.join(', ')}): its prompt lists every layer's columns, and get_schema gives the rest.`);

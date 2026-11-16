@@ -16,6 +16,13 @@
     {
       "url": "core/plugins/uploads.js",
       "options": {}
+    },
+    {
+      "url": "core/plugins/geolocate.js",
+      "options": {
+        "button": true,
+        "agent_tool": true
+      }
     }
   ],
   "export": true,
@@ -49,10 +56,6 @@
     ]
   },
   "auto_approve": true,
-  "geolocate": {
-    "button": true,
-    "agent_tool": true
-  },
   "sidebar": {
     "enabled": true,
     "title": "Layout preview",

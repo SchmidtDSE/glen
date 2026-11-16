@@ -16,6 +16,7 @@
   "devDependencies": {
     "@vitest/coverage-v8": "^2.1.9",
     "esbuild": "0.28.2",
+    "h3-js": "4.1.0",
     "hyparquet": "1.32.0",
     "jsdom": "26.1.0",
     "vitepress": "^1.6.3",

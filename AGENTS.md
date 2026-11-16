@@ -25,7 +25,7 @@ A map of the layers in [Portolan](https://www.portolan-sdi.org/) or STAC collect
 - `core/prompt.js` / `core/system-prompt.md` — The prompt's opening: core's short base prompt, then the app's own (`system_prompt_url`, or a `system-prompt.md` beside the page)
 - `core/convert-config.js` / `scripts/convert-to-core.mjs` — Converts a v3 app's `layers-input.json` and `index.html` to glen core
 - `core/plugins/mcp.js` — MCP servers' tools (over HTTP or in a Web Worker), the local catalog tools and `filter_by_query`
-- `core/plugins/charts.js`, `draw.js`, `uploads.js`, `hex.js` — `render_chart`; the draw button and `get_drawn_region`; GeoJSON upload and `get_uploaded_dataset`; hex tile layers
+- `core/plugins/charts.js`, `draw.js`, `uploads.js`, `hex.js`, `geolocate.js` — `render_chart`; the draw button and `get_drawn_region`; GeoJSON upload and `get_uploaded_dataset`; hex tile layers; the locate-me button and `get_user_location`
 
 **Prompts stay minimal.** A prompt says what the app and its data are. What a tool does, when to call it and what it returns belong in the tool's own description, never repeated in a prompt, where they go stale. Don't list what the agent cannot do; a plugin that adds a capability should not have to contradict the base prompt.
 
@@ -44,6 +44,7 @@ A map of the layers in [Portolan](https://www.portolan-sdi.org/) or STAC collect
 - `overlay-rail.js` — Shared bottom-left rail every map-scoped overlay panel mounts into (legend, sliders, H3 resolution badge). New floating panels go here, not onto `document.body` with their own anchors.
 - `app-header.js` — Optional app chrome band (logos, top-level nav) in `scrim` or `solid` mode. App-level UI goes here; map-scoped controls go in the overlay rail.
 - `layout-manager.js` / `mobile-sheet.js` — The floating or sidebar layout; below 700px the sidebar becomes a bottom sheet with peek/half/full detents. No gesture is bound to the map.
+- `h3-grid.js` — The "Hex grid" button and the H3 grid it draws, with h3-js loaded on first use
 - `icons.js` — The few inline SVGs shared by the header nav and the chat footer links.
 - `theme.js` — Selects the chrome colour scheme (light/dark/auto) as a body class and applies per-app colour overrides inline; the tokens themselves live in `style.css`.
 - `dataset-citations.js` — How a dataset is cited, from its STAC record. Used by the data page and the local catalog tools.
@@ -245,6 +246,8 @@ When a PR touches a covered module, expect tests to change too. When it touches 
 | `app/map-control-tools.js` | covered | `test/map-control-tools.test.js` — default and app hint text, fly_to with and without layer extents, the reset_style hook; `test/map-tools.test.js` — the shared tools' execute paths. |
 | `app/animation-manager.js` | partial | `test/animation-manager.test.js` — the pure sampling helpers (`sampleTrack`, `cellBoundary`). MapLibre sublayers and the controls panel are browser-bound; verify visually. |
 | `app/map-manager.js` published styles | partial | `test/map-manager.published-style.test.js` — `applyPublishedStyle` swaps paint, outline, filter and legend, and `resetStyle` restores them. The rest of map-manager is in the row below. |
+| `app/h3-grid.js` | covered | `test/h3-grid.test.js` — resolution from on-screen cell size (and v3's choices at mid-latitudes), the cell cap, edge padding, the antimeridian, h3-js loaded lazily with SRI. The button is browser-bound; verify on a preview. |
+| `core/plugins/geolocate.js` | covered | `test/core-geolocate-plugin.test.js` — the button, `get_user_location` only on `agent_tool`, the app's `geolocate` setting when given no options. |
 | `app/map-manager.js`, `app/layout-manager.js`, `app/map-draw.js` | 0% | Browser-bound (DOM, MapLibre). Verify visually on a preview or at `/core/` — no harness yet. |
 
 Overall line coverage is reported on each PR via the coverage workflow.

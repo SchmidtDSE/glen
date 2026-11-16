@@ -99,9 +99,9 @@ node scripts/convert-to-core.mjs layers-input.json --ref <glen tag> > layers-inp
 node scripts/convert-to-core.mjs index.html --ref <glen tag> > index.core.html
 ```
 
-glen core reads the v3 full app's layer settings by the same names, `collection_id` and `collection_url` included, so collections pass through unchanged. The opt-in features become plugins: the MCP server (every v3 app had one, `duckdb-mcp.nrp-nautilus.io` when it named none), with its `geospatial-analyst` prompt; the hex tile tools, which every v3 app had; `charts`; `draw_enabled`; and `upload_enabled` with its settings. `catalog_index_threshold`, `client_header_hosts` and collections' `preload` are dropped, with a note for each. The session export, on by default in v3, is kept with `"export": true` unless the app turned it off. The page's module script loads `core/main.js`, and its glen URLs move to the release.
+glen core reads the v3 full app's layer settings by the same names, `collection_id` and `collection_url` included, so collections pass through unchanged. The opt-in features become plugins: the MCP server (every v3 app had one, `duckdb-mcp.nrp-nautilus.io` when it named none), with its `geospatial-analyst` prompt; the hex tile tools, which every v3 app had; `charts`; `draw_enabled`; `upload_enabled` with its settings; and `geolocate`. `catalog_index_threshold`, `client_header_hosts` and collections' `preload` are dropped, with a note for each. The session export, on by default in v3, is kept with `"export": true` unless the app turned it off. The page's module script loads `core/main.js`, and its glen URLs move to the release.
 
-The deploy-time `config.json` needs no change: `plugins/mcp.js` takes `mcp_server_url` and `mcp_auth_token` from it for the first server, and core reads `llm_models`, `llm_model`, `transcription_model`, `geolocate`, `export` and the tool-call limits, as the v3 full app does. A `draw_enabled` set only in `config.json` has no effect in core; list `plugins/draw.js` instead.
+The deploy-time `config.json` needs no change: `plugins/mcp.js` takes `mcp_server_url` and `mcp_auth_token` from it for the first server, and core reads `llm_models`, `llm_model`, `transcription_model`, `export` and the tool-call limits, as the v3 full app does. `plugins/geolocate.js`, listed without options, reads `geolocate` from it. A `draw_enabled` set only in `config.json` has no effect in core; list `plugins/draw.js` instead.
 
 ## Session export
 
@@ -203,6 +203,7 @@ The agent loop, tool registry and chat come from [glen-harness](https://github.c
 | `plugins/draw.js` | Plugin that adds the polygon draw button and `get_drawn_region` |
 | `plugins/hex.js` | Plugin that adds `add_hex_tile_layer` and `remove_hex_tile_layer`, and geo-query-wasm's tile protocol with a worker server |
 | `plugins/uploads.js` | Plugin that adds the GeoJSON upload and `get_uploaded_dataset` |
+| `plugins/geolocate.js` | Plugin that adds the locate-me button and, as a separate opt-in, `get_user_location` |
 
 The core reuses these modules from `app/` unchanged: `map-control-tools.js` (the map-control tools), `catalog-tree.js` (finding collections by id at any depth, in our current STAC and the Portolan layout), `cog-tiles.js` (raster band settings and tile URLs), `map-manager.js` (layers, filters, styles, legend, tooltips), `layout-manager.js` with the header, theme and mobile sheet, `geocoder.js` and `data-page.js`.
 
