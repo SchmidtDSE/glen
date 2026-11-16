@@ -45,6 +45,7 @@ A map of the layers in [Portolan](https://www.portolan-sdi.org/) or STAC collect
 - `app-header.js` — Optional app chrome band (logos, top-level nav) in `scrim` or `solid` mode. App-level UI goes here; map-scoped controls go in the overlay rail.
 - `layout-manager.js` / `mobile-sheet.js` — The floating or sidebar layout; below 700px the sidebar becomes a bottom sheet with peek/half/full detents. No gesture is bound to the map.
 - `h3-grid.js` — The "Hex grid" button and the H3 grid it draws, with h3-js loaded on first use
+- `geocoder.js` / `map-geocoder.js` — The geocoder behind the `geocode` tool, and the optional search box (`geocoder.search_box`), loaded only when an app shows it
 - `icons.js` — The few inline SVGs shared by the header nav and the chat footer links.
 - `theme.js` — Selects the chrome colour scheme (light/dark/auto) as a body class and applies per-app colour overrides inline; the tokens themselves live in `style.css`.
 - `dataset-citations.js` — How a dataset is cited, from its STAC record. Used by the data page and the local catalog tools.
@@ -247,6 +248,7 @@ When a PR touches a covered module, expect tests to change too. When it touches 
 | `app/animation-manager.js` | partial | `test/animation-manager.test.js` — the pure sampling helpers (`sampleTrack`, `cellBoundary`). MapLibre sublayers and the controls panel are browser-bound; verify visually. |
 | `app/map-manager.js` published styles | partial | `test/map-manager.published-style.test.js` — `applyPublishedStyle` swaps paint, outline, filter and legend, and `resetStyle` restores them. The rest of map-manager is in the row below. |
 | `app/h3-grid.js` | covered | `test/h3-grid.test.js` — resolution from on-screen cell size (and v3's choices at mid-latitudes), the cell cap, edge padding, the antimeridian, h3-js loaded lazily with SRI. The button is browser-bound; verify on a preview. |
+| `app/map-geocoder.js` | partial | `test/map-geocoder.test.js` — the adapter between our geocoder and maplibre-gl-geocoder. The box itself is browser-bound; verify on a preview with `geocoder.search_box`. |
 | `core/plugins/geolocate.js` | covered | `test/core-geolocate-plugin.test.js` — the button, `get_user_location` only on `agent_tool`, the app's `geolocate` setting when given no options. |
 | `app/filter-types.js` | covered | `test/filter-types.test.js` — filter literals matched to the tile field types (numeric strings against numbers, numbers against strings, `match` labels, `in` lists), and `set_filter` reporting what it changed. |
 | `app/map-manager.js`, `app/layout-manager.js`, `app/map-draw.js` | 0% | Browser-bound (DOM, MapLibre). Verify visually on a preview or at `/core/` — no harness yet. |

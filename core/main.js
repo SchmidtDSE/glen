@@ -103,16 +103,28 @@ export async function start({ plugins: extraPlugins = [] } = {}) {
 
     /* ── 3. Map tools ──────────────────────────────────────────────────── */
     const tools = new ToolRegistry();
+    // One geocoder serves the `geocode` tool (on unless `enabled: false`) and
+    // the search box (off unless `search_box: true`).
     const geoCfg = appConfig.geocoder || {};
+    const geocodeTool = geoCfg.enabled !== false;
     let geocoder = null;
-    if (geoCfg.enabled !== false) {
+    if (geocodeTool || geoCfg.search_box) {
         try {
             geocoder = createGeocoder({ ...geoCfg, maptiler_key: geoCfg.maptiler_key || runtimeConfig?.maptiler_key });
         } catch (err) {
             console.warn('[core] Geocoder off:', err.message);
         }
     }
-    for (const t of createCoreMapTools(mapManager, catalog, { geocoder })) tools.registerLocal(t);
+    if (geocoder && geoCfg.search_box) {
+        // The library loads only for apps that show the box.
+        import('../app/map-geocoder.js')
+            .then(({ addSearchBox }) => addSearchBox(mapManager.map, geocoder, {
+                position: geoCfg.search_box_position,
+                placeholder: geoCfg.search_box_placeholder,
+            }))
+            .catch(err => console.warn('[core] Search box failed:', err.message));
+    }
+    for (const t of createCoreMapTools(mapManager, catalog, { geocoder: geocodeTool ? geocoder : null })) tools.registerLocal(t);
 
     /* ── 4. Plugins ────────────────────────────────────────────────────── */
     const promptParts = [];
