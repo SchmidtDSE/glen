@@ -12,6 +12,7 @@
  * No knowledge of LLMs, tools, or chat — pure map operations.
  */
 
+import { coerceFilter, fieldKind } from './filter-types.js';
 import { extractHashFromUrl, buildFillColorExpression, buildFlatFillColorExpression, rewriteValueColumn, PALETTES, buildHeightExpression, buildFlatHeightExpression, defaultExtrusionMaxHeight, applicableScale } from './hex-layer-helpers.js';
 import { deriveCategoricalLegend, deriveContinuousLegend, primaryColorValue } from './legend-helpers.js';
 import { mountOverlay, SLOT } from './overlay-rail.js';
@@ -1357,6 +1358,12 @@ export class MapManager {
         }
         if (state.type !== 'vector') return { success: false, error: `Layer '${layerId}' is raster — filtering only works on vector layers` };
 
+        // Match literals to the field types in the tiles: MapLibre compares
+        // strictly, so "90" against a number matches nothing.
+        const kinds = new Map((state.columns || []).map(c => [c.name, fieldKind(c.type)]));
+        const coerced = filter ? coerceFilter(filter, (f) => kinds.get(f) || null) : { filter, notes: [] };
+        filter = coerced.filter;
+
         // MapLibre rejects an invalid expression through its `error` event and
         // keeps the old filter, so report that instead of success (#409).
         const filterErrors = this._mapErrorsDuring(() => this.map.setFilter(state.mapLayerId, filter));
@@ -1384,6 +1391,7 @@ export class MapManager {
             filter,
             filterDescription: filter ? this.describeFilter(filter) : 'No filter (showing all)',
             featuresInView: features.length,
+            ...(coerced.notes.length ? { adjusted: coerced.notes } : {}),
         };
     }
 
