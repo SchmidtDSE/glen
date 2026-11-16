@@ -30,8 +30,8 @@ import { mountDataPage } from '../app/data-page.js';
 // client. Both URLs name the same tag; bump them together.
 import {
     Agent, ToolRegistry, applyProxyModelList, buildUserModels, loadUserSettings,
-} from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.4.0/src/core.js';
-import { ChatUI } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.4.0/ui/chat-ui.js';
+} from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.5.0/src/core.js';
+import { ChatUI } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.5.0/ui/chat-ui.js';
 import { PortolanCatalog, exportCatalogView } from './portolan-catalog.js';
 import { createCoreMapTools } from './map-tools.js';
 
