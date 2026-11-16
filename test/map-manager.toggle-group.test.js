@@ -78,7 +78,7 @@ describe('MapManager toggle groups (#349)', () => {
         cb.checked = true; click(cb);
         expect(mm.layers.get('a/cog').visible).toBe(true);
         expect(mm.layers.get('b/cog').visible).toBe(true);
-        expect(mm._visibility.get('layer-b-cog')).toBe('visible');
+        expect(mm._visibility.get('layer-b/cog')).toBe('visible');
 
         cb.checked = false; click(cb);
         expect(mm.layers.get('a/cog').visible).toBe(false);

@@ -210,10 +210,36 @@ export class MapManager {
     }
 
     /**
+     * Add a source, or reuse one already added for the same data. Layers
+     * drawn from one file share its source. An id already taken by different
+     * data gets a numbered id instead, with a warning, so a layer never draws
+     * another layer's data (SchmidtDSE/glen#492).
+     * @returns {string} the source id the layer should use
+     */
+    _useSource(sourceId, source, layerId) {
+        this._sourceSpecs ??= new Map();
+        const spec = JSON.stringify(source);
+        let id = sourceId;
+        for (let n = 2; this.map.getSource(id); n++) {
+            const known = this._sourceSpecs.get(id);
+            if (known === spec) return id;
+            if (n === 2) console.warn(`[Map] Source "${sourceId}" is already used for other data; layer "${layerId}" gets its own source.`);
+            id = `${sourceId}#${n}`;
+        }
+        this.map.addSource(id, source);
+        this._sourceSpecs.set(id, spec);
+        return id;
+    }
+
+    /**
      * Register a single layer on the map.
      */
     registerLayer(config) {
         const { layerId, datasetId, group, groupCollapsed, sidebar, displayName, type, paint, outlinePaint, renderType, columns, tooltipFields, defaultVisible, defaultFilter, colormap, rescale, legendLabel, legendType, legendClasses, legendRange, legendGradient } = config;
+        if (this.layers.has(layerId)) {
+            console.warn(`[Map] Layer "${layerId}" is already registered; skipping the second one.`);
+            return;
+        }
 
         // ── Animated layer: delegate to TrajectoryAnimation ──
         if (config.animation && config.animation.type === 'trajectory') {
@@ -226,17 +252,15 @@ export class MapManager {
             const versionStates = config.versions.map((v, i) => {
                 const isActive = (i === config.defaultVersionIndex);
                 const vis = (defaultVisible && isActive) ? 'visible' : 'none';
-                const vMapLayerId = `layer-${layerId.replace(/\//g, '-')}--v-${i}`;
+                const vMapLayerId = `layer-${layerId}--v-${i}`;
 
                 // Add source
-                if (!this.map.getSource(v.sourceId)) {
-                    this.map.addSource(v.sourceId, v.source);
-                }
+                const vSourceId = this._useSource(v.sourceId, v.source, layerId);
 
                 // Build MapLibre layer
                 const layerDef = {
                     id: vMapLayerId,
-                    source: v.sourceId,
+                    source: vSourceId,
                     layout: { visibility: vis },
                 };
 
@@ -266,7 +290,7 @@ export class MapManager {
                     const outlineDef = {
                         id: vOutlineLayerId,
                         type: 'line',
-                        source: v.sourceId,
+                        source: vSourceId,
                         layout: { visibility: vis },
                         paint: outlinePaint || { ...DEFAULT_OUTLINE },
                     };
@@ -295,7 +319,7 @@ export class MapManager {
                     label: v.label,
                     mapLayerId: vMapLayerId,
                     outlineLayerId: vOutlineLayerId,
-                    sourceId: v.sourceId,
+                    sourceId: vSourceId,
                     sourceLayer: v.sourceLayer || null,
                     // A raster version's own colormap and range, for its legend.
                     colormap: v.colormap || null,
@@ -346,13 +370,8 @@ export class MapManager {
         // ── Standard (non-versioned) layer ──
         const { source, sourceLayer } = config;
         // Use pre-computed sourceId (shared between alias layers) or derive from layerId
-        const sourceId = config.sourceId || `src-${layerId.replace(/\//g, '-')}`;
-        const mapLayerId = `layer-${layerId.replace(/\//g, '-')}`;
-
-        // Add source if not exists
-        if (!this.map.getSource(sourceId)) {
-            this.map.addSource(sourceId, source);
-        }
+        const sourceId = this._useSource(config.sourceId || `src-${layerId}`, source, layerId);
+        const mapLayerId = `layer-${layerId}`;
 
         // Build layer definition
         const layerDef = {
@@ -1039,7 +1058,7 @@ export class MapManager {
         this.layers.delete(layerId);
 
         if (this._controlsContainerEl) {
-            const item = this._controlsContainerEl.querySelector(`#layer-item-${layerId.replace(/\//g, '-')}`);
+            const item = this._layerRow(layerId);
             if (item) item.remove();
             this._refreshCycleBtnState();
         }
@@ -1292,7 +1311,7 @@ export class MapManager {
         // Drop its panel row (added by _addLayerControl). Guarded so a
         // headless/no-DOM caller doesn't throw.
         if (this._controlsContainerEl) {
-            const item = this._controlsContainerEl.querySelector(`#layer-item-${layerId.replace(/\//g, '-')}`);
+            const item = this._layerRow(layerId);
             if (item) item.remove();
             this._refreshCycleBtnState();
         }
@@ -1536,8 +1555,7 @@ export class MapManager {
      * row's label alone; its legend entry carries the new title.
      */
     _renameLayerControl(layerId, name) {
-        const safeId = layerId.replace(/\//g, '-');
-        const row = document.getElementById(`layer-item-${safeId}`);
+        const row = this._layerRow(layerId);
         if (!row) return;
         const span = row.querySelector('label span');
         if (span) span.textContent = name;
@@ -2387,6 +2405,16 @@ export class MapManager {
     }
 
     /**
+     * A layer's row in the layer panel, found by its exact id. Rows' DOM ids
+     * flatten "/" and so are not unique (SchmidtDSE/glen#492).
+     */
+    _layerRow(layerId) {
+        const root = this._controlsContainerEl || (typeof document !== 'undefined' ? document : null);
+        if (!root) return null;
+        return [...root.querySelectorAll('.layer-item, [id^="layer-item-"]')].find(el => el.dataset.layerId === layerId) || null;
+    }
+
+    /**
      * Build one layer-panel row (checkbox + optional version dropdown +
      * optional remove button). Shared by generateControls (boot) and
      * _addLayerControl (runtime hex layers).
@@ -2399,6 +2427,7 @@ export class MapManager {
         const wrapper = document.createElement('div');
         wrapper.className = 'layer-item';
         wrapper.id = `layer-item-${safeId}`;
+        wrapper.dataset.layerId = layerId;
 
         const label = document.createElement('label');
         label.className = 'layer-toggle';
@@ -2473,8 +2502,7 @@ export class MapManager {
     _addLayerControl(layerId) {
         const container = this._controlsContainerEl;
         if (!container) return;
-        const safeId = layerId.replace(/\//g, '-');
-        if (container.querySelector(`#layer-item-${safeId}`)) return;
+        if (this._layerRow(layerId)) return;
         const state = this.layers.get(layerId);
         if (!state) return;
         if (state.sidebar === false) return;   // configured out of the panel (#352)
@@ -2498,7 +2526,7 @@ export class MapManager {
             this._refreshCycleBtnState();
             return;
         }
-        const checkbox = document.getElementById(`toggle-${layerId.replace(/\//g, '-')}`);
+        const checkbox = this._layerRow(layerId)?.querySelector('input[type=checkbox]');
         if (checkbox) checkbox.checked = state.visible;
         this._refreshCycleBtnState();
     }

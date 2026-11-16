@@ -129,6 +129,7 @@ describe('setLegend title / units / visibility (#334)', () => {
         const mm = createManager([recoloredHex()]);
         const row = document.createElement('div');
         row.id = 'layer-item-hex-abc';
+        row.dataset.layerId = 'hex-abc';
         const label = document.createElement('label');
         const span = document.createElement('span');
         span.textContent = 'Hex: dominant_taxon';
