@@ -299,7 +299,7 @@ export class PortolanCatalog {
             url: v.url,
             sourceLayer,
             // Layers drawn from one file share its source, as the full app's aliases do.
-            sourceId: `src-${dataset.id.replace(/[^a-zA-Z0-9]/g, '-')}-${v.key.replace(/[^a-zA-Z0-9]/g, '-')}`,
+            sourceId: `src-${v.url.replace(/[^a-zA-Z0-9]/g, '-')}`,
             geometryType: info.geometryType,
             fields: info.fields,
             renderType,
