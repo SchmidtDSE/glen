@@ -21,7 +21,7 @@ Run it locally from the repository root with `python -m http.server 8000` and op
 
 ## Configuration
 
-`layers-input.json` takes the same chrome, model and welcome settings as the full app (`sidebar`, `header`, `theme`, `llm`, `llm_models`, `welcome`, `view`, `default_basemap`, `geocoder`, `auto_approve`). As in the full app, when every model is served by open-llm-proxy the model picker shows the models the app's key may use, and a user who brings their own key can name any model. Data comes from Portolan collections:
+The [configuration guide](../docs/guide/configuration.md) is the full reference, with every plugin. In short, `layers-input.json` takes the same chrome, model and welcome settings as the full app (`sidebar`, `header`, `theme`, `llm`, `llm_models`, `welcome`, `view`, `default_basemap`, `geocoder`, `auto_approve`). As in the full app, when every model is served by open-llm-proxy the model picker shows the models the app's key may use, and a user who brings their own key can name any model. Data comes from Portolan collections:
 
 ```json
 {
@@ -159,7 +159,7 @@ When the first server is on another origin from the page and its entry sets no `
 ]
 ```
 
-`plugins/draw.js` adds the full app's polygon draw button and the `get_drawn_region` tool, which returns the drawn region as WKT with an H3 resolution to join it at. `plugins/uploads.js` adds the full app's GeoJSON upload: polygons or points, sent from the browser to S3, with the `get_uploaded_dataset` tool, which gives the agent the file's URL and never its geometry. Its options are the full app's upload settings (`bucket_url`, `prefix`, `max_bytes`, `max_features`, `max_point_features`, `ingest_url`; see the [configuration guide](../docs/guide/configuration.md#geojson-upload-optional)). Both tell the chat when a region is drawn or a file arrives. Both answers are meant for SQL, so these plugins go with an SQL server from `plugins/mcp.js`.
+`plugins/draw.js` adds the full app's polygon draw button and the `get_drawn_region` tool, which returns the drawn region as WKT with an H3 resolution to join it at. `plugins/uploads.js` adds the full app's GeoJSON upload: polygons or points, sent from the browser to S3, with the `get_uploaded_dataset` tool, which gives the agent the file's URL and never its geometry. Its options are the full app's upload settings (`bucket_url`, `prefix`, `max_bytes`, `max_features`, `max_point_features`, `ingest_url`; see the [configuration guide](../docs/guide/configuration.md#geojson-upload)). Both tell the chat when a region is drawn or a file arrives. Both answers are meant for SQL, so these plugins go with an SQL server from `plugins/mcp.js`.
 
 ```json
 "plugins": [

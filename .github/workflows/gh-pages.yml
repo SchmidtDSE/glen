@@ -53,9 +53,15 @@ jobs:
       # to main took them all. Rebuilding the full set on each deploy makes
       # previews additive instead of mutually exclusive.
       #
-      # Apps are served as-is: app/index.html imports main.js relatively, so
-      # nothing is pinned and no downstream app is involved. app/config.json is
-      # gitignored and never checked out — previews carry no secrets.
+      # A branch is served as-is from its own files, through relative imports,
+      # so nothing is pinned and no downstream app is involved. config.json is
+      # gitignored and never checked out, so previews carry no secrets.
+      #
+      # The branch root shows the fixture in preview/layers-input.json. A branch
+      # with app/index.html (v3) shows it in the full app. A branch without one
+      # (v4, SchmidtDSE/glen#441) shows it in glen core, on a page built the way
+      # a downstream app's is: core/index.html loading core/main.js and app/'s
+      # stylesheets from beside it, with the fixture config next to the page.
       - name: Stage app previews
         env:
           PREVIEW_ROOT: docs/.vitepress/dist/preview
@@ -73,6 +79,36 @@ jobs:
             exit 0
           fi
 
+          # A shallow patch: top-level keys in the patch replace the target's.
+          patch_config() {
+            python3 - "$1" "$2" <<'PYEOF'
+          import json, sys
+          target, patch = sys.argv[1], sys.argv[2]
+          base = json.load(open(target))
+          base.update(json.load(open(patch)))
+          json.dump(base, open(target, 'w'), indent=2)
+          PYEOF
+          }
+
+          # Fixture config and any assets beside it, but not its README.
+          copy_fixture() {
+            if [ -d "$work/preview" ]; then
+              find "$work/preview" -maxdepth 1 -type f ! -name README.md \
+                -exec cp {} "$1/" \;
+            fi
+          }
+
+          # A glen core page at $1, loading core/ and app/ from $2 (the
+          # relative path from that page to the branch root), as a downstream
+          # app's index.html loads them from jsDelivr.
+          core_page() {
+            mkdir -p "$1"
+            sed -e "s#\.\./app/#$2app/#g" -e "s#src=\"main.js\"#src=\"$2core/main.js\"#" \
+              "$work/core/index.html" > "$1/index.html"
+            copy_fixture "$1"
+            [ -e "$1/layers-input.json" ] || cp "$work/core/layers-input.json" "$1/"
+          }
+
           # Each branch is staged from a detached worktree, so the docs build
           # already in the working tree is never disturbed.
           for branch in $branches; do
@@ -86,20 +122,21 @@ jobs:
               continue
             fi
 
-            if [ ! -d "$work/app" ]; then
-              echo "::warning::$branch has no app/; skipping"
+            if [ -f "$work/app/index.html" ]; then
+              layout=full
+            elif [ -d "$work/core" ] && [ -d "$work/app" ]; then
+              layout=core
+            else
+              echo "::warning::$branch has neither app/index.html nor core/; skipping"
               git worktree remove --force "$work"
               continue
             fi
 
             mkdir -p "$dest"
-            cp -R "$work/app/." "$dest/"
-            # Fixture config and any assets beside it, but not its README.
-            if [ -d "$work/preview" ]; then
-              find "$work/preview" -maxdepth 1 -type f ! -name README.md \
-                -exec cp {} "$dest/" \;
+            if [ "$layout" = full ]; then
+              cp -R "$work/app/." "$dest/"
+              copy_fixture "$dest"
             fi
-            test ! -e "$dest/config.json"
 
             # glen core (core/) imports ../app/, so it is staged with a copy
             # of app/ beside it and opens at /preview/<branch>/core/.
@@ -118,16 +155,13 @@ jobs:
                 vname=$(basename "$patch" .json)
                 vdest="$dest/core-$vname"
                 cp -R "$work/core" "$vdest"
-                python3 - "$vdest/layers-input.json" "$patch" <<'PYEOF'
-          import json, sys
-          target, patch = sys.argv[1], sys.argv[2]
-          base = json.load(open(target))
-          base.update(json.load(open(patch)))
-          json.dump(base, open(target, 'w'), indent=2)
-          PYEOF
-                test ! -e "$vdest/config.json"
+                patch_config "$vdest/layers-input.json" "$patch"
                 echo "  /preview/$slug/core-$vname/"
               done
+            fi
+
+            if [ "$layout" = core ]; then
+              core_page "$dest" ""
             fi
 
             # Variants: preview/variants/<name>.json is a shallow patch over
@@ -137,23 +171,21 @@ jobs:
               [ -e "$patch" ] || continue
               vname=$(basename "$patch" .json)
               vdest="$dest/$vname"
-              mkdir -p "$vdest"
-              cp -R "$work/app/." "$vdest/"
-              find "$work/preview" -maxdepth 1 -type f ! -name README.md \
-                -exec cp {} "$vdest/" \;
-              python3 - "$vdest/layers-input.json" "$patch" <<'PYEOF'
-          import json, sys
-          target, patch = sys.argv[1], sys.argv[2]
-          base = json.load(open(target))
-          base.update(json.load(open(patch)))
-          json.dump(base, open(target, 'w'), indent=2)
-          PYEOF
-              test ! -e "$vdest/config.json"
+              if [ "$layout" = full ]; then
+                mkdir -p "$vdest"
+                cp -R "$work/app/." "$vdest/"
+                copy_fixture "$vdest"
+              else
+                core_page "$vdest" "../"
+              fi
+              patch_config "$vdest/layers-input.json" "$patch"
               echo "  /preview/$slug/$vname/"
             done
 
+            find "$dest" -name config.json -print -delete | grep -q . \
+              && echo "::warning::$branch staged a config.json; removed"
             git worktree remove --force "$work"
-            echo "Staged $branch at /preview/$slug/"
+            echo "Staged $branch ($layout) at /preview/$slug/"
           done
 
           # An index, so a reviewer handed the bare /preview/ URL can find
