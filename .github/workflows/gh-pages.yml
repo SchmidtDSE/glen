@@ -58,7 +58,7 @@ jobs:
       # gitignored and never checked out, so previews carry no secrets.
       #
       # The branch root shows the fixture in preview/layers-input.json. A branch
-      # with app/index.html (v3) shows it in the full app. A branch without one
+      # with app/index.html (v3) shows it in the v3 full app. A branch without one
       # (v4, SchmidtDSE/glen#441) shows it in glen core, on a page built the way
       # a downstream app's is: core/index.html loading core/main.js and app/'s
       # stylesheets from beside it, with the fixture config next to the page.
@@ -179,6 +179,8 @@ jobs:
                 core_page "$vdest" "../"
               fi
               patch_config "$vdest/layers-input.json" "$patch"
+              # The fixture names plugins relative to the branch root.
+              [ "$layout" = core ] && sed -i 's#"core/plugins/#"../core/plugins/#g' "$vdest/layers-input.json"
               echo "  /preview/$slug/$vname/"
             done
 

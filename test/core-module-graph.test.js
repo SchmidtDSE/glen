@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,6 +25,23 @@ function staticGraph(entry) {
     return [...seen].map(f => relative(root, f)).sort();
 }
 
+/** Every module reachable from `entries`, through static imports and import() alike. */
+function fullGraph(entries) {
+    const seen = new Set();
+    const visit = (file) => {
+        if (seen.has(file)) return;
+        seen.add(file);
+        const src = readFileSync(file, 'utf8')
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .replace(/^\s*\/\/.*$/gm, '');
+        for (const m of src.matchAll(/(?:from\s+|import\s*\(\s*|^\s*import\s+)['"](\.[^'"]+)['"]/gm)) {
+            visit(resolve(dirname(file), m[1]));
+        }
+    };
+    for (const e of entries) visit(resolve(root, e));
+    return [...seen].map(f => relative(root, f));
+}
+
 describe('glen core module graph', () => {
     const graph = staticGraph('core/main.js');
 
@@ -35,27 +52,25 @@ describe('glen core module graph', () => {
         // One tag for both, and a tag rather than a branch.
         expect(new Set(urls.map(m => m[2])).size).toBe(1);
         expect(urls[0][2]).toMatch(/^v\d+\.\d+\.\d+$/);
-        for (const f of ['app/agent.js', 'app/chat-ui.js', 'app/tool-registry.js']) {
+    });
+
+    it('loads no SQL or chart code at start', () => {
+        for (const f of ['app/query-filter-tool.js', 'app/hex-tools.js', 'app/chart-renderer.js', 'app/chart-tool.js']) {
             expect(graph).not.toContain(f);
         }
     });
 
-    it('loads no MCP, SQL, export or chart code at start', () => {
-        for (const f of [
-            'app/mcp-client.js', 'app/vendor/mcp-sdk.js', 'app/map-tools.js',
-            'app/chart-renderer.js', 'app/export-report.js',
-        ]) {
-            expect(graph).not.toContain(f);
-        }
-    });
-
-    it('shares the map-control tools with the full app', () => {
+    it('uses the shared map-control tools and catalog walk', () => {
         expect(graph).toContain('app/map-control-tools.js');
-        expect(staticGraph('app/map-tools.js')).toContain('app/map-control-tools.js');
+        expect(graph).toContain('app/catalog-tree.js');
     });
 
-    it('shares the catalog walk with the full app', () => {
-        expect(graph).toContain('app/catalog-tree.js');
-        expect(staticGraph('app/dataset-catalog.js')).toContain('app/catalog-tree.js');
+    // Since v4, app/ is glen core's shared library: a module that neither
+    // core nor a plugin reaches is dead code (SchmidtDSE/glen#441).
+    it('reaches every app/ module from core or a plugin', () => {
+        const plugins = readdirSync(resolve(root, 'core/plugins')).filter(f => f.endsWith('.js')).map(f => `core/plugins/${f}`);
+        const reached = new Set(fullGraph(['core/main.js', ...plugins]));
+        const app = readdirSync(resolve(root, 'app')).filter(f => f.endsWith('.js')).map(f => `app/${f}`);
+        expect(app.filter(f => !reached.has(f))).toEqual([]);
     });
 });

@@ -105,8 +105,8 @@ export class PortolanCatalog {
                 console.warn(`[Portolan] Collection "${spec.ref}" not found under ${appConfig.catalog || '(no catalog configured)'}`);
                 return null;
             }
-            const collection = await this.fetchJson(url);
-            return this.addCollection(collection, url, spec);
+            const { collection, url: at } = await this._namedCollection(url, spec.collection_id || spec.id);
+            return this.addCollection(collection, at, spec);
         }));
         for (const r of results) {
             if (r.status === 'rejected') console.warn('[Portolan] Failed to load a collection:', r.reason?.message || r.reason);
@@ -116,6 +116,19 @@ export class PortolanCatalog {
         const ordered = results.map(r => (r.status === 'fulfilled' ? r.value : null)).filter(Boolean);
         this.datasets = new Map(ordered.map(d => [d.id, d]));
         console.log(`[Portolan] ${this.datasets.size} collections, ${this.layers.size} layers`);
+    }
+
+    /**
+     * The collection at `url`, or, when that is a parent and the entry names
+     * one of its descendants by id, that descendant. v3 apps wrote the parent
+     * as `collection_url` and the collection they meant as `collection_id`,
+     * and the full app looked below the parent for it.
+     */
+    async _namedCollection(url, wantedId) {
+        const collection = await this.fetchJson(url);
+        if (!wantedId || collection.id === wantedId || !(collection.links || []).some(l => l.rel === 'child')) return { collection, url };
+        const hit = (await findCollections(url, [String(wantedId)], { fetchJson: this.fetchJson })).get(String(wantedId));
+        return hit ? { collection: hit.doc, url: hit.url } : { collection, url };
     }
 
     /**

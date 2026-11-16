@@ -3,14 +3,12 @@
  * filters, sliders, styles, tooltips, legends, the camera, geocoding and the
  * projection.
  *
- * These tools read and query no data. The full app (map-tools.js) adds its
- * SQL, STAC and hex tools beside them, and glen core (core/map-tools.js) adds
- * its Portolan tools. Neither keeps a copy of these definitions.
+ * These tools read and query no data. glen core (core/map-tools.js) adds its
+ * Portolan tools beside them, and plugins add theirs.
  *
  * The descriptions are neutral about where data values come from. An app
- * whose agent has other tools passes `hints` that point at them; the full app
- * passes SQL_HINTS, which reproduce its descriptions byte for byte, so its
- * prompt prefix did not change when these tools moved here.
+ * whose agent has other tools passes `hints` that point at them, as glen core
+ * does.
  */
 
 // A paint value that is a number, or an expression (an array). `items: {}`
@@ -54,41 +52,6 @@ How to use the result:
   - Then act: fly_to the coordinate.`,
 });
 
-/**
- * The full app's descriptions, which send the agent to its SQL and STAC tools
- * for values and coordinates.
- */
-export const SQL_HINTS = Object.freeze({
-    filterValues: 'IMPORTANT: Never guess categorical values used in filters. Check the dataset catalog in your system prompt for documented coded values, or call get_stac_details for full column details. Only use SELECT DISTINCT via SQL if the metadata doesn\'t cover it.',
-    styleValues: 'IMPORTANT: For categorical coloring (e.g., a "match" expression), never guess or assume valid values. Check the dataset catalog in your system prompt for documented coded values, or call get_stac_details for full column details. Only fall back to SELECT DISTINCT via SQL if the metadata doesn\'t cover it.',
-    tooltipFields: 'Property names must exactly match the feature properties in the vector tiles. Call get_schema first if you need to see available property names — the agent\'s catalog may list them, but get_schema returns the live set. Unknown names render nothing (no error).',
-    legendIntro: `Label a layer's legend. Use after you build a map whose meaning isn't visible from the tiles — above all after styling a layer with a \`match\` expression over codes you invented in SQL.
-
-The legend already mirrors the map's colors automatically: a \`match\` recolor renders one swatch per category, a gradient recolor renders a colorbar. What it cannot know is what your codes MEAN. If your SQL emitted \`CASE WHEN ... THEN 1\` for amphibians, the legend shows a swatch labelled "1" until you name it here.
-
-`,
-    styleNotes: `After a \`match\` recolor over codes you defined in SQL, the legend shows one swatch per code labelled with the bare number — call set_legend with \`labels\` to name them, rather than writing the color key out in chat.
-
-For dynamic hex layers (\`hex-…\` ids from add_hex_tile_layer), \`PROP\` is the layer's value column (the \`value_column\` you passed to add_hex_tile_layer, e.g. "species_richness") — NOT "count" unless that is literally the column. If unsure, call get_map_state to read the layer's \`valueColumn\`.
-
-`,
-    flyTo: 'Animate the map to a location. Use when the user asks to navigate to, zoom in on, or center the map on a place or set of coordinates.\n\nIMPORTANT: The center parameter is [longitude, latitude] (lon first, lat second — MapLibre order).\n\nTo obtain coordinates, query the H3 parquet data using the h3 extension (pre-loaded on the MCP server). H3 cell columns are typically named h8. Example:\n  LOAD h3; SELECT h3_cell_to_lng(h8) AS lon, h3_cell_to_lat(h8) AS lat FROM read_parquet(\'s3://...\') WHERE name = \'...\' LIMIT 1',
-    geocode: `Resolve a free-text place reference — street address, city, landmark, or named region — to real coordinates. Use this WHENEVER the user names a place rather than giving coordinates: "what watershed is 3109 6th Ave, LA in?", "show me Yosemite", "fly to Chicago", "which district contains downtown Fresno".
-
-NEVER invent, recall, or estimate coordinates from your own memory — always call this tool so the coordinate is traceable to a geocoder.
-
-Returns up to \`limit\` ranked candidates. Each candidate has:
-  - lat, lon          — pass to fly_to as center [lon, lat] (lon first!), or into point-in-hex SQL lookups
-  - bbox [w,s,e,n]    — for framing/fit-bounds; null for precise point addresses
-  - display_name      — the normalized, matched location
-  - match_quality     — "high" | "medium" | "low"
-
-How to use the result:
-  - Echo the resolved \`display_name\` back to the user so they can confirm the location is the one they meant.
-  - If more than one candidate is returned, or the top match_quality is "low" (e.g. "Springfield"), ASK the user which one they mean — do NOT silently pick the first.
-  - Then act: fly_to the coordinate, or use it in a containing-polygon / nearest-feature query.`,
-});
-
 const FLY_TO = 'Animate the map to a location. Use when the user asks to navigate to, zoom in on, or center the map on a place or set of coordinates.\n\nIMPORTANT: The center parameter is [longitude, latitude] (lon first, lat second — MapLibre order).\n\nFor a named place, call geocode first; never recall coordinates from memory.';
 
 const FLY_TO_EXTENT = `Move the map. Give one of:
@@ -114,13 +77,13 @@ export function getCurrentPositionAsync(options = { enableHighAccuracy: true, ti
 }
 
 /**
- * The map-control tools, in the order the full app has always listed them.
+ * The map-control tools, in the order the v3 full app listed them.
  *
  * @param {import('./map-manager.js').MapManager} mapManager
  * @param {Object} [options]
  * @param {{ forwardGeocode: Function }|null} [options.geocoder] - adds `geocode`
  * @param {boolean} [options.geolocateTool] - adds `get_user_location` (privacy opt-in)
- * @param {Object} [options.hints] - description text; see DEFAULT_HINTS and SQL_HINTS
+ * @param {Object} [options.hints] - description text; see DEFAULT_HINTS
  * @param {(layerId: string) => number[]|null} [options.layerExtent] - lets fly_to frame
  *   a layer or a bbox; returns [w, s, e, n] or null
  * @param {boolean} [options.reportView] - get_map_state also reports the camera
