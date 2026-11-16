@@ -1,15 +1,13 @@
 # Layout preview fixture
 
-`layers-input.json` here is a **test fixture, not a demo**. It exists because the
-coverage table in `AGENTS.md` says of `chat-ui.js`, `map-manager.js`,
-`layout-manager.js`, `map-draw.js`, `h3geo.js` and `voice-input.js`:
-
-> Browser-bound (DOM, MapLibre, MediaRecorder). Verify visually in a deployed
-> app — no harness yet.
-
-This is that harness. The Pages workflow publishes the repo's own `app/`
-directory, with this config in place of `app/layers-input.json`, so a change to
+`layers-input.json` here is a **test fixture, not a demo**. The map, layout and
+chrome modules are browser-bound, and the coverage table in `AGENTS.md` says
+to verify them visually, with no harness yet. This is that harness: the Pages
+workflow publishes each `preview/*` branch with this config, so a change to
 browser-bound UI can be looked at in a real browser before it merges.
+
+The fixture is glen core's config, with plugins named relative to the branch
+root (`core/plugins/…`); the workflow adjusts the paths for variants.
 
 ## Publishing a preview
 
@@ -43,11 +41,11 @@ them all; rebuilding the set keeps them additive. A preview lives until its
 branch is deleted.
 
 Nothing is pinned and no downstream app is involved — a preview serves that
-branch's `app/` directly, via relative imports, so pushing more commits and
-re-dispatching is the whole iteration loop.
+branch's `core/` and `app/` directly, via relative imports, so pushing more
+commits and re-dispatching is the whole iteration loop.
 
 **Which app the root shows depends on the branch.** A branch with
-`app/index.html` (v3) shows the fixture in the full app. A branch without one
+`app/index.html` (v3) shows the fixture in the v3 full app. A branch without one
 (v4, SchmidtDSE/glen#441) shows it in glen core: the root page is
 `core/index.html` loading `core/main.js` and `app/`'s stylesheets from beside
 it, as a downstream app loads them from jsDelivr, with this fixture as its
@@ -87,11 +85,10 @@ raw == json.dumps(json.load(open(path)), indent=N) + nl   # find the N and nl th
 |---|---|
 | `preview/layers-input.json` | `indent=2`, trailing newline |
 | `preview/variants/*.json` | `indent=2`, trailing newline |
-| `app/layers-input.json` | **`indent=4`, no trailing newline** |
+| `core/layers-input.json` | **none**: hand-formatted, with short arrays on one line |
 
-`app/layers-input.json` is the one to be careful with: it is what downstream
-apps copy from, and reaching for `indent=2` out of habit rewrites all 66 lines
-of it.
+`core/layers-input.json` is the one to be careful with: any `json.dumps`
+round trip rewrites much of it, so edit it by hand.
 
 ## Variants
 
@@ -136,8 +133,7 @@ so the fixture is sized to crowd it. Between them they cover:
 Plus `sidebar.enabled`, charts, geocoder, draw, upload, geolocate and the
 footer links. The fire slider and a visible legend are deliberately on at once
 — that pairing is the collision from
-[#359](https://github.com/SchmidtDSE/glen/issues/359), and the stock
-`app/layers-input.json` (two collections, no sidebar, no slider) cannot show it.
+[#359](https://github.com/SchmidtDSE/glen/issues/359).
 
 No `config.json` is deployed, so no LLM is configured and the chat will not
 answer. That is intentional: previews carry no secrets, and the point is the
@@ -150,39 +146,6 @@ file can rot if those move. If a preview comes up with missing layers, check
 `preview/layers-input.json` against the catalog before assuming the branch
 broke something.
 
-## The sample export
-
-`preview/sample-export.html` is a **real exported session report**, published with
-the rest of a branch's preview at
-`https://schmidtdse.github.io/glen/preview/<branch>/sample-export.html`.
-
-It is here because the export is a *downloaded artifact*, which the live app
-preview cannot show: the preview carries no LLM, so no conversation can be run
-to produce one, and nobody should have to run a conversation to review what the
-saved file looks like. This is that file, one click away.
-
-Regenerate it after any change to the export:
-
-```bash
-node preview/tools/make-sample-export.mjs
-```
-
-The generator drives the actual `ChatUI` export path in jsdom — nothing about
-it is stubbed — so the committed HTML is byte-for-byte what a user's download
-contains. It lives in `tools/` because the staging step publishes `preview/*`
-at depth 1, and a build script served next to the app is noise.
-
-The session is a fixture, but **the numbers in it are real**. It is the TPL
-Protected Lands Explorer session of 2026-10-01, rebuilt from that day's chat
-export into `tools/sample-session.json`: prompts, calls, SQL, results, answers
-and the final map, verbatim. A sample carrying invented figures would be worse
-than no sample. The one thing that export did not record is the model (#388
-adds it), so the fixture uses the TPL app's configured default. A third turn,
-*chart that as a bar chart*, is **synthetic** and marked so in the fixture: it
-was appended to exercise `render_chart`, using turn 2's real query result as
-its rows. It draws through the real `ChartRenderer`, with Observable Plot from
-devDependencies at the version the app loads.
-
 ## Core variants
 
 `preview/core-variants/<name>.json` is a shallow patch over glen core's own
@@ -191,7 +154,7 @@ config, `core/layers-input.json`, published at `/preview/<branch>/core-<name>/`.
 registry (#462): Tmax and the Tmax anomaly (band 3) as time series over all 78
 items, read from the collection's `items.parquet`, and two single days as item
 layers.
-`panel.json` shows the full app's layer panel settings in glen core, written as
+`panel.json` shows the v3 full app's layer panel settings in glen core, written as
 apps already write them (SchmidtDSE/glen#441): a versioned layer, a toggle group
 over two rasters, a collapsed group, and a layer with `"sidebar": false`.
 `template.json` is glen-template's layer config (the `template-today` variant)

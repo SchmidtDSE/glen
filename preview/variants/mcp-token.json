@@ -1,3 +1,18 @@
 {
-  "mcp_url": "https://duckdb-mcp.nrp-nautilus.io/mcp"
+  "plugins": [
+    {
+      "url": "core/plugins/mcp.js",
+      "options": {
+        "url": "https://duckdb-mcp.nrp-nautilus.io/mcp",
+        "prompt": "geospatial-analyst"
+      }
+    },
+    "core/plugins/hex.js",
+    "core/plugins/charts.js",
+    "core/plugins/draw.js",
+    {
+      "url": "core/plugins/uploads.js",
+      "options": {}
+    }
+  ]
 }

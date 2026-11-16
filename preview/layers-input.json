@@ -2,7 +2,22 @@
   "theme": "dark",
   "catalog": "https://s3-west.nrp-nautilus.io/public-data/stac/catalog.json",
   "titiler_url": "https://titiler.nrp-nautilus.io",
-  "mcp_url": "https://duckdb-mcp.carlboettiger.info/mcp",
+  "plugins": [
+    {
+      "url": "core/plugins/mcp.js",
+      "options": {
+        "url": "https://duckdb-mcp.carlboettiger.info/mcp",
+        "prompt": "geospatial-analyst"
+      }
+    },
+    "core/plugins/hex.js",
+    "core/plugins/charts.js",
+    "core/plugins/draw.js",
+    {
+      "url": "core/plugins/uploads.js",
+      "options": {}
+    }
+  ],
   "llm": {
     "user_provided": true,
     "transcription_model": {
@@ -33,11 +48,6 @@
     ]
   },
   "auto_approve": true,
-  "upload_enabled": true,
-  "draw_enabled": true,
-  "charts": {
-    "enabled": true
-  },
   "geolocate": {
     "button": true,
     "agent_tool": true

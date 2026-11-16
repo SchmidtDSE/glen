@@ -67,9 +67,9 @@ The canonical `index.html` is `core/index.html` in this repository, as glen-temp
         crossorigin="anonymous"></script>
 
     <!-- GLEN styles (pinned, at the same ref as core/main.js) -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.53.0/app/style.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.53.0/app/chat.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.53.0/app/sidebar.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.0.0/app/style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.0.0/app/chat.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.0.0/app/sidebar.css">
     <style>
         /* Boot placeholder — see #boot-status in the body. */
         #boot-status {
@@ -98,7 +98,7 @@ The canonical `index.html` is `core/index.html` in this repository, as glen-temp
     <div id="menu"></div>
 
     <!-- GLEN bootstrap (pinned) -->
-    <script type="module" src="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.53.0/core/main.js"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.0.0/core/main.js"></script>
 </body>
 
 </html>
@@ -125,7 +125,7 @@ Update the URL and its `integrity` value together in the same commit. Because ev
 
 | CDN reference | When to use |
 |---|---|
-| `@vX.Y.Z` (e.g. `@v3.53.0`) | Every deployed app — pinned, immutable |
+| `@vX.Y.Z` (e.g. `@v4.0.0`) | Every deployed app — pinned, immutable |
 | `@<40-char-commit-sha>` | Short-lived demo of an in-flight feature branch |
 
 `@main` is **not** used by deployed apps: a merge to `main` can change behavior under a running page, and tooling/MCP contracts evolve between releases. Bump the pin deliberately, never implicitly.
@@ -139,7 +139,7 @@ Minimal example:
   "catalog": "https://s3-west.nrp-nautilus.io/public-data/stac/catalog.json",
   "collections": ["cpad-2025b"],
   "plugins": [
-    { "url": "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.53.0/core/plugins/mcp.js",
+    { "url": "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.0.0/core/plugins/mcp.js",
       "options": { "url": "https://duckdb-mcp.nrp-nautilus.io/mcp", "prompt": "geospatial-analyst" } }
   ],
   "llm": {

@@ -14,7 +14,7 @@
  * the full app does.
  */
 
-/** The full app's MCP server when an app named none (app/mcp-servers.js). */
+/** The v3 full app's MCP server when an app named none. */
 export const DEFAULT_MCP_URL = 'https://duckdb-mcp.nrp-nautilus.io/mcp';
 
 // v3 keys glen core has no use for, and why.

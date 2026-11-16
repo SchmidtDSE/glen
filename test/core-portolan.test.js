@@ -405,6 +405,25 @@ describe('our current STAC (#441)', () => {
         expect(layer.fields).toEqual({ ACCESS_TYP: 'string' });
         expect(c.generatePrompt()).toContain('`ACCESS_TYP` (string): Public access');
     });
+
+    it('finds the named collection below a parent collection_url, as the v3 app did', async () => {
+        const parentUrl = 'https://s3.example.org/public-cpad/stac-collection.json';
+        const childUrl = 'https://s3.example.org/public-cpad/cpad/stac-collection.json';
+        const parent = { type: 'Collection', id: 'public-cpad', assets: {}, links: [{ rel: 'child', href: 'cpad/stac-collection.json' }] };
+        const docs = { [parentUrl]: parent, [childUrl]: { ...cpad, links: [{ rel: 'parent', href: '../stac-collection.json' }] } };
+        const fetched = [];
+        const fetchJson = async (u) => { fetched.push(u); return structuredClone(docs[u]); };
+        const c = new PortolanCatalog({ fetchJson, pmtilesMetadata: async () => null });
+        await c.load({ collections: [{ collection_id: 'cpad', collection_url: parentUrl }] });
+        expect(c.datasets.get('cpad').url).toBe(childUrl);
+        expect(c.layers.has('cpad')).toBe(true);
+
+        // A collection that is the one named is read once, with no walk.
+        fetched.length = 0;
+        const d = new PortolanCatalog({ fetchJson, pmtilesMetadata: async () => null });
+        await d.load({ collections: [{ collection_id: 'cpad', collection_url: childUrl }] });
+        expect(fetched).toEqual([childUrl]);
+    });
 });
 
 

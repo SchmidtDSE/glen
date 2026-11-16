@@ -5,3 +5,8 @@ At v4 the full app becomes glen core plus plugins (SchmidtDSE/glen#441). Glen co
 So the shared modules stay where they are. At the v4 switch, those 14 modules, `app/main.js` and `app/index.html` are deleted, and `app/` is then glen core's shared library. Moving the shared modules into `core/` was considered and rejected: it would change the stylesheet paths in every downstream `index.html` and in the converter's output, restructure the branch previews again, and gain nothing until v4. v3 apps are pinned to tags, so they keep loading `app/` from their own release.
 
 Until v4, `app/` never imports from `core/` (`test/app-imports.test.js`); `core/` imports `app/`.
+
+## At the switch
+
+v4.0.0 deleted the 14 modules, `app/main.js` and `app/index.html`, and two more that only the full app used: `app/mcp-client.js` and its vendored MCP SDK (`app/vendor/mcp-sdk.js`). The note above counted them as shared, but glen core's MCP plugin uses glen-harness's client, so nothing in core reached them. `test/core-module-graph.test.js` now fails if any `app/` module is not reached from core or a plugin. v3 fixes go to the `release-v3.x` branch, cut at v3.53.0.
+

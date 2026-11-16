@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { extractJsonArray, createRenderChartTool } from '../app/chart-tool.js';
-import { createMapControlTools, createProjectionTool, SQL_HINTS, PICK_LAYER_NUDGE } from '../app/map-control-tools.js';
+import { createMapControlTools, createProjectionTool, PICK_LAYER_NUDGE } from '../app/map-control-tools.js';
 import { createHexTileTools, hexBuildWaiter } from '../app/hex-tools.js';
 import { createFilterByQueryTool } from '../app/query-filter-tool.js';
 import { createCoreMapTools } from '../core/map-tools.js';
@@ -12,7 +12,7 @@ import { createCoreMapTools } from '../core/map-tools.js';
  */
 function sharedTools(mapManager, mcpClient = null, geocoder = null, options = {}) {
     return [
-        ...createMapControlTools(mapManager, { geocoder, geolocateTool: options.geolocateTool, hints: SQL_HINTS }),
+        ...createMapControlTools(mapManager, { geocoder, geolocateTool: options.geolocateTool }),
         ...createHexTileTools(mapManager, mcpClient ? {
             waitForBuild: hexBuildWaiter((args) => mcpClient.callTool('get_hex_tile_status', args)),
         } : {}),
