@@ -52,10 +52,10 @@ The deploy-time `config.json` sits beside `layers-input.json` and is merged over
 |---|---|
 | `llm_models` | Array of `{ value, label, endpoint, api_key }`, the models offered in the chat footer. The app sends `api_key` as `Authorization: Bearer …`. Leave it out when a same-origin proxy injects the real key: the app then sends no `Authorization` header, which a page behind HTTP basic auth needs, because a header the page sets replaces the browser's saved password. |
 | `llm_model` | Which of them is selected on load. Defaults to the first. |
-| `mcp_server_url` | MCP server URL. Overrides `mcp_url` from `layers-input.json`; with [`mcp_servers`](./configuration#multiple-mcp-servers), it replaces only the first (primary) server's URL. |
-| `mcp_auth_token` | Sent to the MCP server (the primary, with `mcp_servers`) as `Authorization: Bearer …`. |
+| `mcp_server_url` | URL of the first (primary) server of [`plugins/mcp.js`](./configuration#mcp-servers), in place of the one in `layers-input.json`. |
+| `mcp_auth_token` | Sent to the primary MCP server as `Authorization: Bearer …`. |
 | `transcription_model` | Enables voice input. See [Voice input](./configuration#voice-input-optional). |
-| `draw_enabled`, `geolocate` | Override the same keys in `layers-input.json`. |
+| `geolocate` | Overrides the same key in `layers-input.json`. (v3's `draw_enabled` has no effect here; list `plugins/draw.js` instead.) |
 | `max_tool_calls`, `max_tool_calls_manual` | Override the checkpoint caps. `0` disables a cap. |
 | `export` | Overrides the [export settings](./configuration#chat-export). |
 | `maptiler_key` | MapTiler key for the basemap, and for the `maptiler` geocoder when it has none of its own. |
@@ -69,7 +69,7 @@ All deployment options load the core library from jsDelivr. **Always pin to a re
 ```html
 <!-- Pinned to a release tag — required for any deployed app -->
 <script type="module"
-  src="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.39.0/app/main.js">
+  src="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.53.0/core/main.js">
 </script>
 ```
 

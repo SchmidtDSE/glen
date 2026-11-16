@@ -4,7 +4,7 @@ This document describes the agentic tool-use loop in detail, with a focus on how
 
 ## Overview
 
-The agent runs in `app/agent.js`. When the user sends a message, `processMessage()` enters a `while` loop that:
+The agent runs in [glen-harness](https://github.com/SchmidtDSE/glen-harness)'s `src/agent.js`, which glen core loads from jsDelivr. (The v3 full app had its own copy, `app/agent.js`.) When the user sends a message, `processMessage()` enters a `while` loop that:
 
 1. Calls the LLM with the full conversation history + tool schemas
 2. Inspects the response:
@@ -44,10 +44,10 @@ user message
 
 | File | Role |
 |---|---|
-| `app/agent.js` | The agentic loop, LLM calls, tool dispatch |
-| `app/chat-ui.js` | All DOM rendering — proposal blocks, results, approval buttons |
-| `app/tool-registry.js` | Unified registry: local tools vs. remote (MCP) tools |
-| `app/system-prompt.md` | LLM instructions, including the pre-call explanation rule |
+| glen-harness `src/agent.js` | The agentic loop, LLM calls, tool dispatch |
+| glen-harness `ui/chat-ui.js` | All DOM rendering — proposal blocks, results, approval buttons |
+| glen-harness `src/tool-registry.js` | Unified registry: local tools vs. remote (MCP) tools |
+| `core/system-prompt.md`, or the app's own prompt | LLM instructions. The v3 full app's `app/system-prompt.md` held the pre-call explanation rule described below. |
 
 ## Local vs. remote tools
 
@@ -103,7 +103,7 @@ This is deterministic and always produces something meaningful, but it reads les
 
 ## The recurring problem: silent follow-up calls
 
-The system prompt instructs the LLM to explain before every `query` call (see `app/system-prompt.md` → "Before every remote tool call"). The LLM tends to follow this for the **first** call in a turn, because it's in a "responding to the user" frame of mind. For **subsequent iterations** — after receiving tool results and deciding it needs another query — it's in a "making progress on a task" frame of mind and often emits `message.content = null` alongside the tool call.
+The system prompt instructs the LLM to explain before every `query` call (in the v3 full app, `app/system-prompt.md` → "Before every remote tool call"). The LLM tends to follow this for the **first** call in a turn, because it's in a "responding to the user" frame of mind. For **subsequent iterations** — after receiving tool results and deciding it needs another query — it's in a "making progress on a task" frame of mind and often emits `message.content = null` alongside the tool call.
 
 The result: the second (and later) approval prompts show only `describeToolCalls()` output, not a fluent model-written explanation.
 

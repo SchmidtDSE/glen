@@ -18,9 +18,9 @@ hero:
 
 features:
   - title: Zero JavaScript
-    details: Your app is just three files — index.html, layers-input.json, and system-prompt.md. The core library loads from CDN.
-  - title: STAC + SQL analytics
-    details: Point at a STAC catalog; the agent queries H3-indexed Parquet via DuckDB/MCP and controls the map in response.
+    details: Your app is just three files — index.html, layers-input.json, and system-prompt.md. glen core and its plugins load from CDN.
+  - title: Portolan and STAC catalogs
+    details: Point at a catalog and the agent shows, filters and styles its layers. The MCP plugin adds SQL over H3-indexed Parquet with DuckDB.
   - title: Reports you can re-run
     details: Save a session as a Quarto-style report — the SQL the agent ran as R, Python or SQL chunks with their output, charts, the final map, and a disclosure of the model used.
   - title: Flexible deployment

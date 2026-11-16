@@ -46,6 +46,14 @@ Nothing is pinned and no downstream app is involved — a preview serves that
 branch's `app/` directly, via relative imports, so pushing more commits and
 re-dispatching is the whole iteration loop.
 
+**Which app the root shows depends on the branch.** A branch with
+`app/index.html` (v3) shows the fixture in the full app. A branch without one
+(v4, SchmidtDSE/glen#441) shows it in glen core: the root page is
+`core/index.html` loading `core/main.js` and `app/`'s stylesheets from beside
+it, as a downstream app loads them from jsDelivr, with this fixture as its
+`layers-input.json`. The variants below follow the root. `/core/` and the
+core variants are the same in both.
+
 ## Logos in the fixture
 
 All three header slots are filled with real marks, so spacing and truncation

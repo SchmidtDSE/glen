@@ -1,45 +1,59 @@
 # Configuration Reference
 
-Client apps configure GLEN via `layers-input.json`. All fields except `catalog` and `collections` are optional.
+An app configures glen core with `layers-input.json`, served beside its `index.html`. Every field is optional, though an app with no `collections` and no `catalog` has an empty map.
+
+glen core reads the layer settings of the v3 full app (`app/main.js`) by the same names, so a v3 app's collections carry over unchanged. What changed is the opt-in features: the MCP server, charts, drawing, uploads and hex tiles are now [plugins](#plugins). `scripts/convert-to-core.mjs` converts a v3 app's `layers-input.json` and `index.html`; see [Moving a v3 app](#moving-a-v3-app-to-glen-core).
 
 ## Top-level fields
 
-| Field | Required | Description |
-|---|---|---|
-| `catalog` | Yes | STAC catalog root URL. The app traverses child links to find collection metadata. |
-| `collections` | Yes | Array of collection specs — see below. |
-| `titiler_url` | No | TiTiler server for COG/raster tile rendering. Defaults to `https://titiler.nrp-nautilus.io`. |
-| `mcp_url` | No | MCP server URL for DuckDB SQL queries. Defaults to `https://duckdb-mcp.nrp-nautilus.io/mcp`. With `mcp_servers`, it sets the URL of the first (primary) server. |
-| `mcp_servers` | No | Several MCP servers, e.g. duckdb-mcp plus a domain server. See [Multiple MCP servers](#multiple-mcp-servers). |
-| `view` | No | Initial map view — see below. |
-| `llm` | No | LLM configuration — see below. Omit for server-provided mode. |
-| `welcome` | No | Welcome message: `{ "message": "...", "examples": ["...", "..."] }` |
-| `default_basemap` | No | Which basemap is active on load: `"natgeo"` (default), `"satellite"`, or `"plain"`. |
-| `custom_basemap` | No | Replace the NatGeo slot with a custom tile URL — see below. |
-| `auto_approve` | No | Start with remote tool calls auto-approved (no confirmation prompt). Default: `true`. |
-| `max_tool_calls` | No | Remote queries in auto-approve mode before the agent pauses at a checkpoint. Default: `15`. |
-| `max_tool_calls_manual` | No | Remote queries in manual mode before a checkpoint. Default: `100`. |
-| `catalog_index_threshold` | No | Dataset count above which the front-loaded catalog switches to a compact index (id + title + one-line summary + layer ids) to shrink the cold prompt; full descriptions/paths then arrive on demand via `get_schema`. Default: `8`. Set very high (e.g. `9999`) to always front-load the full catalog. |
-| `client_header_hosts` | No | Host suffixes that receive the `X-Client: geo-agent/<ref>` attribution header (for proxy log analysis). Default: `["nrp-nautilus.io"]`. The header is **only** sent to these hosts — never to bring-your-own external endpoints, where a custom header could trip CORS and block requests. Override only if your proxy runs on a different host. |
-| `links` | No | Optional links shown in the chat UI — see below. |
-| `header` | No | App chrome band across the top — logos and top-level nav. Off unless configured. See below. |
-| `theme` | No | Chrome colour scheme — a mode string, or an object that also sets brand colours. See below. |
-| `sidebar` | No | Full-height resizable sidebar instead of the floating chat panel. See [Sidebar layout](#sidebar-layout). |
-| `charts` | No | `{ "enabled": true }` registers the `render_chart` tool. Off by default. See [Charts](#charts-opt-in). |
-| `draw_enabled` | No | Polygon draw tool. Off by default. See [Draw tool](#draw-tool-optional). |
-| `upload_enabled` | No | GeoJSON boundary upload. Off by default. See [GeoJSON upload](#geojson-upload-optional). |
-| `geocoder`, `geolocate` | No | Place-name search and device location. See [Geocoding](#geocoding-optional) and [Geolocation](#geolocation-optional). |
-| `export` | No | The saved session report. On by default. See [Chat export](#chat-export). |
-| `tool_memo` | No | `false` turns off read-tool memoization. Default on. See [Read-tool memo](#read-tool-memo). |
+| Field | Description |
+|---|---|
+| `catalog` | STAC or Portolan catalog root. Collections named by id are found under it, at any depth. With `catalog` and no `collections`, every collection under the root is loaded, up to `max_collections`. |
+| `collections` | Array of collection specs. See [Collections](#collections). |
+| `max_collections` | Most collections to load from a `catalog` with no `collections` list. Default: `25`. |
+| `titiler_url` | TiTiler server for COG tiles. Default: `https://titiler.nrp-nautilus.io`. |
+| `plugins` | Plugin modules to load, by URL, each with its options. See [Plugins](#plugins). |
+| `system_prompt_url` | The agent's base prompt. Default: glen core's own `core/system-prompt.md`, which covers the map tools. See [System prompt](#system-prompt). |
+| `view` | Initial map view. Without it the map opens on the extent of the loaded data. See below. |
+| `llm` | LLM configuration. Omit for server-provided mode. See [LLM configuration](#llm-configuration). |
+| `welcome` | Welcome message: `{ "message": "...", "examples": ["...", "..."] }` |
+| `default_basemap` | Which basemap is active on load: `"natgeo"` (default), `"satellite"`, or `"plain"`. |
+| `custom_basemap` | Replace the NatGeo slot with a custom tile URL. See below. |
+| `auto_approve` | Start with remote tool calls auto-approved (no confirmation prompt). Default: `true`. |
+| `max_tool_calls` | Remote queries in auto-approve mode before the agent pauses at a checkpoint. Default: `15`. |
+| `max_tool_calls_manual` | Remote queries in manual mode before a checkpoint. Default: `100`. |
+| `links` | Links shown in the chat UI. See below. |
+| `header` | App chrome band across the top: logos and top-level nav. Off unless configured. See below. |
+| `theme` | Chrome colour scheme: a mode string, or an object that also sets brand colours. See below. |
+| `sidebar` | Full-height resizable sidebar instead of the floating chat panel. See [Sidebar layout](#sidebar-layout). |
+| `geocoder`, `geolocate` | Place-name search and device location. See [Geocoding](#geocoding-optional) and [Geolocation](#geolocation-optional). |
+| `export` | The saved session report. Off by default. See [Chat export](#chat-export). |
+| `s3_sources` | Extra https → `s3://` rules for the catalog tools. See [Dataset metadata tools](#dataset-metadata-tools). |
+
+### Settings the v3 full app had
+
+These v3 keys have no effect in glen core. `scripts/convert-to-core.mjs` turns the first group into plugins and drops the rest with a note.
+
+| v3 key | In glen core |
+|---|---|
+| `mcp_url`, `mcp_servers` | `plugins/mcp.js` with `url` or `servers`. See [MCP servers](#mcp-servers). |
+| `charts` | `plugins/charts.js`. See [Charts](#charts). |
+| `draw_enabled` | `plugins/draw.js`. See [Draw tool](#draw-tool). |
+| `upload_enabled` | `plugins/uploads.js`, with the same settings as its options. See [GeoJSON upload](#geojson-upload). |
+| Hex tile tools (always on in v3) | `plugins/hex.js`. See [Hex tile layers](#hex-tile-layers). |
+| `catalog_index_threshold` | Dropped. glen core lists every layer in the prompt, and `get_schema` gives the details. |
+| `client_header_hosts` | Dropped. The harness sends its client header itself. |
+| `tool_memo` | Dropped. |
+| A collection's `preload` | Dropped. The prompt lists every layer's columns, and `get_schema` gives the rest. |
 
 ## View
 
-Controls the initial camera position. All fields are optional.
+Controls the initial camera position. All fields are optional. Without `view`, the map opens on the extent of the loaded data.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `center` | `[lon, lat]` | `[-119.4, 36.8]` | Initial map center (longitude first). |
-| `zoom` | number | `6` | Initial zoom level (0–22). |
+| `center` | `[lon, lat]` | `[0, 20]` | Initial map center (longitude first). |
+| `zoom` | number | `2` | Initial zoom level (0–22). |
 | `pitch` | number | `0` | Camera tilt in degrees (0 = flat, 60 = steep). |
 | `bearing` | number | `0` | Map rotation in degrees clockwise from north (0 = north-up). |
 | `globe` | boolean | `false` | Start in globe (spherical Earth) projection. Users can also toggle this at runtime via the "Globe view" checkbox in the basemap panel. Globe view automatically transitions back to flat Mercator at zoom ~12, where the projections converge — this is handled by MapLibre internally. |
@@ -62,42 +76,82 @@ To start in globe projection:
 
 ## Collections
 
-Each entry in `collections` is either a **bare string** (loads all visual assets from that collection) or an **object**:
+Each entry in `collections` is a collection's URL, its id (found under `catalog`), or an object:
 
-| Field | Type | Description |
+```json
+"collections": [
+  "https://example.org/roads/collection.json",
+  "cpad-2025b",
+  {
+    "url": "https://example.org/population/collection.json",
+    "display_name": "Population at 100 m",
+    "visible": true,
+    "group": "People",
+    "colormap": "magma",
+    "rescale": "0,50"
+  }
+]
+```
+
+Collections may be in [Portolan](https://www.portolan-sdi.org/) form (`catalog.json` nodes holding `collection.json` nodes, styles as assets) or in our current STAC form (bucket-level collections with collections below them). Both are read the same way.
+
+| Field | Applies to | Description |
 |---|---|---|
-| `collection_id` | string | STAC collection ID to load. |
-| `collection_url` | string | Direct URL to the STAC collection JSON. Recommended for any collection that is not a direct child of the root catalog, since finding it by id reads much of the catalog on every load — see [Nested collections](#nested-collections). Also needed for private or external catalogs. |
-| `group` | string or object | Group label shown in the layer toggle panel. Use an object `{ "name": "...", "collapsed": true }` to start the group folded — see [Collapsed groups](#collapsed-groups). |
-| `sidebar` | boolean | Whether this collection's layers get rows in the layer panel. Default: `true`. Set `false` to keep the layers configured and agent-addressable but out of the panel — see [Layers outside the panel](#layers-outside-the-panel). |
-| `assets` | array | Asset selector — see below. Omit to load all visual assets. |
-| `display_name` | string | Override the collection title shown in the UI. |
-| `preload` | boolean | Inject the full column schema into the LLM system prompt — see [Preloaded schemas](#preloaded-schemas). Default: `false`. |
+| `url` | all | The collection's JSON. v3's `collection_url` also works. |
+| `id` | all | With `url`, the layer id to use instead of the collection's own id. Without `url`, the collection id to find under `catalog`. v3's `collection_id` also works. |
+| `display_name` | all | Name in the layer panel and legend. |
+| `visible` | all | On when the app opens. |
+| `group` | all | Group label in the layer panel. Use `{ "name": "...", "collapsed": true }` to start the group folded. See [Collapsed groups](#collapsed-groups). |
+| `sidebar` | all | `false` keeps the layers on the map and available to the agent, but out of the panel. See [Layers outside the panel](#layers-outside-the-panel). |
+| `assets` | all | The assets to draw, in this order: asset keys, or objects with an `id` and any of these settings for that asset alone. Without it every drawable asset is drawn. |
+| `items` | all | Items of the collection to draw: item ids, or objects with an `id` and any of these settings for that item alone. See [Items](#items). |
+| `style` | vector | Name of the published style to start with. Default: the one with the `default` role. See [Styles from the catalog](#styles-from-the-catalog). |
+| `paint`, `default_filter` | vector | MapLibre paint and filter to use instead of the published style's. v3's `default_style` is read as `paint`. |
+| `tooltip` | vector | Properties shown on hover. v3's `tooltip_fields` also works. |
+| `colormap`, `rescale`, `opacity` | raster | TiTiler colour map, display range `"min,max"`, and opacity (default 0.7). |
+| `bidx` | raster | Band of a multi-band COG to draw. Default: 1. |
+| `control` | raster, vector | A slider or a time series. See [Reactive-parameter controls](#reactive-parameter-controls-sliders) and [Raster time series](#raster-time-series). |
+
+Keys on a collection entry apply to all of its layers. An entry under `assets` or `items` overrides them for its own layers. The per-asset settings in the sections below (`versions`, `toggle_group`, `layer_type`, `outline_style`, the `legend_*` keys, `animation`, a raster's `nodata`, `unscale` and `legend_classes`) work on either.
+
+Layer ids are `<collection>/<asset>` when the collection has more than one drawable asset, whichever of them `assets` keeps, so an id does not change with the selection. An item's layer is `<collection>/<item>`, or `<collection>/<item>/<asset>` when the item has more than one drawable asset. A layer whose entry sets `bidx` adds `/band-<n>`, so one COG can be listed once per band.
 
 ### Nested collections
 
-A bare `collection_id` is looked up under the root catalog (`appConfig.catalog`) at any depth, through sub-catalogs and parent collections alike. Since v3.44 this covers both our current layout (bucket-level collections with collections below them) and the Portolan layout (`catalog.json` nodes holding `collection.json` nodes). Earlier versions looked only at the root's direct children, so a nested collection never appeared.
-
-The lookup reads the links that name the id first and stops once every id is found, so a collection directly under the root costs one read. A collection further down costs a walk through much of the catalog, several hundred reads on our public catalog, on every page load. The browser console then names the URL to use:
-
-```
-[Catalog] "megamove" is 2 levels below the catalog root, so finding it reads much of the catalog on every load. Add "collection_url": "https://…/megamove/stac-collection.json" to its entry in layers-input.json.
-```
+A collection named by id is looked up under the root catalog at any depth, through sub-catalogs and parent collections alike. The lookup reads the links that name the id first and stops once every id is found, so a collection directly under the root costs one read. A collection further down can cost a walk through much of the catalog on every page load. Name such a collection by `url` instead:
 
 ```json
 {
-  "collection_id": "ace-amphibian-richness",
-  "collection_url": "https://data.source.coop/cboettig/ca30x30/ace-amphibian-richness/stac-collection.json"
+  "id": "ace-amphibian-richness",
+  "url": "https://data.source.coop/cboettig/ca30x30/ace-amphibian-richness/stac-collection.json"
 }
 ```
 
-**Trade-off:** a `collection_url` breaks if the collection moves, while an id keeps working at the cost of the walk.
+**Trade-off:** a `url` breaks if the collection moves, while an id keeps working at the cost of the walk.
+
+### Items
+
+A collection whose data is in items, such as a daily raster series, draws nothing until its entry lists the items to draw, or plays them as a time series:
+
+```json
+{
+  "url": "https://example.org/heat/daily-cog/collection.json",
+  "colormap": "rdylbu_r",
+  "rescale": "10,40",
+  "items": [
+    { "id": "tmax-tmin-2025-07-01", "display_name": "Tmax, 1 July", "visible": true },
+    { "id": "tmax-tmin-2025-07-01", "bidx": 3, "display_name": "Tmax anomaly, 1 July", "colormap": "rdbu_r", "rescale": "-10,10" }
+  ]
+}
+```
+
+Items are read one JSON file each, found through the collection's `item` links. Their COGs and PMTiles are drawn as the collection's are, and the prompt gives each item layer its item id and date. To play every item as one time series, see [Raster time series](#raster-time-series).
 
 ## Dataset metadata tools
 
-The agent's `get_schema` and `get_stac_details` tools are answered in the browser from the STAC the app loaded (v3.44, #441). They cover the configured collections and every collection below them, read on demand, and nothing else: an id outside them gets an error listing the app's datasets. The MCP server's catalog tools (`browse_stac_catalog`, `get_stac_details`, `get_collection`) are never registered, so the agent cannot browse the rest of the catalog.
+With `plugins/mcp.js`, the agent's `get_schema` and `get_stac_details` tools are answered in the browser from the collections the app loaded. They describe a collection's `read_parquet()` paths, hex tables and columns, with descriptions and coded values from its `table:columns`. An id outside the app's collections gets an error listing the app's datasets. The MCP servers' own catalog tools (`browse_stac_catalog`, `get_stac_details`, `get_collection`, `get_schema`) are never registered, so the agent cannot browse the rest of the catalog (see `docs/design/data-scope.md`).
 
-Both tools print `read_parquet()` paths. An HTTPS asset href becomes an `s3://` path by the same rules as the MCP server's built-in sources (`https://s3-west.nrp-nautilus.io/` → `s3://`, `https://data.source.coop/` → `s3://us-west-2.opendata.source.coop/`). For another host the tools print the path-style `s3://` form with the `s3_endpoint` and `s3_scope` to pass to `query`. An app whose MCP server reads another host by default names it in `s3_sources`, tried before the built-ins:
+An HTTPS asset href becomes an `s3://` path by the same rules as the MCP server's built-in sources (`https://s3-west.nrp-nautilus.io/` → `s3://`, `https://data.source.coop/` → `s3://us-west-2.opendata.source.coop/`). For another host the tools print the path-style `s3://` form with the `s3_endpoint` and `s3_scope` to pass to `query`. An app whose MCP server reads another host by default names it in `s3_sources`, tried before the built-ins:
 
 ```json
 "s3_sources": [
@@ -402,32 +456,6 @@ glen core also plays a collection whose dates are STAC items, with `"frames": "i
 
 With `"frames": "list"`, the app instead lists the folder that holds the layer's COG, using an S3 ListObjectsV2 request, and reads each file's date from an 8-digit (`YYYYMMDD`) or 6-digit (`YYYYMM`) run in its name. Files without one, such as `ssta-latest.tif`, are skipped. This needs a path-style S3 URL and a bucket that allows cross-origin listing. Use it for a series that has no frame-list asset yet.
 
-## Charts (opt-in)
-
-By default the agent answers analytical questions with the map and SQL result **tables**. Enabling charts gives it one more primitive — a `render_chart` tool that turns a query result into a **bar**, **line**, **scatter**, or **histogram** in a floating panel ([#277](https://github.com/SchmidtDSE/glen/issues/277)).
-
-It is **off by default** (zero footprint — the tool isn't registered and no charting library loads). Turn it on with a top-level flag in `layers-input.json`:
-
-```json
-{
-  "catalog": "https://…/catalog.json",
-  "charts": { "enabled": true }
-}
-```
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `enabled` | boolean | `false` | Register the `render_chart` tool and lazy-load the charting library. |
-
-When enabled, the agent calls `render_chart` with a chart type, the columns to plot (`x`, `y`, optional `series`), and the data — either an inline `data` array it already computed, or a `sql` query the panel runs itself (so large result sets never pass back through the LLM; if both are supplied, `sql` wins). An optional `title` and `x_label` / `y_label` override the panel heading and axis captions (axes default to the column names). Charts render client-side via [Observable Plot](https://observablehq.com/plot/), which (with d3) is fetched from the CDN via SRI-pinned scripts the first time a chart is drawn — downstream apps don't need to add any `<script>` tag. Each chart panel can be **resized** (drag the bottom-right grip — it re-plots to fit) or **popped out** to a large centered view, and closed with the ✕.
-
-| Chart type | Shape | Channels |
-|---|---|---|
-| `bar` | ranking / category comparison | `x` = category, `y` = value |
-| `line` | time series / trend | `x` = ordered field (e.g. year), `y` = value |
-| `scatter` | relationship / trade-off (e.g. a Pareto frontier) | `x`, `y` = two numerics |
-| `histogram` | distribution of one numeric | `x` = the value (bars are counts; omit `y`) |
-
 ## Collapsed groups
 
 By default, layer groups in the panel start expanded. To start a group folded (useful when a collection has many layers), use the object form for `group`:
@@ -488,25 +516,6 @@ The per-asset value wins where both are set; where neither is, the default is `t
 
 **This is not access control.** A `sidebar: false` layer's URL, style and data are as reachable
 as any other layer's. It is a navigation aid for a crowded panel, nothing more.
-
-## Preloaded schemas
-
-By default, the system prompt includes only a compact hint for each collection — enough for the LLM to know the dataset exists, but it must call `get_schema` before writing SQL. This keeps token usage low when many collections are configured.
-
-Set `"preload": true` on a collection to inject its full column schema (names, types, descriptions, and H3 index columns) directly into the system prompt. This lets the LLM write correct SQL on the first turn without an extra tool call, at the cost of more prompt tokens.
-
-Use `preload` for the datasets users query most often:
-
-```json
-{
-  "collection_id": "cpad-2025b",
-  "preload": true,
-  "group": "Protected Areas",
-  "assets": [{ "id": "cpad-holdings-pmtiles", "visible": true }]
-}
-```
-
-Collections without `preload` (or with `preload: false`) show a compact summary with coded-value hints and a prompt to call `get_schema`. The `get_schema` tool always returns the full schema regardless of the `preload` setting.
 
 ## Versioned assets
 
@@ -624,21 +633,19 @@ in `layers-input.json`.
 
 ### Enabling sidebar mode
 
-**Step 1 — Update `index.html`** to use the minimal scaffold and include `sidebar.css`:
+**Step 1 — Check that `index.html` loads `sidebar.css`**, as glen-template's and `core/index.html` do:
 
 ```html
 <head>
   <!-- ... other tags ... -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.39.0/app/style.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.39.0/app/chat.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.39.0/app/sidebar.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/app/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/app/chat.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/app/sidebar.css">
 </head>
 <body>
   <div id="map"></div>
   <div id="menu"></div>
-  <script type="module"
-    src="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.39.0/app/main.js">
-  </script>
+  <script type="module" src="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/core/main.js"></script>
 </body>
 ```
 
@@ -998,6 +1005,159 @@ footer link to it by default (`links.data` above). Setting `links.data: false`
 removes those links, but `#data` still opens the page, so outside links keep
 working.
 
+## Plugins
+
+A plugin adds tools, controls or prompt text to glen core. List the plugins an app uses in `plugins`, each as a URL or as an object with `url` and `options`. Load them from jsDelivr at the same ref as `core/main.js`:
+
+```json
+"plugins": [
+  { "url": "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/core/plugins/mcp.js",
+    "options": { "url": "https://duckdb-mcp.nrp-nautilus.io/mcp", "prompt": "geospatial-analyst" } },
+  "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/core/plugins/hex.js",
+  "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/core/plugins/charts.js",
+  "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/core/plugins/draw.js",
+  { "url": "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/core/plugins/uploads.js", "options": { "max_features": 200 } }
+]
+```
+
+A plugin that fails to load or throws is logged and skipped, and the map and its tools keep working.
+
+### MCP servers
+
+`plugins/mcp.js` adds the tools of one or more MCP servers, such as duckdb-mcp's `query` and `register_hex_tiles`, and the [dataset metadata tools](#dataset-metadata-tools). Give one server as `url`, or several as `servers`:
+
+```json
+{ "url": "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/core/plugins/mcp.js",
+  "options": {
+    "servers": [
+      { "url": "https://duckdb-mcp.nrp-nautilus.io/mcp", "prompt": "geospatial-analyst" },
+      { "url": "https://sdm-mcp.nrp-nautilus.io/mcp", "exclude": ["debug_tool"] }
+    ]
+  } }
+```
+
+| Field | Description |
+|---|---|
+| `url` | The server's Streamable HTTP endpoint. |
+| `worker` | In place of `url`, the path of a Web Worker file the app serves that runs the server in the page, such as [geo-query-wasm](https://github.com/SchmidtDSE/geo-query-wasm). `worker_config` is passed to it. See `core/README.md`. |
+| `auth_token` | Sent to this server only, as `Authorization: Bearer …`. |
+| `headers` | Other request headers for this server. |
+| `prompt` | An MCP prompt of this server's to add to the system prompt, such as duckdb-mcp's `geospatial-analyst`. |
+| `include`, `exclude` | Tool names: register only these, or all but these. |
+
+**The first server is the primary.** The deploy-time `config.json` sets its URL and token with `mcp_server_url` and `mcp_auth_token`, so a deployment can inject the duckdb-mcp URL there while other servers stay listed in `layers-input.json`. When two servers list a tool of the same name, the one listed first keeps it. A server that cannot be reached is skipped, and each server reconnects on its own.
+
+The plugin also adds `filter_by_query`, which filters a layer to the feature ids an SQL query returns without passing them through the model.
+
+#### A visitor's MCP token
+
+The shared MCP servers (duckdb-mcp and its replicas) require a bearer token. A Kubernetes deployment adds it in its own nginx relay (`/api/mcp`), so the browser never holds it. A static deployment, such as a GitHub Pages app made from glen-template or a local copy, has no relay, so its queries are refused (HTTP 401).
+
+There a visitor can enter the token themselves (#442). When the primary server refuses the app at startup, the chat says the data server needs a token and opens the ⚙ settings panel with a "Data server token" field. The token is kept in the browser's `localStorage` and sent only to the primary server. Saving it reloads the page so the app connects normally; changing it later reconnects without losing the conversation. Clearing the field removes it.
+
+The field is offered only when a visitor's token would be used:
+
+- The deployment set no token for the primary (`mcp_auth_token` in `config.json`, or `auth_token` or an `Authorization` header on the first server's entry). A deployment's own token always wins.
+- The primary is on another origin than the page. A same-origin URL such as `/api/mcp` is the deployment's own relay, and a header set by the page there would also replace the browser's saved basic-auth credentials.
+
+The token comes from the server's operator. In user-provided mode the field sits beside the LLM key in the same panel.
+
+### Charts
+
+`plugins/charts.js` adds a `render_chart` tool that turns a query result into a **bar**, **line**, **scatter**, or **histogram** in a floating panel ([#277](https://github.com/SchmidtDSE/glen/issues/277)). Without the plugin, the agent answers with the map and SQL result tables.
+
+The agent calls `render_chart` with a chart type, the columns to plot (`x`, `y`, optional `series`), and the data — either an inline `data` array it already computed, or a `sql` query the panel runs through the `query` tool of an SQL server added with `plugins/mcp.js` (so large result sets never pass back through the LLM; if both are supplied, `sql` wins). An optional `title` and `x_label` / `y_label` override the panel heading and axis captions (axes default to the column names). Charts render client-side via [Observable Plot](https://observablehq.com/plot/), which (with d3) is fetched from the CDN via SRI-pinned scripts the first time a chart is drawn — downstream apps don't need to add any `<script>` tag. Each chart panel can be **resized** (drag the bottom-right grip — it re-plots to fit) or **popped out** to a large centered view, and closed with the ✕.
+
+| Chart type | Shape | Channels |
+|---|---|---|
+| `bar` | ranking / category comparison | `x` = category, `y` = value |
+| `line` | time series / trend | `x` = ordered field (e.g. year), `y` = value |
+| `scatter` | relationship / trade-off (e.g. a Pareto frontier) | `x`, `y` = two numerics |
+| `histogram` | distribution of one numeric | `x` = the value (bars are counts; omit `y`) |
+
+### Draw tool
+
+`plugins/draw.js` lets users draw a region of interest on the map and query it through the chat agent. A pentagon button appears in the top-left map controls (below the zoom buttons). Click it to enter polygon draw mode, click on the map to place vertices, and double-click to finish. Only one polygon can exist at a time; drawing a new one replaces the previous.
+
+The agent receives a `get_drawn_region` tool that returns the polygon as WKT along with a suggested H3 resolution scaled to the region size, which keeps it from hexing a large area at high resolution. The answer is meant for SQL, so this plugin goes with an SQL server from `plugins/mcp.js`.
+
+### GeoJSON upload
+
+`plugins/uploads.js` lets a user drop a small polygon boundary (a study area, a parcel, a district) or a set of points (their own occurrence records, survey sites) onto the map and ask questions about it.
+
+An **Upload** button appears in the layer panel's action row, and a `.geojson` file can also be dragged onto the map. The file is validated in the browser, `PUT` straight to a public bucket, and drawn on the map. The file never passes through the model. The agent gets only the uploaded file's URL, through the `get_uploaded_dataset` tool, and reads it with DuckDB `ST_Read(...)` in an ordinary `query`.
+
+Its options:
+
+| Field | Default | Description |
+|---|---|---|
+| `bucket_url` | `https://s3-west.nrp-nautilus.io/public-output` | Bucket the file is written to. |
+| `prefix` | `uploads` | Key prefix inside the bucket. Files are named by content hash. |
+| `max_bytes` | `5242880` (5 MB) | Largest file accepted. |
+| `max_features` | `1000` | Most polygon features accepted. |
+| `max_point_features` | `50000` | Most points accepted, after each MultiPoint is split into its points. `max_bytes` still applies. |
+| `ingest_url` | none | Where to send people whose data is too big or isn't polygons or points, e.g. a data-ingest request form. |
+
+```json
+{ "url": "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/core/plugins/uploads.js",
+  "options": { "max_features": 200, "ingest_url": "https://example.org/data-request" } }
+```
+
+A file holds either polygons (Polygon, MultiPolygon) or points (Point, MultiPoint), not both. Lines and larger data are out of scope by design; the error message points to `ingest_url`.
+
+#### Boundaries
+
+For an uploaded boundary, `get_uploaded_dataset` tells the agent to convert it once to H3 cells with `h3_polygon_wkt_to_cells` and join those cells to a hex dataset, on `h0` as well so DuckDB reads only the partitions the boundary covers. An exact geometry test (`ST_Within`) is offered only for data without H3 columns, because the hex join is much faster:
+
+```sql
+WITH aoi AS (SELECT ST_AsText(ST_Union_Agg(geom)) AS wkt FROM ST_Read('<url>')),
+cells AS (SELECT UNNEST(h3_polygon_wkt_to_cells(aoi.wkt, 8)) AS cell FROM aoi)
+SELECT d.*
+FROM cells JOIN read_parquet('s3://…/hex/h0=*/data_0.parquet', hive_partitioning = true) d
+  ON d.h8 = cells.cell AND d.h0 = h3_cell_to_parent(cells.cell, 0)
+```
+
+The agent picks a coarser resolution for a large area to keep the number of cells reasonable.
+
+#### Points
+
+Points are drawn as circles and uploaded as GeoJSON, like polygons. A MultiPoint is split into one point per coordinate first, keeping its properties. A point outside the longitude and latitude range is refused, since that usually means swapped or projected coordinates.
+
+For each point upload, `get_uploaded_dataset` gives the agent a ready SQL source that adds H3 cell columns `h10` … `h0` (#435). It computes each point's resolution-10 cell and derives every coarser cell from it with `h3_cell_to_parent`, the way cng-datasets builds the catalog's hex data, so the points join to any H3-indexed dataset on a shared column such as `h10`. Joining on `h0` as well lets DuckDB read only the partitions the points fall in:
+
+```sql
+WITH pts AS (SELECT * FROM <sql_source>)
+SELECT d.*, pts.species
+FROM pts JOIN read_parquet('s3://…/hex/h0=*/data_0.parquet', hive_partitioning = true) d
+  ON d.h10 = pts.h10 AND d.h0 = pts.h0
+```
+
+The hint tells the agent to join at the finest resolution both sides have and to prefer this join to an exact geometry test. On 1,001 points against PAD-US fee lands (hex at resolution 10), the `h10` join found 438 points in 3.5 s, and `ST_Within` against the polygon GeoParquet found 439 in 7.8 s. An `h8` join found 517, because a point matches whenever anything in its larger cell does.
+
+The cells are computed when the agent queries rather than stored in the file. Parsing the GeoJSON dominates the cost of a query, and storing the cells made the file up to 2.8 times larger and slower to read; #435 has the benchmark.
+
+::: warning The bucket must accept anonymous browser uploads
+The browser writes the file directly, so the bucket needs anonymous `PUT` **and** a CORS rule allowing `PUT` from your app's origin. Read-only CORS is the common default, and uploads fail at the preflight with a 403. On Ceph RGW the first rule whose `AllowedOrigin` matches wins, so put a specific-origin `PUT` rule before any broad `*` rule. Uploaded files are public.
+:::
+
+### Hex tile layers
+
+`plugins/hex.js` adds `add_hex_tile_layer` and `remove_hex_tile_layer`, which draw the H3 tile pyramid an SQL server builds with `register_hex_tiles`. duckdb-mcp serves those tiles over https. geo-query-wasm, run in a worker by `plugins/mcp.js`, keeps them in the browser; the plugin then registers geo-query-wasm's MapLibre protocol for them. Its `geo_query_wasm` option names the geo-query-wasm release whose protocol module to load (default `v0.6.0`); match the worker's.
+
+### Writing a plugin
+
+A plugin is an ES module whose default export is `{ name, setup(ctx, options) }`. `setup` runs after the map and the map tools exist and before the agent is built. `ctx` holds the merged config, the `MapManager`, the catalog, the tool registry, `addPrompt(text)` and `onReady(fn)`; `core/README.md` lists them. Prompt text should stay the same for a deployment, so that providers can cache the prompt prefix (see `docs/design/prompt-prefix-stability.md`).
+
+## System prompt
+
+The agent's prompt starts with a base prompt, then lists the loaded layers, then adds any plugin's sections (such as the MCP plugin's data files and the server's `geospatial-analyst` prompt). The base prompt is glen core's `core/system-prompt.md`, which covers the map tools. An app replaces it by naming its own file:
+
+```json
+{ "system_prompt_url": "system-prompt.md" }
+```
+
+The path is relative to the page. glen core does not read a `system-prompt.md` beside the page unless `system_prompt_url` names it. An app's own prompt replaces the base prompt entirely, so it should cover how to use the map as well as the app's data and persona.
+
 ## LLM configuration
 
 The `llm` section controls how the chat agent connects to a language model. Two modes:
@@ -1165,22 +1325,6 @@ curl -s https://open-llm-proxy.nrp-nautilus.io/v1/chat/completions \
 
 A model without audio support answers 400 (e.g. `does not have an audio tower`) or 500. A dedicated Whisper deployment can be substituted by swapping this config block.
 
-## Draw tool (optional)
-
-The polygon draw tool lets users draw a region of interest on the map and query it through the chat agent. It is opt-in: when absent, no draw UI appears and the draw module is never loaded (zero footprint).
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `draw_enabled` | boolean | `false` | Show the draw button and register the `get_drawn_region` tool. |
-
-```json
-{ "draw_enabled": true }
-```
-
-When enabled, a pentagon icon button appears in the top-left map controls (below the zoom buttons). Click it to enter polygon draw mode, click on the map to place vertices, and double-click to finish. Only one polygon can exist at a time — drawing a new one replaces the previous.
-
-The agent receives a `get_drawn_region` tool that returns the polygon as WKT along with a suggested H3 resolution scaled to the region size. This prevents expensive high-resolution hexing of large areas.
-
 ## Geocoding (optional)
 
 Geocoding turns a free-text place reference — a street address, city, landmark, or named region — into real coordinates. It powers two things from one shared backend:
@@ -1235,106 +1379,6 @@ The shorthand `"geolocate": true` is equivalent to `{ "button": true }`.
 
 Note the deliberate asymmetry with the [`geocode` tool](#geocoding-optional), which is **on** by default: `get_user_location` reaches into the user's *actual device location*, so it stays **off** unless an app opts in — even though, like `geocode`, it's an invisible agent tool. Both require a secure context (HTTPS) and a browser permission prompt. The `get_user_location` tool returns `{ latitude, longitude, accuracy_m }` only — it does not move the map; the agent calls `fly_to` itself if it wants to recenter.
 
-## GeoJSON upload (optional)
-
-Lets a user drop a small polygon boundary (a study area, a parcel, a district) or a set of points (their own occurrence records, survey sites) onto the map and ask questions about it. Off by default:
-
-```json
-{ "upload_enabled": true }
-```
-
-An **Upload** button appears in the layer panel's action row, and a `.geojson` file can also be dragged onto the map. The file is validated in the browser, `PUT` straight to a public bucket, and drawn on the map. The file never passes through the model. The agent gets only the uploaded file's URL, through the `get_uploaded_dataset` tool, and reads it with DuckDB `ST_Read(...)` in an ordinary `query`.
-
-To customise, pass an object instead of `true`:
-
-| Field | Default | Description |
-|---|---|---|
-| `bucket_url` | `https://s3-west.nrp-nautilus.io/public-output` | Bucket the file is written to. |
-| `prefix` | `uploads` | Key prefix inside the bucket. Files are named by content hash. |
-| `max_bytes` | `5242880` (5 MB) | Largest file accepted. |
-| `max_features` | `1000` | Most polygon features accepted. |
-| `max_point_features` | `50000` | Most points accepted, after each MultiPoint is split into its points. `max_bytes` still applies. |
-| `ingest_url` | none | Where to send people whose data is too big or isn't polygons or points, e.g. a data-ingest request form. |
-
-```json
-{ "upload_enabled": { "max_features": 200, "ingest_url": "https://example.org/data-request" } }
-```
-
-A file holds either polygons (Polygon, MultiPolygon) or points (Point, MultiPoint), not both. Lines and larger data are out of scope by design; the error message points to `ingest_url`.
-
-### Boundaries
-
-For an uploaded boundary, `get_uploaded_dataset` tells the agent to convert it once to H3 cells with `h3_polygon_wkt_to_cells` and join those cells to a hex dataset, on `h0` as well so DuckDB reads only the partitions the boundary covers. An exact geometry test (`ST_Within`) is offered only for data without H3 columns, because the hex join is much faster:
-
-```sql
-WITH aoi AS (SELECT ST_AsText(ST_Union_Agg(geom)) AS wkt FROM ST_Read('<url>')),
-cells AS (SELECT UNNEST(h3_polygon_wkt_to_cells(aoi.wkt, 8)) AS cell FROM aoi)
-SELECT d.*
-FROM cells JOIN read_parquet('s3://…/hex/h0=*/data_0.parquet', hive_partitioning = true) d
-  ON d.h8 = cells.cell AND d.h0 = h3_cell_to_parent(cells.cell, 0)
-```
-
-The agent picks a coarser resolution for a large area to keep the number of cells reasonable.
-
-### Points
-
-Points are drawn as circles and uploaded as GeoJSON, like polygons. A MultiPoint is split into one point per coordinate first, keeping its properties. A point outside the longitude and latitude range is refused, since that usually means swapped or projected coordinates.
-
-For each point upload, `get_uploaded_dataset` gives the agent a ready SQL source that adds H3 cell columns `h10` … `h0` (#435). It computes each point's resolution-10 cell and derives every coarser cell from it with `h3_cell_to_parent`, the way cng-datasets builds the catalog's hex data, so the points join to any H3-indexed dataset on a shared column such as `h10`. Joining on `h0` as well lets DuckDB read only the partitions the points fall in:
-
-```sql
-WITH pts AS (SELECT * FROM <sql_source>)
-SELECT d.*, pts.species
-FROM pts JOIN read_parquet('s3://…/hex/h0=*/data_0.parquet', hive_partitioning = true) d
-  ON d.h10 = pts.h10 AND d.h0 = pts.h0
-```
-
-The hint tells the agent to join at the finest resolution both sides have and to prefer this join to an exact geometry test. On 1,001 points against PAD-US fee lands (hex at resolution 10), the `h10` join found 438 points in 3.5 s, and `ST_Within` against the polygon GeoParquet found 439 in 7.8 s. An `h8` join found 517, because a point matches whenever anything in its larger cell does.
-
-The cells are computed when the agent queries rather than stored in the file. Parsing the GeoJSON dominates the cost of a query, and storing the cells made the file up to 2.8 times larger and slower to read; #435 has the benchmark.
-
-::: warning The bucket must accept anonymous browser uploads
-The browser writes the file directly, so the bucket needs anonymous `PUT` **and** a CORS rule allowing `PUT` from your app's origin. Read-only CORS is the common default, and uploads fail at the preflight with a 403. On Ceph RGW the first rule whose `AllowedOrigin` matches wins, so put a specific-origin `PUT` rule before any broad `*` rule. Uploaded files are public.
-:::
-
-## Multiple MCP servers
-
-`mcp_url` connects one MCP server. To give the agent tools from more than one, list them in `mcp_servers`:
-
-```json
-"mcp_servers": [
-  { "url": "https://duckdb-mcp.nrp-nautilus.io/mcp" },
-  { "url": "https://sdm-mcp.nrp-nautilus.io/mcp", "optional": true }
-]
-```
-
-| Field | Description |
-|---|---|
-| `url` | The server's Streamable HTTP endpoint. |
-| `auth_token` | Optional. Sent to this server only, as `Authorization: Bearer …`. |
-| `optional` | `true`: if the server can't be reached, its tools are left out and the app boots normally. Its connection does not hold up boot either; its tools join when it connects. Default `false`. |
-
-**The first entry is the primary server**, the data engine (duckdb-mcp). Only the primary gets the fallback `query` tool if it is slow to connect, and the server's `geospatial-analyst` prompt; `get_schema` and `render_chart` query it too.
-
-**The single-server keys address the primary only.** `mcp_url` replaces the first entry's URL, and `mcp_auth_token` its token. The same holds for `mcp_server_url` and `mcp_auth_token` in the deploy-time `config.json`, so a deployment can inject the duckdb-mcp URL there while the other servers stay listed in `layers-input.json`.
-
-### A visitor's MCP token
-
-The shared MCP servers (duckdb-mcp and its replicas) require a bearer token. A Kubernetes deployment adds it in its own nginx relay (`/api/mcp`), so the browser never holds it. A static deployment, such as a GitHub Pages app made from glen-template or a local copy, has no relay, so its queries are refused (HTTP 401).
-
-There a visitor can enter the token themselves (#442). When the primary server refuses the app at startup, the chat says the data server needs a token and opens the ⚙ settings panel with a "Data server token" field. The token is kept in the browser's `localStorage` and sent only to the primary server. Saving it reloads the page so the app connects normally; changing it later reconnects without losing the conversation. Clearing the field removes it.
-
-The field is offered only when a visitor's token would be used:
-
-- The deployment set no token for the primary (`mcp_auth_token`, or `auth_token` on the first `mcp_servers` entry). A deployment's own token always wins.
-- The primary is on another origin than the page. A same-origin URL such as `/api/mcp` is the deployment's own relay, and a header set by the page there would also replace the browser's saved basic-auth credentials.
-
-The token comes from the server's operator. In user-provided mode the field sits beside the LLM key in the same panel.
-
-**Each server reconnects on its own.** A server that drops and reconnects refreshes only its own tools.
-
-**Tool-name collisions:** the server listed first wins. A later server's tool with the same name is skipped, with a console warning.
-
 ## Tool call auto-approve
 
 By default, the agent executes remote tool calls (SQL queries via the MCP server) immediately. Local tools — map controls like `show_layer`, `fly_to`, `set_filter` — also run without confirmation.
@@ -1372,19 +1416,11 @@ Both keys may also be supplied at deploy time via `config.json`, which overrides
 The checkpoint is the only per-turn cap on tool use. Setting a value to `0` removes it entirely for that mode — a misbehaving model could then loop indefinitely, stopped only by the per-call timeout or a manual **Stop**. Prefer a high value (e.g. several hundred) over `0` unless you have another guard in place.
 :::
 
-## Read-tool memo
-
-Catalog and schema reads (`get_schema`, `get_stac_details`) are memoized per session. A repeated identical call returns the earlier result, which saves time and prompt tokens when a model re-reads a schema it already has. It is on by default. Turn it off, for example to debug duplicate MCP traffic, with:
-
-```json
-{ "tool_memo": false }
-```
-
 ## Chat export
 
 A 💾 save button in the chat footer saves the current conversation as a self-contained HTML document you can share or print. The button is disabled until the first user message and enables automatically after.
 
-The export is **on by default** — the public apps are the common case. Configure it with an `export` block in `layers-input.json` (or the deploy-time `config.json`, which wins):
+The export is **off by default**, since a map-only app has little to report. Turn it on with `"export": true`, or configure it with an `export` block in `layers-input.json` (or the deploy-time `config.json`, which wins). The report comes from glen-harness, which loads it on first use, and redraws the session's charts when `plugins/charts.js` is loaded.
 
 ```json
 "export": {
@@ -1397,7 +1433,7 @@ The export is **on by default** — the public apps are the common case. Configu
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `enabled` | boolean | `true` | `false` removes the save button entirely — it is never created, not merely disabled. |
+| `enabled` | boolean | `false` | `true` adds the save button. Without it the button is never created, not merely disabled. |
 | `public_s3_endpoint` | string | `s3-west.nrp-nautilus.io` | S3 host for the export's DuckDB setup block. Set it when an app's data lives on other anonymously-readable storage. A scheme or trailing slash is stripped. |
 | `default_code_language` | `sql` \| `r` \| `python` | `sql` | Which language the saved document opens on. The reader can switch inside the file; an unrecognised value falls back to `sql`. |
 | `project_url` | string | `https://schmidtdse.github.io/glen/` | Where the report's "Outputs generated with GLEN" disclosure links. |
@@ -1686,8 +1722,13 @@ Use `["match", ["get", "col"], ["val1", "val2"], true, false]` for list membersh
 {
   "catalog": "https://s3-west.nrp-nautilus.io/public-data/stac/catalog.json",
   "titiler_url": "https://titiler.nrp-nautilus.io",
-  "mcp_url": "https://duckdb-mcp.nrp-nautilus.io/mcp",
   "view": { "center": [-119.4, 36.8], "zoom": 6, "pitch": 0, "bearing": 0 },
+
+  "plugins": [
+    { "url": "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/core/plugins/mcp.js",
+      "options": { "url": "https://duckdb-mcp.nrp-nautilus.io/mcp", "prompt": "geospatial-analyst" } },
+    "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/core/plugins/charts.js"
+  ],
 
   "llm": {
     "user_provided": true,
@@ -1709,20 +1750,20 @@ Use `["match", ["get", "col"], ["val1", "val2"], true, false]` for list membersh
 
   "collections": [
     {
-      "collection_id": "cpad-2025b",
+      "id": "cpad-2025b",
       "group": "Protected Areas",
       "assets": [
         {
           "id": "cpad-holdings-pmtiles",
           "display_name": "Holdings",
           "visible": true,
-          "default_style": { "fill-color": "#3E9C47", "fill-opacity": 0.5 },
-          "tooltip_fields": ["UNIT_NAME", "AGNCY_NAME"]
+          "paint": { "fill-color": "#3E9C47", "fill-opacity": 0.5 },
+          "tooltip": ["UNIT_NAME", "AGNCY_NAME"]
         }
       ]
     },
     {
-      "collection_id": "irrecoverable-carbon",
+      "id": "irrecoverable-carbon",
       "group": "Carbon",
       "assets": [
         { "id": "irrecoverable-total-2018-cog", "display_name": "Irrecoverable Carbon (2018)" }
@@ -1731,3 +1772,18 @@ Use `["match", ["get", "col"], ["val1", "val2"], true, false]` for list membersh
   ]
 }
 ```
+
+## Moving a v3 app to glen core
+
+`scripts/convert-to-core.mjs` converts a v3 app's two files:
+
+```bash
+node scripts/convert-to-core.mjs layers-input.json --ref <glen tag> > layers-input.core.json
+node scripts/convert-to-core.mjs index.html --ref <glen tag> > index.core.html
+```
+
+Collections pass through unchanged, since glen core reads the v3 layer settings by the same names. The opt-in features become plugins: the MCP server (every v3 app had one, `duckdb-mcp.nrp-nautilus.io` when it named none) with its `geospatial-analyst` prompt, the hex tile tools, `charts`, `draw_enabled`, and `upload_enabled` with its settings. The keys glen core does not use are dropped, with a note for each (see [Settings the v3 full app had](#settings-the-v3-full-app-had)). The page's module script loads `core/main.js`, and its glen URLs move to the release.
+
+The deploy-time `config.json` needs no change. A `draw_enabled` set only in `config.json` has no effect in glen core; list `plugins/draw.js` instead.
+
+Check the converted app against the v3 one: open both and compare their layers, legends and a few questions.
