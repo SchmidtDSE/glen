@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createMapControlTools, createProjectionTool, SQL_HINTS, DEFAULT_HINTS } from '../app/map-control-tools.js';
-import { createMapTools } from '../app/map-tools.js';
 
 const SQL_WORDS = /get_stac_details|get_schema|SELECT DISTINCT|read_parquet|\bSQL\b/;
 
@@ -20,8 +19,8 @@ describe('createMapControlTools', () => {
         expect(text).not.toMatch(SQL_WORDS);
     });
 
-    it('gives the full app its SQL wording through SQL_HINTS', () => {
-        const full = createMapTools(stubMap(), { get: () => null, getIds: () => [], getAll: () => [] }, null, { forwardGeocode: async () => [] });
+    it('takes the SQL wording through SQL_HINTS', () => {
+        const full = createMapControlTools(stubMap(), { geocoder: { forwardGeocode: async () => [] }, hints: SQL_HINTS });
         const byName = Object.fromEntries(full.map(t => [t.name, t.description]));
         expect(byName.set_filter).toContain(SQL_HINTS.filterValues);
         expect(byName.set_style).toContain(SQL_HINTS.styleValues);

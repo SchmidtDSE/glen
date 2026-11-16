@@ -1,5 +1,25 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { extractJsonArray, createMapTools, createRenderChartTool } from '../app/map-tools.js';
+import { extractJsonArray, createRenderChartTool } from '../app/chart-tool.js';
+import { createMapControlTools, createProjectionTool, SQL_HINTS, PICK_LAYER_NUDGE } from '../app/map-control-tools.js';
+import { createHexTileTools, hexBuildWaiter } from '../app/hex-tools.js';
+import { createFilterByQueryTool } from '../app/query-filter-tool.js';
+import { createCoreMapTools } from '../core/map-tools.js';
+
+/**
+ * The shared map tools, composed as the full app's createMapTools did, so
+ * these tests outlive app/map-tools.js (#441, v4). glen core adds the same
+ * factories through createCoreMapTools and its plugins.
+ */
+function sharedTools(mapManager, mcpClient = null, geocoder = null, options = {}) {
+    return [
+        ...createMapControlTools(mapManager, { geocoder, geolocateTool: options.geolocateTool, hints: SQL_HINTS }),
+        ...createHexTileTools(mapManager, mcpClient ? {
+            waitForBuild: hexBuildWaiter((args) => mcpClient.callTool('get_hex_tile_status', args)),
+        } : {}),
+        ...(mcpClient ? [createFilterByQueryTool(mapManager, mcpClient, PICK_LAYER_NUDGE)] : []),
+        createProjectionTool(mapManager),
+    ];
+}
 
 describe('extractJsonArray', () => {
     it('parses to_json(array_agg(...)) output', () => {
@@ -56,7 +76,7 @@ describe('filter_by_query', () => {
     });
 
     const getFilterTool = (mapManager, mcpClient) => {
-        const tools = createMapTools(mapManager, stubCatalog(), mcpClient);
+        const tools = sharedTools(mapManager, mcpClient);
         return tools.find(t => t.name === 'filter_by_query');
     };
 
@@ -161,27 +181,6 @@ describe('filter_by_query', () => {
     });
 });
 
-describe('list_datasets', () => {
-    it('returns the catalog ids and titles', () => {
-        const stubMapManager = { getLayerSummaries: () => [], setFilter: () => ({}) };
-        const stubCatalog = {
-            records: new Map(),
-            getAll: () => [
-                { id: 'a', title: 'Alpha' },
-                { id: 'b', title: 'Bravo' },
-            ],
-        };
-        const tools = createMapTools(stubMapManager, stubCatalog);
-        const tool = tools.find(t => t.name === 'list_datasets');
-        const result = JSON.parse(tool.execute());
-        expect(result.success).toBe(true);
-        expect(result.datasets).toEqual([
-            { id: 'a', title: 'Alpha' },
-            { id: 'b', title: 'Bravo' },
-        ]);
-    });
-});
-
 describe('set_projection', () => {
     it('forwards the requested type to mapManager.setProjection', () => {
         const calls = [];
@@ -189,7 +188,7 @@ describe('set_projection', () => {
             getLayerSummaries: () => [], setFilter: () => ({}),
             setProjection: (t) => { calls.push(t); },
         };
-        const tools = createMapTools(stubMapManager, { records: new Map() });
+        const tools = sharedTools(stubMapManager);
         const tool = tools.find(t => t.name === 'set_projection');
         const result = JSON.parse(tool.execute({ type: 'globe' }));
         expect(calls).toEqual(['globe']);
@@ -206,7 +205,7 @@ describe('set_legend / reset_legend', () => {
     const stubCatalog = { records: new Map() };
     const getTool = (name) => {
         const mapManager = stubMapManager();
-        const tools = createMapTools(mapManager, stubCatalog);
+        const tools = sharedTools(mapManager);
         return { tool: tools.find(t => t.name === name), mapManager };
     };
 
@@ -271,7 +270,7 @@ describe('set_tooltip / reset_tooltip', () => {
 
     const getTool = (name) => {
         const mapManager = stubMapManager();
-        const tools = createMapTools(mapManager, stubCatalog);
+        const tools = sharedTools(mapManager);
         return { tool: tools.find(t => t.name === name), mapManager };
     };
 
@@ -402,7 +401,7 @@ describe('create_slider', () => {
 
     const getTool = () => {
         const mapManager = stubMapManager();
-        const tool = createMapTools(mapManager, stubCatalog).find(t => t.name === 'create_slider');
+        const tool = sharedTools(mapManager).find(t => t.name === 'create_slider');
         return { tool, mapManager };
     };
 
@@ -429,7 +428,7 @@ describe('geocode tool', () => {
     const stubMap = { getLayerSummaries: () => [] };
     const stubCatalog = { records: new Map() };
     const getTool = (geocoder) =>
-        createMapTools(stubMap, stubCatalog, null, geocoder).find(t => t.name === 'geocode');
+        sharedTools(stubMap, null, geocoder).find(t => t.name === 'geocode');
 
     it('is only registered when a geocoder is provided', () => {
         expect(getTool(undefined)).toBeUndefined();
@@ -469,7 +468,7 @@ describe('get_user_location tool', () => {
     const stubMap = { getLayerSummaries: () => [] };
     const stubCatalog = { records: new Map() };
     const getTool = (options) =>
-        createMapTools(stubMap, stubCatalog, null, null, options).find(t => t.name === 'get_user_location');
+        sharedTools(stubMap, null, null, options).find(t => t.name === 'get_user_location');
 
     const origNavigator = globalThis.navigator;
     afterEach(() => {
@@ -509,7 +508,7 @@ describe('get_user_location tool', () => {
     });
 });
 
-describe('createMapTools smoke test', () => {
+describe('shared map tools smoke test', () => {
     const stubMapManager = {
         getLayerSummaries: () => [],
         setFilter: () => ({ success: true }),
@@ -517,7 +516,7 @@ describe('createMapTools smoke test', () => {
     const stubCatalog = { records: new Map() };
 
     it('returns expected tool names without mcpClient', () => {
-        const tools = createMapTools(stubMapManager, stubCatalog);
+        const tools = sharedTools(stubMapManager);
         const names = tools.map(t => t.name).sort();
         expect(names).toEqual([
             'add_hex_tile_layer',
@@ -526,7 +525,6 @@ describe('createMapTools smoke test', () => {
             'fly_to',
             'get_map_state',
             'hide_layer',
-            'list_datasets',
             'remove_hex_tile_layer',
             'reset_filter',
             'reset_legend',
@@ -542,13 +540,13 @@ describe('createMapTools smoke test', () => {
     });
 
     it('adds filter_by_query when mcpClient is provided', () => {
-        const tools = createMapTools(stubMapManager, stubCatalog, { callTool: () => null });
+        const tools = sharedTools(stubMapManager, { callTool: () => null });
         const names = tools.map(t => t.name);
         expect(names).toContain('filter_by_query');
     });
 
     it('every tool has an execute function', () => {
-        const tools = createMapTools(stubMapManager, stubCatalog, { callTool: () => null });
+        const tools = sharedTools(stubMapManager, { callTool: () => null });
         for (const tool of tools) {
             expect(typeof tool.execute).toBe('function');
         }
@@ -560,7 +558,7 @@ describe('createMapTools smoke test', () => {
     // Every array param MUST declare `items` (even `{}`) so the grammar permits
     // content. This invariant catches the bug for set_filter and any future tool.
     it('every array-typed tool param declares items (constrained-decoding safety, #243)', () => {
-        const tools = createMapTools(stubMapManager, stubCatalog, { callTool: () => null });
+        const tools = sharedTools(stubMapManager, { callTool: () => null });
         for (const tool of tools) {
             const props = tool.inputSchema?.properties || {};
             for (const [name, schema] of Object.entries(props)) {
@@ -571,8 +569,21 @@ describe('createMapTools smoke test', () => {
         }
     });
 
+    it('every array-typed param of glen core\'s own map tools declares items too (#243)', () => {
+        const catalog = { layers: new Map([['pop', { id: 'pop', kind: 'raster', series: { frames: [] } }]]) };
+        const tools = createCoreMapTools(stubMapManager, catalog, { geolocateTool: true });
+        expect(tools.map(t => t.name)).toContain('set_time');
+        for (const tool of tools) {
+            for (const [name, schema] of Object.entries(tool.inputSchema?.properties || {})) {
+                if (schema.type === 'array' || (Array.isArray(schema.type) && schema.type.includes('array'))) {
+                    expect(schema.items, `${tool.name}.${name} must declare 'items'`).toBeDefined();
+                }
+            }
+        }
+    });
+
     it('set_style types its number-valued paint properties as number or expression (#409)', () => {
-        const tools = createMapTools(stubMapManager, stubCatalog);
+        const tools = sharedTools(stubMapManager);
         const style = tools.find(t => t.name === 'set_style').inputSchema.properties.style;
         for (const prop of ['fill-opacity', 'line-width', 'line-opacity', 'circle-radius', 'circle-opacity', 'fill-extrusion-opacity', 'raster-opacity']) {
             expect(style.properties[prop].type, prop).toEqual(['number', 'array']);
@@ -583,7 +594,7 @@ describe('createMapTools smoke test', () => {
     });
 
     it('set_filter.filter declares items so it is not grammar-collapsed to [] (#243)', () => {
-        const tools = createMapTools(stubMapManager, stubCatalog);
+        const tools = sharedTools(stubMapManager);
         const setFilter = tools.find(t => t.name === 'set_filter');
         expect(setFilter.inputSchema.properties.filter.type).toBe('array');
         expect(setFilter.inputSchema.properties.filter.items).toBeDefined();
@@ -608,7 +619,7 @@ describe('add_hex_tile_layer — fetch color-scale metadata by hash (#276)', () 
 
     const getTool = () => {
         const mapManager = { addHexTileLayer: vi.fn(() => ({ success: true, layer_id: 'hex-abc123' })) };
-        const tool = createMapTools(mapManager, { records: new Map() }).find(t => t.name === 'add_hex_tile_layer');
+        const tool = sharedTools(mapManager).find(t => t.name === 'add_hex_tile_layer');
         return { tool, mapManager };
     };
 
@@ -686,53 +697,8 @@ describe('add_hex_tile_layer — fetch color-scale metadata by hash (#276)', () 
     });
 });
 
-describe('apply_style (#440)', () => {
-    const gap = { 'fill-color': ['match', ['get', 'GAP_Sts'], '1', '#26633A', '2', '#3E9C47', '#888888'] };
-    const roads = { 'line-color': '#000000' };
-    const layer = {
-        assetId: 'fee-pmtiles', renderType: null,
-        publishedStyles: [
-            { name: 'fee-gap-sts', key: 'style-fee-gap-sts', renderType: 'fill', paint: gap, outlinePaint: { 'line-color': '#333' }, filter: null },
-            { name: 'roads', key: 'style-roads', renderType: 'line', paint: roads, outlinePaint: null, filter: null },
-        ],
-    };
-    const catalogWith = (mapLayers) => ({
-        getAll: () => [{ id: 'fee', mapLayers }],
-        findMapLayer: (id) => (id === 'fee/fee-pmtiles' && mapLayers[0] ? { dataset: { id: 'fee' }, layer: mapLayers[0] } : null),
-    });
-    const manager = () => ({
-        layers: new Map([['fee/fee-pmtiles', { mapLayerId: 'layer-fee' }]]),
-        map: { getLayer: () => ({ type: 'fill' }) },
-        applyPublishedStyle: vi.fn(() => ({ success: true })),
-    });
-    const tool = (mm, cat) => createMapTools(mm, cat, null).find(t => t.name === 'apply_style');
-
-    it('is registered only when a layer has published styles', () => {
-        expect(tool(manager(), catalogWith([layer]))).toBeDefined();
-        expect(tool(manager(), catalogWith([{ assetId: 'x' }]))).toBeUndefined();
-    });
-
-    it('applies a style by name or asset key, with its legend', async () => {
-        const mm = manager();
-        const t = tool(mm, catalogWith([layer]));
-        const r = JSON.parse(await t.execute({ layer_id: 'fee/fee-pmtiles', style: 'style-fee-gap-sts' }));
-        expect(r).toEqual({ success: true, layer: 'fee/fee-pmtiles', style: 'fee-gap-sts', colours_by: { property: 'GAP_Sts', kind: 'categorical', values: ['1', '2'] } });
-        const [, args] = mm.applyPublishedStyle.mock.calls[0];
-        expect(args).toMatchObject({ paint: gap, outlinePaint: { 'line-color': '#333' }, legendType: 'categorical' });
-    });
-
-    it('names the published styles for an unknown one, and refuses another geometry', async () => {
-        const t = tool(manager(), catalogWith([layer]));
-        expect(JSON.parse(await t.execute({ layer_id: 'fee/fee-pmtiles', style: 'nope' })).error)
-            .toBe('No style "nope" for fee/fee-pmtiles. Published styles: fee-gap-sts, roads');
-        expect(JSON.parse(await t.execute({ layer_id: 'fee/fee-pmtiles', style: 'roads' })).error)
-            .toBe('Style "roads" draws line layers but fee/fee-pmtiles is drawn as fill.');
-        expect(JSON.parse(await t.execute({ layer_id: 'other', style: 'roads' })).error).toBe('Unknown layer: other');
-    });
-});
-
 describe('render_chart endpoint arguments', () => {
-    it('are off in the full app, so its tool is unchanged', () => {
+    it('are off by default, so the tool text is unchanged', () => {
         const tool = createRenderChartTool({ render: async () => ({ id: 'x' }) }, null);
         expect(tool.inputSchema.properties).not.toHaveProperty('s3_endpoint');
         expect(tool.description).not.toContain('s3_endpoint');

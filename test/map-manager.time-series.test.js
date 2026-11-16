@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { MapManager } from '../app/map-manager.js';
-import { createSetTimeTool } from '../app/map-tools.js';
-import { resolveFrameSource } from '../app/dataset-catalog.js';
+import { createSetTimeTool } from '../app/map-control-tools.js';
+import { resolveFrameSource } from '../app/raster-frames.js';
 
 // A map that records sources, layers (in stack order) and paint, fires
 // `sourcedata` events, and reports a source as loaded once a test finishes
