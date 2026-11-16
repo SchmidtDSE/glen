@@ -670,23 +670,23 @@ export class PortolanCatalog {
                 const l = this.layers.get(layerId);
                 lines.push('');
                 const panelNotes = () => {
-                    if (l.versions) lines.push(`  Versions, switched in the layer panel: ${l.versions.map(v => v.label).join(', ')}; starts on ${l.versions[l.defaultVersionIndex]?.label}`);
-                    if (l.toggleGroup) lines.push(`  Toggle group "${l.toggleGroup}": one panel checkbox shows and hides every member together`);
+                    if (l.versions) lines.push(`  Versions: ${l.versions.map(v => v.label).join(', ')}; starts on ${l.versions[l.defaultVersionIndex]?.label}`);
+                    if (l.toggleGroup) lines.push(`  Toggle group "${l.toggleGroup}"`);
                 };
                 if (l.kind === 'vector') {
                     lines.push(`- layer_id \`${layerId}\` — vector, ${(l.geometryType || 'unknown geometry').toLowerCase()}, drawn as ${l.renderType}${l.visible ? ', on at start' : ''}`);
                     panelNotes();
                     const fields = Object.entries(l.fields);
                     if (fields.length) {
-                        lines.push('  Feature properties (exact names for filters, styles and tooltips):');
+                        lines.push('  Feature properties:');
                         for (const [name, type] of fields.slice(0, 30)) {
                             const d = colDesc.get(name);
                             lines.push(`  - \`${name}\` (${String(type).toLowerCase()})${d ? `: ${oneLine(d, 120)}` : ''}`);
                         }
-                        if (fields.length > 30) lines.push(`  - …and ${fields.length - 30} more (call describe_layer)`);
+                        if (fields.length > 30) lines.push(`  - …and ${fields.length - 30} more`);
                     }
                     if (l.styles.size) {
-                        lines.push('  Published styles (apply with apply_style):');
+                        lines.push('  Published styles:');
                         for (const [name, s] of l.styles) {
                             lines.push(`  - \`${name}\`${name === l.defaultStyle ? ' (current at start)' : ''}: ${describeStyleColours(s.paint)}`);
                         }
@@ -696,7 +696,7 @@ export class PortolanCatalog {
                     const stats = b.min != null ? `values ${fmt(b.min)} to ${fmt(b.max)}, mean ${fmt(b.mean)}${b.unit ? ` ${b.unit}` : ''}` : 'no statistics published';
                     const where = [
                         l.itemId ? `item \`${l.itemId}\`${l.date ? ` (${l.date})` : ''}` : null,
-                        l.series ? `time series of ${l.series.frames.length} dates from ${l.series.first} to ${l.series.last}, one item each, starting on ${l.series.last}; set_time picks the date` : null,
+                        l.series ? `time series of ${l.series.frames.length} dates from ${l.series.first} to ${l.series.last}, one item each, starting on ${l.series.last}` : null,
                         b.bidx ? `band ${b.bidx}` : null,
                     ].filter(Boolean).join(', ');
                     lines.push(`- layer_id \`${layerId}\` — raster (COG)${where ? `, ${where}` : ''}, ${stats}; drawn with colormap \`${l.colormap}\` over ${l.rescale || 'the full range'}${l.visible ? ', on at start' : ''}`);

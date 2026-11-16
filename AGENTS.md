@@ -44,6 +44,9 @@ Core library for map-based applications with LLM-powered data analysis. Interact
 - `core/portolan.js` — Pure rules for reading a Portolan collection (PMTiles links, style assets, COG band statistics)
 - `core/portolan-catalog.js` — Fetches collections, styles and PMTiles metadata; builds MapManager layer configs and the prompt
 - `core/map-tools.js` — The core's map tools, including `apply_style` (published styles) and `set_raster_colormap`
+- `core/prompt.js` / `core/system-prompt.md` — The prompt's opening: core's short base prompt, then the app's own (`system_prompt_url`, or a `system-prompt.md` beside the page)
+
+**Prompts stay minimal.** A prompt says what the app and its data are. What a tool does, when to call it and what it returns belong in the tool's own description, never repeated in a prompt, where they go stale. Don't list what the agent cannot do; a plugin that adds a capability should not have to contradict the base prompt.
 
 ## Design decisions
 
@@ -238,6 +241,7 @@ When a PR touches a covered module, expect tests to change too. When it touches 
 | `app/agent.js` | 48% | `test/agent-retry.test.js` — retry / abort / timeout, the full budget and backoff on every retry (#437). The conversation loop is uncovered (tested manually). |
 | `core/portolan.js`, `core/portolan-catalog.js` | covered | `test/core-portolan.test.js` — tile, style and raster discovery, style conversion, the missing-value guard, catalog walk, prompt |
 | `core/map-tools.js` | covered | `test/core-map-tools.test.js` — published styles and their filters, raster recolouring, fly_to forms, `set_time` only with a series of items. Rendering is browser-bound; verify at `/core/`. |
+| `core/prompt.js` | covered | `test/core-prompt.test.js` — the app's prompt after core's, `system_prompt_url`, no prompt, an SPA's index page, core's own page. |
 | `core/main.js` | 0% | Bootstrap — verify by loading `/core/` locally. `test/core-module-graph.test.js` checks that it loads no MCP, SQL or export code. |
 | `core/plugins/mcp.js` | covered | `test/core-mcp-plugin.test.js` — server list resolution, rank and filters per server, per-server reconnect, unreachable servers, prompt order, the harness tag matching `core/main.js`, the local catalog tools over Portolan collections (relative hrefs, the collection's column dictionary, no server catalog tools), and servers in a Web Worker (#457). Check a worker change against geo-query-wasm at `/core/`. |
 | `core/plugins/charts.js`, `app/chart-tool.js` | covered | `test/core-charts-plugin.test.js` — `render_chart` registered by the core plugin, SQL through the registered `query` tool and its argument name, the error without one; `test/map-tools.test.js` — the tool itself in the full app. The panel is browser-bound; verify at `/core/`. |

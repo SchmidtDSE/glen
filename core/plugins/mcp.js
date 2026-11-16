@@ -240,10 +240,8 @@ export default {
  */
 export function parquetSection(catalog) {
     const lines = [
-        '## Data files for SQL', '',
-        'This app also has SQL tools from an MCP server, so you can compute counts, totals and rankings. '
-        + 'Each map layer\'s full data can be read with read_parquet over https. '
-        + 'Call get_schema with a collection id before your first query against it, for its columns, coded values and read_parquet paths:', '',
+        '## Data files', '',
+        'Each layer\'s full data, by collection id:', '',
     ];
     let any = false;
     for (const ds of catalog.getAll()) {

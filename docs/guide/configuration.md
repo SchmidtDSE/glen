@@ -13,7 +13,7 @@ glen core reads the layer settings of the v3 full app (`app/main.js`) by the sam
 | `max_collections` | Most collections to load from a `catalog` with no `collections` list. Default: `25`. |
 | `titiler_url` | TiTiler server for COG tiles. Default: `https://titiler.nrp-nautilus.io`. |
 | `plugins` | Plugin modules to load, by URL, each with its options. See [Plugins](#plugins). |
-| `system_prompt_url` | The agent's base prompt. Default: glen core's own `core/system-prompt.md`, which covers the map tools. See [System prompt](#system-prompt). |
+| `system_prompt_url` | The app's prompt, added after glen core's. Default: `system-prompt.md` beside the page. See [System prompt](#system-prompt). |
 | `view` | Initial map view. Without it the map opens on the extent of the loaded data. See below. |
 | `llm` | LLM configuration. Omit for server-provided mode. See [LLM configuration](#llm-configuration). |
 | `welcome` | Welcome message: `{ "message": "...", "examples": ["...", "..."] }` |
@@ -1150,13 +1150,9 @@ A plugin is an ES module whose default export is `{ name, setup(ctx, options) }`
 
 ## System prompt
 
-The agent's prompt starts with a base prompt, then lists the loaded layers, then adds any plugin's sections (such as the MCP plugin's data files and the server's `geospatial-analyst` prompt). The base prompt is glen core's `core/system-prompt.md`, which covers the map tools. An app replaces it by naming its own file:
+The agent's prompt is glen core's short base prompt (`core/system-prompt.md`), then the app's own prompt, then the loaded layers, then any plugin's sections, such as the MCP plugin's data files and the server's `geospatial-analyst` prompt. The app's prompt is a `system-prompt.md` served beside `index.html`, or the file `system_prompt_url` names, relative to the page. An app without one is fine.
 
-```json
-{ "system_prompt_url": "system-prompt.md" }
-```
-
-The path is relative to the page. glen core does not read a `system-prompt.md` beside the page unless `system_prompt_url` names it. An app's own prompt replaces the base prompt entirely, so it should cover how to use the map as well as the app's data and persona.
+Keep an app's prompt short: what the data is, who the app is for, and anything particular to answering about it. The tools describe themselves, so the prompt need not.
 
 ## LLM configuration
 

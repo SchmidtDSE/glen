@@ -20,7 +20,7 @@ Go to [SchmidtDSE/glen-template](https://github.com/SchmidtDSE/glen-template) an
 ```
 index.html          ← HTML shell — loads glen core JS/CSS from CDN
 layers-input.json   ← which datasets to show, which plugins, how to connect to the LLM
-system-prompt.md    ← the assistant's persona and guidelines, named by system_prompt_url
+system-prompt.md    ← what the data is and who the app is for
 ```
 
 No JavaScript to write. glen core (the map and its tools) and its plugins load from jsDelivr, and the agent and chat come from [glen-harness](https://github.com/SchmidtDSE/glen-harness), which glen core loads itself.
@@ -138,7 +138,6 @@ Minimal example:
 {
   "catalog": "https://s3-west.nrp-nautilus.io/public-data/stac/catalog.json",
   "collections": ["cpad-2025b"],
-  "system_prompt_url": "system-prompt.md",
   "plugins": [
     { "url": "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.53.0/core/plugins/mcp.js",
       "options": { "url": "https://duckdb-mcp.nrp-nautilus.io/mcp", "prompt": "geospatial-analyst" } }
@@ -158,12 +157,11 @@ Without `plugins`, the agent works the map alone: it shows, filters and styles l
 
 ## system-prompt.md
 
-Plain Markdown instructions for the AI assistant. Tell it what data it's looking at, what kinds of questions it should help with, and any style preferences. glen core reads it only when `system_prompt_url` names it, and it then replaces glen core's own base prompt, `core/system-prompt.md`; see [System prompt](./configuration#system-prompt).
+Plain Markdown, added after glen core's short base prompt. Tell the assistant what data it's looking at and who the app is for. Keep it short: the tools describe themselves. See [System prompt](./configuration#system-prompt).
 
 ```markdown
-You are a helpful assistant for exploring California's protected lands.
-You can show or hide map layers, filter by attributes, and run SQL queries
-to answer quantitative questions about the data.
+This app is for exploring California's protected lands: who owns
+and manages them, and how well they are protected for biodiversity.
 ```
 
 ## Local development

@@ -196,7 +196,8 @@ The agent loop, tool registry and chat come from [glen-harness](https://github.c
 | `portolan.js` | Pure rules for reading a Portolan collection: tiles, styles, rasters, metadata |
 | `portolan-catalog.js` | Fetches collections, styles and PMTiles metadata; builds layer configs and the prompt |
 | `map-tools.js` | The shared map-control tools from `app/map-control-tools.js`, with Portolan wording, plus `apply_style`, `set_raster_colormap` and `describe_layer` |
-| `system-prompt.md` | The base prompt; an app can replace it with `system_prompt_url` |
+| `system-prompt.md` | The base prompt. The app's own prompt follows it |
+| `prompt.js` | Joins the base prompt and the app's: `system_prompt_url`, or a `system-prompt.md` beside the page |
 | `plugins/mcp.js` | Plugin that adds the tools of one or more MCP servers, filtered by `include` or `exclude`, and the collections' GeoParquet URLs |
 | `plugins/charts.js` | Plugin that adds `render_chart`, with SQL run through the registered `query` tool |
 | `plugins/draw.js` | Plugin that adds the polygon draw button and `get_drawn_region` |

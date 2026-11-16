@@ -678,7 +678,7 @@ describe('the full app\'s layer settings in glen core', () => {
         expect(years.versions.map(v => [v.label, v.rescale])).toEqual([['2000', '0,10'], ['2020', '0,20']]);
         expect(years.versions[1].source.tiles[0]).toContain(encodeURIComponent('y2020.tif'));
         expect(years.versions[1].source.tiles[0]).toContain('colormap_name=blues');
-        expect(c.generatePrompt()).toContain('Versions, switched in the layer panel: L3, L6; starts on L6');
+        expect(c.generatePrompt()).toContain('Versions: L3, L6; starts on L6');
     });
 
     it('takes toggle groups, out-of-panel layers, render type and tooltips by the full app\'s names', async () => {

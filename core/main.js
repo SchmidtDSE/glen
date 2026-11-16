@@ -34,6 +34,7 @@ import {
 import { ChatUI } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.5.0/ui/chat-ui.js';
 import { PortolanCatalog, exportCatalogView } from './portolan-catalog.js';
 import { createCoreMapTools } from './map-tools.js';
+import { loadPrompts } from './prompt.js';
 
 /** The ref this module was loaded at (a tag or SHA on jsDelivr), or 'dev'. */
 export const CORE_VERSION = import.meta.url.match(/glen@([^/]+)/)?.[1] || 'dev';
@@ -70,7 +71,9 @@ export async function start({ plugins: extraPlugins = [] } = {}) {
 
     /* ── 2. Chrome, catalog and map (catalog and map load in parallel) ── */
     const layoutRefs = buildLayout(appConfig);
-    const promptP = loadSystemPrompt(appConfig);
+    // Core's base prompt, then the app's own (system_prompt_url, or a
+    // system-prompt.md beside the page).
+    const promptP = loadPrompts(appConfig, { baseUrl: new URL('./system-prompt.md', import.meta.url).href, pageUrl: document.baseURI });
     const catalog = new PortolanCatalog();
     const mapManager = new MapManager('map', {
         center: appConfig.view?.center || [0, 20],
@@ -171,17 +174,6 @@ export function mergeRuntimeConfig(appConfig, runtimeConfig) {
     return appConfig;
 }
 
-/** The base prompt: the app's own file if it names one, else the core's. */
-async function loadSystemPrompt(appConfig) {
-    const url = appConfig.system_prompt_url || new URL('./system-prompt.md', import.meta.url).href;
-    try {
-        return await fetchText(url);
-    } catch (err) {
-        console.warn(`[core] System prompt ${url} unreadable; using a minimal one:`, err.message);
-        return 'You control an interactive map. Use the tools to show, hide, filter and style its layers.';
-    }
-}
-
 async function loadPluginModules(specs) {
     const out = [];
     for (const spec of specs) {
@@ -213,12 +205,6 @@ async function fetchJson(url) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
     return res.json();
-}
-
-async function fetchText(url) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
-    return res.text();
 }
 
 /* ── Boot ─────────────────────────────────────────────────────────────── */
