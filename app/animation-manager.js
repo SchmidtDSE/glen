@@ -70,7 +70,9 @@ export class TrajectoryAnimation {
         this.paint = opts.paint || {};
         this.mode = this.config.mode === 'stepped' ? 'stepped' : 'smooth';
 
-        const safe = this.layerId.replace(/[^a-zA-Z0-9]/g, '-');
+        // The layer id as is: MapLibre takes any string, and flattening it
+        // let two layers share ids (SchmidtDSE/glen#492).
+        const safe = this.layerId;
         this.sourceIds = {
             lines: `src-${safe}-anim-lines`,
             cells: `src-${safe}-anim-cells`,

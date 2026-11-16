@@ -100,22 +100,49 @@ export class PortolanCatalog {
             ? specs.map(s => ({ spec: s, url: isUrl(s.ref) ? s.ref : found.get(s.ref) }))
             : [...found.values()].map(url => ({ spec: {}, url }));
 
-        const results = await Promise.allSettled(targets.map(async ({ spec, url }) => {
+        // Fetch in parallel, then settle ids in config order, so which
+        // collection keeps a shared id never depends on network timing.
+        const fetched = await Promise.allSettled(targets.map(async ({ spec, url }) => {
             if (!url) {
                 console.warn(`[Portolan] Collection "${spec.ref}" not found under ${appConfig.catalog || '(no catalog configured)'}`);
                 return null;
             }
-            const { collection, url: at } = await this._namedCollection(url, spec.collection_id || spec.id);
-            return this.addCollection(collection, at, spec);
+            return { spec, ...await this._namedCollection(url, spec.collection_id || spec.id) };
         }));
+        const urlOf = new Map();   // dataset id → collection URL
+        const jobs = fetched.map((r) => {
+            if (r.status === 'rejected') {
+                console.warn('[Portolan] Failed to load a collection:', r.reason?.message || r.reason);
+                return null;
+            }
+            if (!r.value) return null;
+            const { spec, collection, url } = r.value;
+            const id = uniqueDatasetId(String(spec.id || collection.id), url, urlOf);
+            urlOf.set(id, url);
+            return { spec, collection, url, id };
+        });
+        const results = await Promise.allSettled(jobs.map(j => (j ? this.addCollection(j.collection, j.url, j.spec, { id: j.id }) : null)));
         for (const r of results) {
             if (r.status === 'rejected') console.warn('[Portolan] Failed to load a collection:', r.reason?.message || r.reason);
         }
         // Keep config order, which is also map draw order. Entries, not URLs:
-        // one collection can be listed twice (a series and some single days).
-        const ordered = results.map(r => (r.status === 'fulfilled' ? r.value : null)).filter(Boolean);
-        this.datasets = new Map(ordered.map(d => [d.id, d]));
+        // one collection can be listed twice (a series and some single days),
+        // and then its entries' layers are one dataset's.
+        this.datasets = new Map();
+        for (const r of results) {
+            const d = r.status === 'fulfilled' ? r.value : null;
+            if (!d) continue;
+            const prev = this.datasets.get(d.id);
+            if (prev) prev.layerIds.push(...d.layerIds.filter(l => !prev.layerIds.includes(l)));
+            else this.datasets.set(d.id, d);
+        }
         console.log(`[Portolan] ${this.datasets.size} collections, ${this.layers.size} layers`);
+    }
+
+    /** Warn when a layer id is already taken: the later layer replaces it. */
+    _claimLayerId(layerId, dataset) {
+        const prev = this.layers.get(layerId);
+        if (prev) console.warn(`[Portolan] Layer id "${layerId}" is used twice (${prev.datasetId} and ${dataset.id}); the later one replaces the earlier. Give an entry an "id" in layers-input.json to tell them apart.`);
     }
 
     /**
@@ -181,8 +208,8 @@ export class PortolanCatalog {
      * @param {string} url - where it was fetched from (hrefs resolve against it)
      * @param {Object} [spec] - the collection's entry in config
      */
-    async addCollection(collection, url, spec = {}) {
-        const id = spec.id || collection.id;
+    async addCollection(collection, url, spec = {}, { id: settledId } = {}) {
+        const id = settledId || spec.id || collection.id;
         const vectors = findVectorSources(collection, url);
         const rasters = findRasterAssets(collection, url);
         const styles = findStyleAssets(collection, url);
@@ -303,6 +330,7 @@ export class PortolanCatalog {
         const renderType = forced || chosen?.renderType || ({ Polygon: 'fill', LineString: 'line', Point: 'circle' }[info.geometryType] || 'fill');
         const paint = s.paint || chosen?.paint || { fill: DEFAULT_FILL, line: DEFAULT_LINE, circle: DEFAULT_CIRCLE }[renderType];
 
+        this._claimLayerId(layerId, dataset);
         this.layers.set(layerId, {
             layerId,
             datasetId: dataset.id,
@@ -312,7 +340,7 @@ export class PortolanCatalog {
             url: v.url,
             sourceLayer,
             // Layers drawn from one file share its source, as the full app's aliases do.
-            sourceId: `src-${dataset.id.replace(/[^a-zA-Z0-9]/g, '-')}-${v.key.replace(/[^a-zA-Z0-9]/g, '-')}`,
+            sourceId: `src-${v.url}`,
             geometryType: info.geometryType,
             fields: info.fields,
             renderType,
@@ -347,6 +375,7 @@ export class PortolanCatalog {
         const band = bandFor(r, render, s);
         const colormap = s.colormap || render?.colormap || 'viridis';
         const rescale = s.rescale || render?.rescale || defaultRescale(band);
+        this._claimLayerId(layerId, dataset);
         this.layers.set(layerId, {
             layerId,
             datasetId: dataset.id,
@@ -625,13 +654,12 @@ export class PortolanCatalog {
                 // A versioned layer: one source per version, the style shared.
                 if (l.versions) {
                     const cfg = configs[configs.length - 1];
-                    const safe = layerId.replace(/[^a-zA-Z0-9]/g, '-');
                     cfg.versions = l.versions.map((v, i) => (l.kind === 'vector'
                         ? (v.geojson
-                            ? { label: v.label, type: 'vector', sourceId: `src-${safe}-v${i}`, source: { type: 'geojson', data: v.url } }
-                            : { label: v.label, type: 'vector', sourceId: `src-${safe}-v${i}`, source: { type: 'vector', url: `pmtiles://${v.url}` }, sourceLayer: v.sourceLayer })
+                            ? { label: v.label, type: 'vector', sourceId: `src-${layerId}-v${i}`, source: { type: 'geojson', data: v.url } }
+                            : { label: v.label, type: 'vector', sourceId: `src-${layerId}-v${i}`, source: { type: 'vector', url: `pmtiles://${v.url}` }, sourceLayer: v.sourceLayer })
                         : {
-                            label: v.label, type: 'raster', colormap: v.colormap, rescale: v.rescale, sourceId: `src-${safe}-v${i}`,
+                            label: v.label, type: 'raster', colormap: v.colormap, rescale: v.rescale, sourceId: `src-${layerId}-v${i}`,
                             source: { type: 'raster', tiles: [this.rasterTileUrl({ ...l, url: v.url, band: v.band, colormap: v.colormap || l.colormap, rescale: v.rescale || l.rescale })], tileSize: 256 },
                         }));
                     cfg.defaultVersionIndex = l.defaultVersionIndex;
@@ -879,4 +907,21 @@ async function defaultFetchJson(url) {
         }
     }
     throw lastErr;
+}
+
+/**
+ * A dataset id for a collection: its own, unless an earlier entry with a
+ * different collection already took it. The same collection listed twice
+ * keeps its id. The later one gets a numbered id, with a warning.
+ * @param {string} id
+ * @param {string} url
+ * @param {Map<string, string>} taken - id → collection URL, in config order
+ */
+export function uniqueDatasetId(id, url, taken) {
+    if (!taken.has(id) || taken.get(id) === url) return id;
+    let n = 2;
+    while (taken.has(`${id}-${n}`)) n++;
+    const next = `${id}-${n}`;
+    console.warn(`[Portolan] Two collections are both "${id}" (${taken.get(id)} and ${url}); the second is "${next}". Give one an "id" in layers-input.json to name it.`);
+    return next;
 }
