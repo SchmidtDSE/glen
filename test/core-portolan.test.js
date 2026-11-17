@@ -6,7 +6,8 @@ import {
     portolanVersion, providerSummary, agentsLink, FAINT_OUTLINE, collectionColumns,
     styleSourceFile, stylesForFile, selectAssets, layerSettings, itemHref, itemDate, itemMirrorUrl, framesFromItems,
 } from '../core/portolan.js';
-import { PortolanCatalog, titilerTileUrl, defaultTooltip, topLevelColumns } from '../core/portolan-catalog.js';
+import { PortolanCatalog, titilerTileUrl, defaultTooltip, topLevelColumns, firstSentence } from '../core/portolan-catalog.js';
+import { describeLayer } from '../core/map-tools.js';
 
 const BASE = 'https://example.org/cat/roads/collection.json';
 
@@ -316,14 +317,18 @@ describe('PortolanCatalog', () => {
         expect([...c.layers.keys()]).toEqual(['roads']);
     });
 
-    it('writes the layers, properties and style values into the prompt', async () => {
+    it('names the collection and its layers in the prompt, and leaves properties and styles to describe_layer', async () => {
         const c = new PortolanCatalog(deps);
         await c.load({ collections: [BASE] });
         const p = c.generatePrompt();
-        expect(p).toContain('layer_id `roads` — vector, point, drawn as circle');
-        expect(p).toContain('`Damage` (string): Damage class');
-        expect(p).toContain('`categorical`: colours by `Damage`, values: "road_damage", "road_blockage"');
-        expect(p).toContain('License: CC-BY-4.0. Source: Response Network; mirrored by CARTO.');
+        expect(p).toMatch(/^### `roads`: /m);
+        expect(p).toContain('- `roads` (vector point)');
+        expect(p).not.toContain('Damage');
+        expect(p).not.toContain('CC-BY-4.0');
+        const d = describeLayer(c, c.layers.get('roads'));
+        expect(d).toMatchObject({ license: 'CC-BY-4.0', producers: ['Response Network'], host: 'CARTO' });
+        expect(d.properties).toContainEqual(expect.objectContaining({ name: 'Damage', description: 'Damage class' }));
+        expect(d.styles).toContainEqual(expect.objectContaining({ name: 'categorical', colours_by: expect.objectContaining({ property: 'Damage', values: ['road_damage', 'road_blockage'] }) }));
     });
 
     it("draws a raster with its collection's published render (#440)", async () => {
@@ -397,13 +402,14 @@ describe('our current STAC (#441)', () => {
         expect(collectionColumns({ 'table:columns': [{ name: 'a', description: 'x' }], assets: { p: { 'table:columns': [{ name: 'a', description: 'y' }] } } })[0].description).toBe('x');
     });
 
-    it('names feature properties from the asset when the archive gives none, and describes them in the prompt', async () => {
+    it('names feature properties from the asset when the archive gives none, and describes them in describe_layer', async () => {
         const c = new PortolanCatalog({ fetchJson: async () => null, pmtilesMetadata: async () => null });
         await c.addCollection(cpad, URL_);
         const layer = c.layers.get('cpad');
         expect(layer.sourceLayer).toBe('cpad');
         expect(layer.fields).toEqual({ ACCESS_TYP: 'string' });
-        expect(c.generatePrompt()).toContain('`ACCESS_TYP` (string): Public access');
+        expect(describeLayer(c, layer).properties).toEqual([{ name: 'ACCESS_TYP', type: 'string', description: 'Public access' }]);
+        expect(c.generatePrompt()).not.toContain('ACCESS_TYP');
     });
 
     it('finds the named collection below a parent collection_url, as the v3 app did', async () => {
@@ -488,7 +494,8 @@ describe('assets and items of a collection (#462)', () => {
         expect(a).toMatchObject({ displayName: 'Daily Tmax, 2025-06-15', defaultVisible: false, colormap: 'reds', rescale: '10,36' });
         expect(a.source.tiles[0]).toContain(encodeURIComponent('https://example.org/cat/heat/heat-2025-06-15/heat-2025-06-15.tif'));
         expect(b).toMatchObject({ displayName: 'Heat on 16 June', defaultVisible: true, colormap: 'magma', rescale: '15,40' });
-        expect(c.generatePrompt()).toContain('`heat/heat-2025-06-16` — raster (COG), item `heat-2025-06-16` (2025-06-16)');
+        expect(c.generatePrompt()).toContain('- `heat/heat-2025-06-16` Heat on 16 June (raster, 2025-06-16, band 1, on at start)');
+        expect(describeLayer(c, c.layers.get('heat/heat-2025-06-16'))).toMatchObject({ item: 'heat-2025-06-16', date: '2025-06-16', band: { min: 10 } });
     });
 
     it('draws another band of an item COG when the entry names one', async () => {
@@ -506,7 +513,7 @@ describe('assets and items of a collection (#462)', () => {
         expect(c.getMapLayerConfigs()[1].source.tiles[0]).toContain('bidx=3');
         // A three-band COG with no band named draws band 1: TiTiler colours one band.
         expect(c.getMapLayerConfigs()[0].source.tiles[0]).toContain('bidx=1');
-        expect(c.generatePrompt()).toContain('band 3');
+        expect(c.generatePrompt()).toContain('(raster, 2025-06-15, band 3)');
     });
 
     it('skips an item it cannot read and draws the rest', async () => {
@@ -697,7 +704,7 @@ describe('the full app\'s layer settings in glen core', () => {
         expect(years.versions.map(v => [v.label, v.rescale])).toEqual([['2000', '0,10'], ['2020', '0,20']]);
         expect(years.versions[1].source.tiles[0]).toContain(encodeURIComponent('y2020.tif'));
         expect(years.versions[1].source.tiles[0]).toContain('colormap_name=blues');
-        expect(c.generatePrompt()).toContain('Versions: L3, L6; starts on L6');
+        expect(describeLayer(c, c.layers.get('w/basins'))).toMatchObject({ versions: ['L3', 'L6'], starting_version: 'L6' });
     });
 
     it('takes toggle groups, out-of-panel layers, render type and tooltips by the full app\'s names', async () => {
@@ -711,7 +718,7 @@ describe('the full app\'s layer settings in glen core', () => {
         expect(l3).toMatchObject({ sidebar: false, toggleGroup: 'Basins', renderType: 'line', tooltipFields: ['name'] });
         expect(y).toMatchObject({ sidebar: true, toggleGroup: 'Basins' });
         expect(warn.mock.calls.some(([m]) => /sidebar.*false.*visible/.test(m))).toBe(true);
-        expect(c.generatePrompt()).toContain('Toggle group "Basins"');
+        expect(describeLayer(c, c.layers.get('w/l3')).toggle_group).toBe('Basins');
         warn.mockRestore();
     });
 

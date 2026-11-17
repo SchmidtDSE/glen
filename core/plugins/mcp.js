@@ -4,7 +4,7 @@
  *
  * It shows how the features glen core leaves out come back as extensions.
  * With this plugin the agent can query the GeoParquet `data` assets of the
- * same Portolan collections it draws, and the prompt lists their URLs.
+ * same Portolan collections it draws; get_schema gives their paths.
  *
  *   "plugins": [{
  *     "url": "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/core/plugins/mcp.js",
@@ -50,7 +50,6 @@
  * so and opens the settings.
  */
 
-import { resolveHref } from '../portolan.js';
 import { createCatalogTools, MCP_CATALOG_TOOLS } from '../../app/catalog-tools.js';
 import { createFilterByQueryTool } from '../../app/query-filter-tool.js';
 import { PICK_LAYER_NUDGE } from '../../app/map-control-tools.js';
@@ -192,7 +191,7 @@ export default {
             }
         }
         if (!connected) throw new Error('mcp plugin: no MCP server could be reached');
-        ctx.addPrompt(parquetSection(ctx.catalog));
+        // The data files' paths are get_schema's, not the prompt's.
         for (const text of prompts) ctx.addPrompt(text);
     },
 
@@ -233,25 +232,3 @@ export default {
         return new MCPClient(server.url, {}, { transport });
     },
 };
-
-/**
- * The GeoParquet and Parquet `data` assets of every loaded collection, so a
- * SQL tool can read the data behind each map layer.
- */
-export function parquetSection(catalog) {
-    const lines = [
-        '## Data files', '',
-        'Each layer\'s full data, by collection id:', '',
-    ];
-    let any = false;
-    for (const ds of catalog.getAll()) {
-        for (const a of Object.values(ds.stac?.assets || {})) {
-            const roles = a.roles || [];
-            if (!roles.includes('data') || roles.includes('source')) continue;
-            if (!String(a.type || '').includes('parquet')) continue;
-            lines.push(`- ${ds.id}: ${resolveHref(a.href, ds.url)}`);
-            any = true;
-        }
-    }
-    return any ? lines.join('\n') : '';
-}

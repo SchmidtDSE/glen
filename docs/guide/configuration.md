@@ -42,10 +42,10 @@ These v3 keys have no effect in glen core. `scripts/convert-to-core.mjs` turns t
 | `upload_enabled` | `plugins/uploads.js`, with the same settings as its options. See [GeoJSON upload](#geojson-upload). |
 | `geolocate` | `plugins/geolocate.js`, with the same settings as its options. See [Geolocation](#geolocation). |
 | Hex tile tools (always on in v3) | `plugins/hex.js`. See [Hex tile layers](#hex-tile-layers). |
-| `catalog_index_threshold` | Dropped. glen core lists every layer in the prompt, and `get_schema` gives the details. |
+| `catalog_index_threshold` | Dropped. glen core's prompt is always the compact index: each collection's id, title and one-sentence summary, and each layer's id and name. `describe_layer` gives a layer's properties, styles, statistics, source and license; `get_schema` gives a collection's columns and data files. |
 | `client_header_hosts` | Dropped. The harness sends its client header itself. |
 | `tool_memo` | Dropped. |
-| A collection's `preload` | Dropped. The prompt lists every layer's columns, and `get_schema` gives the rest. |
+| A collection's `preload` | Dropped. No collection's columns are in the prompt; `get_schema` and `describe_layer` give them on demand. |
 
 ## View
 
@@ -195,7 +195,7 @@ Since v3.46, a PMTiles layer without `default_style` starts from a MapLibre styl
 
 An app on an earlier release ignores the catalog's styles, so remove a layer's `default_style` only in the change that moves the app to v3.46.1 or later. (v3.46.0 gave every layer of a collection with several PMTiles files the collection's one default style.)
 
-**The agent can switch styles (since v3.47).** Every PMTiles layer with published styles, including one styled by config, offers them to the agent: the system prompt lists them, with what each colours by when the app has eight datasets or fewer, and the `apply_style` tool switches a layer to one, with its outline, filter and legend. `reset_style` returns to the layer's starting look. A layer whose only published style is already on the map lists nothing, and an app with no published styles has no `apply_style` tool.
+**The agent can switch styles (since v3.47).** Every PMTiles layer with published styles, including one styled by config, offers them to the agent: `describe_layer` lists them, with what each colours by, and the `apply_style` tool switches a layer to one, with its outline, filter and legend. `reset_style` returns to the layer's starting look. A layer whose only published style is already on the map lists nothing, and an app with no published styles has no `apply_style` tool.
 
 ### Continuous (graduated) vector legends
 
@@ -1173,7 +1173,7 @@ A plugin is an ES module whose default export is `{ name, setup(ctx, options) }`
 
 ## System prompt
 
-The agent's prompt is glen core's short base prompt (`core/system-prompt.md`), then the app's own prompt, then the loaded layers, then any plugin's sections, such as the MCP plugin's data files and the server's `geospatial-analyst` prompt. The app's prompt is a `system-prompt.md` served beside `index.html`, or the file `system_prompt_url` names, relative to the page. An app without one is fine.
+The agent's prompt is glen core's short base prompt (`core/system-prompt.md`), then the app's own prompt, then an index of the loaded collections and layers by id and name, then any plugin's sections, such as the MCP server's `geospatial-analyst` prompt. Columns, styles and data files are not in the prompt: `describe_layer` and `get_schema` return them when the agent needs them. The app's prompt is a `system-prompt.md` served beside `index.html`, or the file `system_prompt_url` names, relative to the page. An app without one is fine.
 
 Keep an app's prompt short: what the data is, who the app is for, and anything particular to answering about it. The tools describe themselves, so the prompt need not.
 

@@ -113,7 +113,7 @@ The deploy-time `config.json` needs no change: `plugins/mcp.js` takes `mcp_serve
 
 - Vector tiles come from the collection's `rel: pmtiles` link and `pmtiles:layers`, or from an asset with the `visual` role. The same file listed both ways becomes one layer.
 - The geometry type and attribute names come from the PMTiles archive's own metadata, so filters and styles use the names in the tiles.
-- Styles come from assets with the `style` role. Each is converted to the one MapLibre layer the core draws for that geometry. The default style sets the starting paint, and the others are offered to the agent by name through `apply_style`. The prompt lists the categories or range each style colours by, so the model filters and restyles on real values.
+- Styles come from assets with the `style` role. Each is converted to the one MapLibre layer the core draws for that geometry. The default style sets the starting paint, and the others are offered to the agent by name through `apply_style`. `describe_layer` lists the categories or range each style colours by, so the model filters and restyles on real values.
 - A colour ramp cannot interpolate a missing value and paints it black. The core sets the opacity to zero for features without a number in that property, and leaves the colour expression whole so the legend still reads it.
 - Rasters are COG assets with the `data` role. The starting display range comes from the band statistics Portolan requires, capped at the mean plus two standard deviations for skewed data. Tiles come from TiTiler, by default the NRP server at `titiler.nrp-nautilus.io`; `titiler_url` points an app at another.
 - Assets with the `source` role are the publisher's upstream originals and are never drawn.
