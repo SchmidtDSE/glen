@@ -19,6 +19,7 @@ export default {
           { text: 'Configuration Reference', link: '/guide/configuration' },
           { text: 'Deployment', link: '/guide/deployment' },
           { text: 'Private Deployment', link: '/guide/private-deployment' },
+          { text: 'Upgrading to v4', link: '/guide/upgrading-to-v4' },
         ],
       },
       {

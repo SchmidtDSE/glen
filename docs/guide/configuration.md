@@ -2,7 +2,7 @@
 
 An app configures glen core with `layers-input.json`, served beside its `index.html`. Every field is optional, though an app with no `collections` and no `catalog` has an empty map.
 
-glen core reads the layer settings of the v3 full app (`app/main.js`) by the same names, so a v3 app's collections carry over unchanged. What changed is the opt-in features: the MCP server, charts, drawing, uploads and hex tiles are now [plugins](#plugins). `scripts/convert-to-core.mjs` converts a v3 app's `layers-input.json` and `index.html`; see [Moving a v3 app](#moving-a-v3-app-to-glen-core).
+glen core reads the layer settings of the v3 full app (`app/main.js`) by the same names, so a v3 app's collections carry over unchanged. What changed is the opt-in features: the MCP server, charts, drawing, uploads and hex tiles are now [plugins](#plugins). `scripts/convert-to-core.mjs` converts a v3 app's `layers-input.json` and `index.html`; see [Upgrading to v4](./upgrading-to-v4).
 
 ## Top-level fields
 
@@ -1420,7 +1420,7 @@ The checkpoint is the only per-turn cap on tool use. Setting a value to `0` remo
 
 ## Chat export
 
-A 💾 save button in the chat footer saves the current conversation as a self-contained HTML document you can share or print. The button is disabled until the first user message and enables automatically after.
+The "💾 Export session" button in the layer panel, beside Globe and Hex grid, saves the current conversation as a self-contained HTML document you can share or print. The button is disabled until the first user message and enables automatically after. In the floating layout, which has no layer panel, it is a 💾 icon in the chat footer.
 
 The export is **off by default**, since a map-only app has little to report. Turn it on with `"export": true`, or configure it with an `export` block in `layers-input.json` (or the deploy-time `config.json`, which wins). The report comes from glen-harness, which loads it on first use, and redraws the session's charts when `plugins/charts.js` is loaded.
 
@@ -1788,4 +1788,4 @@ Collections pass through unchanged, since glen core reads the v3 layer settings 
 
 The deploy-time `config.json` needs no change. A `draw_enabled` set only in `config.json` has no effect in glen core; list `plugins/draw.js` instead.
 
-Check the converted app against the v3 one: open both and compare their layers, legends and a few questions.
+Check the converted app against the v3 one: open both and compare their layers, legends and a few questions. [Upgrading to v4](./upgrading-to-v4) lists every change an app needs.
