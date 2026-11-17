@@ -153,6 +153,23 @@ export const QUERY_STAND_IN = {
     },
 };
 
+/**
+ * The stand-in's arguments in the shape the server's own `query` takes. The
+ * stand-in names its SQL `sql_query`; a server whose `query` names it
+ * otherwise (`sql`, say) gets it under that name. Other calls pass through.
+ */
+export function matchSqlArg(tools, name, args) {
+    if (name !== QUERY_STAND_IN.name || !args || !('sql_query' in args)) return args;
+    const schema = (tools || []).find(t => t.name === name)?.inputSchema;
+    const props = schema?.properties || {};
+    if (!schema || 'sql_query' in props) return args;
+    const target = (schema.required || []).find(k => props[k]?.type === 'string')
+        || Object.keys(props).find(k => props[k]?.type === 'string');
+    if (!target) return args;
+    const { sql_query, ...rest } = args;
+    return { ...rest, [target]: sql_query };
+}
+
 /** The chat notice when the first server cannot be reached at start. */
 export const SQL_UNAVAILABLE_NOTICE = 'The data server could not be reached, so SQL queries will fail until it comes back.';
 
@@ -276,7 +293,20 @@ export default {
         const prompts = required.filter(Boolean);
         // The stand-in for the first server's tools, unless another server
         // already answers `query`.
-        if (primary.down && !ctx.tools.tools?.has?.('query')) register(primary.client, [QUERY_STAND_IN], primary.down);
+        if (primary.down && !ctx.tools.tools?.has?.('query')) {
+            register(primary.client, [QUERY_STAND_IN], primary.down);
+            // A call through the stand-in reconnects first, so the server's
+            // own tools are known before its arguments are sent.
+            const client = primary.client;
+            const callTool = client.callTool.bind(client);
+            client.callTool = async (name, args) => {
+                if (name === QUERY_STAND_IN.name) {
+                    await client.ensureConnected?.();
+                    args = matchSqlArg(client.getTools?.(), name, args);
+                }
+                return callTool(name, args);
+            };
+        }
         // The data files' paths are get_schema's, not the prompt's.
         for (const text of prompts) ctx.addPrompt(text);
     },

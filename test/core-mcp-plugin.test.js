@@ -3,7 +3,7 @@ import { PortolanCatalog } from '../core/portolan-catalog.js';
 import { createCatalogTools } from '../app/catalog-tools.js';
 import { readFileSync } from 'node:fs';
 import mcpPlugin, {
-    resolveServers, workerUrl, HARNESS_MCP_CLIENT, connectWithRetry, retryDelay, QUERY_STAND_IN, SQL_UNAVAILABLE_NOTICE,
+    resolveServers, workerUrl, HARNESS_MCP_CLIENT, connectWithRetry, retryDelay, QUERY_STAND_IN, SQL_UNAVAILABLE_NOTICE, matchSqlArg,
 } from '../core/plugins/mcp.js';
 
 describe('resolveServers', () => {
@@ -122,6 +122,7 @@ describe('mcp plugin setup', () => {
         async reconnect() { this.reconnected = true; }
         getTools() { return listings[this.url].map(tool); }
         setOnReconnect(fn) { this.onReconnect = fn; }
+        async callTool(name, args) { (this.sent ||= []).push([name, args]); return 'ok'; }
         async getPrompt(name) { return `prompt ${name} from ${this.url}`; }
     }
 
@@ -261,6 +262,22 @@ describe('mcp plugin setup', () => {
         const ui = { addMessage: vi.fn(), enableMcpToken: vi.fn() };
         for (const fn of ready) await fn({ ui });
         expect(ui.addMessage).toHaveBeenCalledWith('system', SQL_UNAVAILABLE_NOTICE);
+    });
+
+    it('sends the stand-in\'s SQL under the name the server\'s own query tool uses', async () => {
+        const { ctx } = context();
+        await plugin.setup(ctx, { url: 'https://down/mcp' });
+        const client = clients[0];
+        const sqlTool = { name: 'query', inputSchema: { type: 'object', properties: { sql: { type: 'string' } }, required: ['sql'] } };
+        // The server is back: the call reconnects first, which loads its tools.
+        let tools = [];
+        client.ensureConnected = vi.fn(async () => { tools = [sqlTool, tool('get_schema')]; });
+        client.getTools = () => tools;
+        expect(await client.callTool('query', { sql_query: 'SELECT 1' })).toBe('ok');
+        expect(client.ensureConnected).toHaveBeenCalled();
+        expect(client.sent.at(-1)).toEqual(['query', { sql: 'SELECT 1' }]);
+        await client.callTool('get_schema', { dataset_id: 'x' });
+        expect(client.sent.at(-1)).toEqual(['get_schema', { dataset_id: 'x' }]);
     });
 
     it('registers no stand-in when another server answers query', async () => {
@@ -463,3 +480,23 @@ describe('catalog tools over Portolan collections (#441)', () => {
     });
 });
 
+describe('matchSqlArg', () => {
+    const q = (props, required) => [{ name: 'query', inputSchema: { type: 'object', properties: props, required } }];
+    it('renames sql_query to the server\'s own SQL argument', () => {
+        expect(matchSqlArg(q({ sql: { type: 'string' } }, ['sql']), 'query', { sql_query: 'S' })).toEqual({ sql: 'S' });
+    });
+    it('leaves arguments alone when the server takes sql_query', () => {
+        const args = { sql_query: 'S' };
+        expect(matchSqlArg(q({ sql_query: { type: 'string' } }, ['sql_query']), 'query', args)).toBe(args);
+    });
+    it('leaves other tools and unknown schemas alone', () => {
+        const args = { sql_query: 'S' };
+        expect(matchSqlArg(q({ sql: { type: 'string' } }), 'get_schema', args)).toBe(args);
+        expect(matchSqlArg([], 'query', args)).toBe(args);
+        expect(matchSqlArg(q({ limit: { type: 'number' } }), 'query', args)).toBe(args);
+    });
+    it('keeps the other arguments', () => {
+        expect(matchSqlArg(q({ sql: { type: 'string' }, limit: { type: 'number' } }, ['sql']), 'query', { sql_query: 'S', limit: 5 }))
+            .toEqual({ limit: 5, sql: 'S' });
+    });
+});
