@@ -13,6 +13,7 @@
  */
 
 import { coerceFilter, fieldKind } from './filter-types.js';
+import { numericStyleValue, numericStyleNote } from './style-numbers.js';
 import { extractHashFromUrl, buildFillColorExpression, buildFlatFillColorExpression, rewriteValueColumn, PALETTES, buildHeightExpression, buildFlatHeightExpression, defaultExtrusionMaxHeight, applicableScale } from './hex-layer-helpers.js';
 import { deriveCategoricalLegend, deriveContinuousLegend, primaryColorValue } from './legend-helpers.js';
 import { mountOverlay, SLOT } from './overlay-rail.js';
@@ -1637,12 +1638,17 @@ export class MapManager {
         // every feature and silently fails to recolor (issue #259). Repoint any
         // value-bearing `get` to the layer's real column before applying.
         const corrected = new Set();
+        const adjusted = [];
         const results = [];
         const applied = {};
         for (const [prop, rawValue] of Object.entries(paintProps)) {
-            let value = rawValue;
+            // Numeric strings where MapLibre needs a number, such as the stops
+            // of an interpolate, are read as numbers (SchmidtDSE/glen#499).
+            const numbers = numericStyleValue(prop, rawValue);
+            let value = numbers.value;
+            if (numbers.converted.length) adjusted.push(numericStyleNote(prop, numbers.converted));
             if (state.valueColumn) {
-                const { value: rewritten, replaced } = rewriteValueColumn(rawValue, state.valueColumn);
+                const { value: rewritten, replaced } = rewriteValueColumn(value, state.valueColumn);
                 value = rewritten;
                 replaced.forEach(p => corrected.add(p));
             }
@@ -1679,6 +1685,7 @@ export class MapManager {
             layer: layerId,
             displayName: state.displayName,
             updates: results,
+            ...(adjusted.length > 0 && { adjusted }),
             ...(corrected.size > 0 && {
                 note: `Repointed value reference(s) ${[...corrected].map(p => `"${p}"`).join(', ')} to this layer's actual value column "${state.valueColumn}".`,
             }),
