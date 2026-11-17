@@ -21,9 +21,9 @@ import {
  * the published styles and describe_layer, and no SQL.
  */
 export const PORTOLAN_HINTS = Object.freeze({
-    filterValues: 'IMPORTANT: Never guess categorical values used in filters. Use the values a published style lists in your system prompt, values from describe_layer, or values the user gave.',
-    styleValues: 'IMPORTANT: For categorical coloring (e.g., a "match" expression), never guess or assume valid values. Use the values a published style lists in your system prompt, values from describe_layer, or values the user gave. Prefer apply_style when a published style matches the request. Raster colors change with set_raster_colormap, not here.',
-    tooltipFields: 'Property names must exactly match the feature properties in the vector tiles, as listed for the layer in your system prompt or by describe_layer. Unknown names render nothing (no error).',
+    filterValues: 'IMPORTANT: Never guess property names or categorical values used in filters. Use the ones describe_layer returns for the layer (its properties, and the values its published styles colour by), or values the user gave.',
+    styleValues: 'IMPORTANT: For categorical coloring (e.g., a "match" expression), never guess or assume property names or valid values. Use the ones describe_layer returns for the layer, or values the user gave. Prefer apply_style when one of the layer\'s published styles matches the request. Raster colors change with set_raster_colormap, not here.',
+    tooltipFields: 'Property names must exactly match the feature properties in the vector tiles, as describe_layer lists them. Unknown names render nothing (no error).',
 });
 
 const json = (x) => JSON.stringify(x);
@@ -58,7 +58,7 @@ export function createCoreMapTools(mapManager, catalog, { geocoder = null } = {}
         createProjectionTool(mapManager),
         {
             name: 'apply_style',
-            description: `Apply one of the styles the data publisher made for a vector layer. The system prompt lists each layer's published styles and what each colours by. Prefer a published style over writing your own paint when one matches the request.
+            description: `Apply one of the styles the data publisher made for a vector layer. describe_layer lists a layer's published styles and what each colours by. Prefer a published style over writing your own paint when one matches the request.
 
 ${PICK_LAYER_NUDGE}`,
             inputSchema: {
@@ -73,7 +73,7 @@ ${PICK_LAYER_NUDGE}`,
         },
         {
             name: 'set_raster_colormap',
-            description: `Recolour a raster (COG) layer: pick a colour map and the value range it spans. Values below the range take the first colour and values above take the last, so narrow the range to show detail in the bulk of the data. The system prompt gives each raster's minimum, maximum and mean.
+            description: `Recolour a raster (COG) layer: pick a colour map and the value range it spans. Values below the range take the first colour and values above take the last, so narrow the range to show detail in the bulk of the data. describe_layer gives a raster's minimum, maximum and mean.
 
 Colour maps: viridis, magma, inferno, plasma, cividis, ylorrd, ylgnbu, blues, greens, reds, oranges, purples, greys, rdylgn, rdylbu, spectral, rdbu, brbg (append _r to reverse, e.g. viridis_r).`,
             inputSchema: {
@@ -93,7 +93,7 @@ Colour maps: viridis, magma, inferno, plasma, cividis, ylorrd, ylgnbu, blues, gr
         },
         {
             name: 'describe_layer',
-            description: 'Full metadata for one layer: every feature property with its description, the published styles with the values or range each colours by, raster statistics, license, and links to the publisher\'s README and agent guide.',
+            description: 'Full metadata for one layer: every feature property with its description and coded values, the published styles with the values or range each colours by, a raster\'s statistics, unit and classes, the layer\'s versions, its source and license, and links to the publisher\'s README and agent guide. The system prompt names layers only, so call this before you filter, style, recolour or set tooltips on a layer whose properties, styles or values you have not yet seen, and for the source and license to name when you first show a dataset.',
             inputSchema: {
                 type: 'object',
                 properties: { layer_id: { type: 'string' } },
@@ -203,15 +203,32 @@ export function describeLayer(catalog, l) {
         collection_url: ds?.url,
         agents_guide: ds?.agentsUrl,
     };
-    if (l.kind === 'raster') {
-        return { ...base, kind: 'raster', band: l.band, colormap: l.colormap, range: l.rescale };
+    // The layer panel's controls: its versions and the group it toggles with.
+    if (l.versions) {
+        base.versions = l.versions.map(v => v.label);
+        base.starting_version = l.versions[l.defaultVersionIndex]?.label ?? null;
     }
+    if (l.toggleGroup) base.toggle_group = l.toggleGroup;
+    if (l.kind === 'raster') {
+        return {
+            ...base,
+            kind: 'raster',
+            ...(l.itemId && { item: l.itemId, date: l.date }),
+            ...(l.series && { time_series: { dates: l.series.frames.length, first: l.series.first, last: l.series.last } }),
+            band: l.band,
+            colormap: l.colormap,
+            range: l.rescale,
+        };
+    }
+    const values = new Map((ds?.columns || []).filter(c => Array.isArray(c.values) && c.values.length).map(c => [c.name, c.values]));
     return {
         ...base,
         kind: 'vector',
         geometry: l.geometryType,
         drawn_as: l.renderType,
-        properties: Object.entries(l.fields).map(([name, type]) => ({ name, type, description: desc.get(name) || null })),
+        properties: Object.entries(l.fields).map(([name, type]) => ({
+            name, type, description: desc.get(name) || null, ...(values.has(name) && { values: values.get(name) }),
+        })),
         styles: [...l.styles.entries()].map(([name, s]) => ({ name, title: s.title, colours_by: describeColor(s.paint) })),
         active_style: l.activeStyle || l.defaultStyle,
     };

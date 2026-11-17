@@ -64,7 +64,7 @@ export function createCatalogTools(catalog, { s3Sources = [], fetchJson = defaul
     return [
         {
             name: 'get_schema',
-            description: 'Get column names, types, descriptions and coded value lists for a dataset, with its read_parquet() paths. **Call this before your first SQL query against a dataset.**',
+            description: 'Get column names, types, descriptions and coded value lists for a dataset, with its read_parquet() paths. The system prompt names datasets but not their columns or files: **call this before your first SQL query against a dataset**, and use the paths and column names it returns.',
             inputSchema: {
                 type: 'object',
                 properties: {

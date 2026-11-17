@@ -25,7 +25,7 @@
 
 import {
     resolveHref, findVectorSources, findStyleAssets, findRasterAssets,
-    defaultRescale, styleToLayer, describeColor, describeStyleColours, pmtilesLayerInfo, stylesForFile,
+    defaultRescale, styleToLayer, describeColor, pmtilesLayerInfo, stylesForFile,
     agentsLink, providerSummary, portolanVersion, collectionColumns,
     rasterBand, selectAssets, layerSettings, itemHref, itemDate, itemMirrorUrl, framesFromItems, withAbsoluteHrefs,
 } from './portolan.js';
@@ -696,56 +696,37 @@ export class PortolanCatalog {
     }
 
     /**
-     * The catalog section of the system prompt. Static for a deployment, so
-     * it can sit in the cached prompt prefix (docs/design/prompt-prefix-stability.md).
+     * The catalog section of the system prompt: what the agent needs to pick
+     * a collection and a layer, and no more. Each collection's id, title and
+     * one-sentence summary, then each layer's id and name. Properties,
+     * published styles, raster statistics and classes, source and license
+     * are describe_layer's; columns and data files are get_schema's. So a
+     * collection whose layers share columns and styles costs a line per
+     * layer, not a page of repeats. v3 printed the same kind of index above
+     * `catalog_index_threshold`; core prints it for every app.
+     *
+     * Static for a deployment, so it can sit in the cached prompt prefix
+     * (docs/design/prompt-prefix-stability.md).
      */
     generatePrompt() {
-        const lines = ['## Layers', ''];
+        const lines = ['## Layers'];
         for (const ds of this.datasets.values()) {
-            const src = [ds.producers.join(', '), ds.host && !ds.producers.includes(ds.host) ? `mirrored by ${ds.host}` : null].filter(Boolean).join('; ');
-            lines.push(`### ${ds.title}`);
-            lines.push(oneLine(ds.description, 300));
-            lines.push(`License: ${ds.license || 'not stated'}${src ? `. Source: ${src}` : ''}.`);
-            const colDesc = new Map(ds.columns.map(c => [c.name, c.description]));
+            const title = oneLine(ds.title, 160);
+            lines.push('', `### \`${ds.id}\`: ${title}`);
+            const summary = firstSentence(ds.description, 200);
+            if (summary && summary !== title) lines.push(summary);
             for (const layerId of ds.layerIds) {
                 const l = this.layers.get(layerId);
-                lines.push('');
-                const panelNotes = () => {
-                    if (l.versions) lines.push(`  Versions: ${l.versions.map(v => v.label).join(', ')}; starts on ${l.versions[l.defaultVersionIndex]?.label}`);
-                    if (l.toggleGroup) lines.push(`  Toggle group "${l.toggleGroup}"`);
-                };
-                if (l.kind === 'vector') {
-                    lines.push(`- layer_id \`${layerId}\` — vector, ${(l.geometryType || 'unknown geometry').toLowerCase()}, drawn as ${l.renderType}${l.visible ? ', on at start' : ''}`);
-                    panelNotes();
-                    const fields = Object.entries(l.fields);
-                    if (fields.length) {
-                        lines.push('  Feature properties:');
-                        for (const [name, type] of fields.slice(0, 30)) {
-                            const d = colDesc.get(name);
-                            lines.push(`  - \`${name}\` (${String(type).toLowerCase()})${d ? `: ${oneLine(d, 120)}` : ''}`);
-                        }
-                        if (fields.length > 30) lines.push(`  - …and ${fields.length - 30} more`);
-                    }
-                    if (l.styles.size) {
-                        lines.push('  Published styles:');
-                        for (const [name, s] of l.styles) {
-                            lines.push(`  - \`${name}\`${name === l.defaultStyle ? ' (current at start)' : ''}: ${describeStyleColours(s.paint)}`);
-                        }
-                    }
-                } else {
-                    const b = l.band || {};
-                    const stats = b.min != null ? `values ${fmt(b.min)} to ${fmt(b.max)}, mean ${fmt(b.mean)}${b.unit ? ` ${b.unit}` : ''}` : 'no statistics published';
-                    const where = [
-                        l.itemId ? `item \`${l.itemId}\`${l.date ? ` (${l.date})` : ''}` : null,
-                        l.series ? `time series of ${l.series.frames.length} dates from ${l.series.first} to ${l.series.last}, one item each, starting on ${l.series.last}` : null,
-                        b.bidx ? `band ${b.bidx}` : null,
-                    ].filter(Boolean).join(', ');
-                    lines.push(`- layer_id \`${layerId}\` — raster (COG)${where ? `, ${where}` : ''}, ${stats}; drawn with colormap \`${l.colormap}\` over ${l.rescale || 'the full range'}${l.visible ? ', on at start' : ''}`);
-                    panelNotes();
-                    if (b.classes) lines.push(`  Classes: ${b.classes.slice(0, 20).map(c => `${c.value}=${c.description || c.name}`).join(', ')}`);
-                }
+                const notes = [
+                    l.kind === 'vector' ? `vector ${(l.geometryType || '').toLowerCase()}`.trim() : 'raster',
+                    l.series ? `time series of ${l.series.frames.length} dates from ${l.series.first} to ${l.series.last}` : l.date,
+                    l.band?.bidx ? `band ${l.band.bidx}` : null,
+                    l.visible ? 'on at start' : null,
+                ].filter(Boolean).join(', ');
+                // A layer named as its collection is not named twice.
+                const name = l.title && l.title !== ds.title ? ` ${oneLine(l.title, 120)}` : '';
+                lines.push(`- \`${layerId}\`${name} (${notes})`);
             }
-            lines.push('');
         }
         return lines.join('\n');
     }
@@ -850,9 +831,21 @@ function oneLine(text, cap) {
     return t.length > cap ? `${t.slice(0, cap - 1)}…` : t;
 }
 
-function fmt(v) {
-    if (v == null) return '?';
-    return Math.abs(v) >= 100 ? Math.round(v).toLocaleString('en-US') : Number(v.toFixed(2)).toString();
+/**
+ * A description's first sentence, for the catalog index: whitespace and
+ * Markdown emphasis removed, cut at the first full stop that ends a sentence
+ * (not the one in "et al." or "e.g."), and capped at `cap` characters.
+ */
+export function firstSentence(text, cap) {
+    const t = String(text || '').replace(/\*\*|__/g, '').replace(/\s+/g, ' ').trim();
+    const end = /[.!?](?=\s+[A-Z0-9("'])/g;
+    let m;
+    while ((m = end.exec(t))) {
+        const word = t.slice(0, m.index).split(' ').pop();
+        if (/^(al|e\.g|i\.e|etc|vs|approx|no|st|[a-z])$/i.test(word)) continue;
+        return oneLine(t.slice(0, m.index + 1), cap);
+    }
+    return oneLine(t, cap);
 }
 
 /**

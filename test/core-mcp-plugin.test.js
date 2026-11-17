@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PortolanCatalog } from '../core/portolan-catalog.js';
 import { createCatalogTools } from '../app/catalog-tools.js';
 import { readFileSync } from 'node:fs';
-import mcpPlugin, { resolveServers, workerUrl, parquetSection, HARNESS_MCP_CLIENT } from '../core/plugins/mcp.js';
+import mcpPlugin, { resolveServers, workerUrl, HARNESS_MCP_CLIENT } from '../core/plugins/mcp.js';
 
 describe('resolveServers', () => {
     it('reads the single-server shorthand', () => {
@@ -305,19 +305,11 @@ describe('mcp plugin setup', () => {
         expect(clients[0].transport.closed).toBeUndefined();
     });
 
-    it('adds each server\'s prompt after the data-file section', async () => {
+    it('adds each server\'s prompt, and leaves the data files to get_schema', async () => {
         const { ctx, prompts } = context();
         ctx.catalog = { getAll: () => [{ id: 'roads', url: 'https://x/roads/collection.json', stac: { assets: { d: { href: 'roads.parquet', type: 'application/vnd.apache.parquet', roles: ['data'] } } } }] };
         await plugin.setup(ctx, { servers: [{ url: 'https://a/mcp', prompt: 'analyst' }, { url: 'https://b/mcp' }] });
-        expect(prompts).toHaveLength(2);
-        expect(prompts[0]).toContain('https://x/roads/roads.parquet');
-        expect(prompts[1]).toBe('prompt analyst from https://a/mcp');
-    });
-});
-
-describe('parquetSection', () => {
-    it('is empty without parquet data assets', () => {
-        expect(parquetSection({ getAll: () => [{ id: 'a', url: 'https://x/c.json', stac: { assets: {} } }] })).toBe('');
+        expect(prompts).toEqual(['prompt analyst from https://a/mcp']);
     });
 });
 

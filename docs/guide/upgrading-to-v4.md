@@ -43,14 +43,14 @@ The hex grid button, the geocoder search box (`geocoder.search_box`) and the dat
 | Setting | In v4 |
 |---|---|
 | `export` | Off unless set. v3 offered the session export by default, so the converter writes `"export": true` unless the app had turned it off. |
-| `catalog_index_threshold` | Dropped. The prompt lists every layer, and `get_schema` gives the details. |
+| `catalog_index_threshold` | Dropped. glen core's prompt is always the compact index: each collection's id, title and one-sentence summary, and each layer's id and name. `describe_layer` gives a layer's properties, styles, statistics, source and license; `get_schema` gives a collection's columns and data files. |
 | `client_header_hosts` | Dropped. glen-harness sends the client header itself. |
 | `tool_memo` | Dropped. |
-| A collection's `preload` | Dropped. The prompt lists every layer's columns, and `get_schema` gives the rest. |
+| A collection's `preload` | Dropped. No collection's columns are in the prompt; `get_schema` and `describe_layer` give them on demand. |
 
 ## Behaviour changes
 
-The system prompt starts with glen core's short base prompt, then the app's own prompt, then the layer list and the plugins' sections. The app's prompt is `system_prompt_url`, or `system-prompt.md` beside the page as in v3. Tool descriptions now say what each tool does, so an app's prompt should describe the app and its data and leave the tools to their descriptions.
+The system prompt starts with glen core's short base prompt, then the app's own prompt, then the layer list and the plugins' sections. The layer list names collections and layers only; their columns, styles and data files come from `describe_layer` and `get_schema`. The app's prompt is `system_prompt_url`, or `system-prompt.md` beside the page as in v3. Tool descriptions now say what each tool does, so an app's prompt should describe the app and its data and leave the tools to their descriptions.
 
 The agent, chat and session export come from [glen-harness](https://github.com/SchmidtDSE/glen-harness), which glen core loads at a release tag. `app/mcp-client.js`, the vendored MCP SDK and `SQL_HINTS` in `app/map-control-tools.js` were removed.
 

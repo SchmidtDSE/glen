@@ -19,7 +19,7 @@ export const DEFAULT_MCP_URL = 'https://duckdb-mcp.nrp-nautilus.io/mcp';
 
 // v3 keys glen core has no use for, and why.
 const DROPPED = Object.freeze({
-    catalog_index_threshold: 'glen core always lists every layer in the prompt; get_schema gives the details',
+    catalog_index_threshold: 'glen core\'s prompt is always a compact index of collections and layers; describe_layer and get_schema give their columns',
     client_header_hosts: 'the harness sends its client header itself',
     mcp_url: 'now an option of plugins/mcp.js',
     mcp_servers: 'now options of plugins/mcp.js',
@@ -88,7 +88,7 @@ export function convertConfig(v3, { pluginBase = 'https://cdn.jsdelivr.net/gh/Sc
         if (k in DROPPED && !/^(mcp_|charts$|draw_enabled$|upload|geolocate$)/.test(k)) notes.push(`Dropped ${k}: ${DROPPED[k]}.`);
     }
     const preload = (v3.collections || []).filter(c => c && typeof c === 'object' && c.preload).map(c => c.collection_id || c.id);
-    if (preload.length) notes.push(`preload is ignored in glen core (${preload.join(', ')}): its prompt lists every layer's columns, and get_schema gives the rest.`);
+    if (preload.length) notes.push(`preload is ignored in glen core (${preload.join(', ')}): no collection's columns are in its prompt, and get_schema and describe_layer give them on demand.`);
     notes.push('index.html must load glen core (core/main.js) instead of app/main.js; see core/README.md.');
     return { config, notes };
 }
