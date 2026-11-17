@@ -31,9 +31,9 @@ import { mountH3GridToggle } from '../app/h3-grid.js';
 // client. All three URLs name the same tag; bump them together.
 import {
     Agent, ToolRegistry, applyProxyModelList, buildUserModels, loadUserSettings,
-} from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.5.0/src/core.js';
-import { ChatUI } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.5.0/ui/chat-ui.js';
-import { CHAT_SCRIPTS } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.5.0/ui/deps.js';
+} from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.5.1/src/core.js';
+import { ChatUI } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.5.1/ui/chat-ui.js';
+import { CHAT_SCRIPTS } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.5.1/ui/deps.js';
 import { PortolanCatalog, exportCatalogView } from './portolan-catalog.js';
 import { createCoreMapTools } from './map-tools.js';
 import { loadPrompts } from './prompt.js';
@@ -55,6 +55,11 @@ class GlenChatUI extends ChatUI {
 
     footerLinks(links) {
         return [...super.footerLinks(links), ...dataFooterLinks(links, { absorbed: this.linksAbsorbed })];
+    }
+
+    /** glen's own tag in the export, not the harness's. */
+    appVersion() {
+        return CORE_VERSION;
     }
 }
 
