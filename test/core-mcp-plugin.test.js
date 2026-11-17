@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PortolanCatalog } from '../core/portolan-catalog.js';
 import { createCatalogTools } from '../app/catalog-tools.js';
 import { readFileSync } from 'node:fs';
-import mcpPlugin, { resolveServers, workerUrl, HARNESS_MCP_CLIENT } from '../core/plugins/mcp.js';
+import mcpPlugin, {
+    resolveServers, workerUrl, HARNESS_MCP_CLIENT, connectWithRetry, retryDelay, QUERY_STAND_IN, SQL_UNAVAILABLE_NOTICE,
+} from '../core/plugins/mcp.js';
 
 describe('resolveServers', () => {
     it('reads the single-server shorthand', () => {
@@ -36,8 +38,39 @@ describe('resolveServers', () => {
         expect(resolveServers({ worker: 'w.js' }, { mcp_url: 'https://c/mcp' })[0].url).toBe('worker:w.js');
     });
 
+    it('carries optional: true and nothing else', () => {
+        const [a, b] = resolveServers({ servers: [{ url: 'https://a/mcp', optional: 'yes' }, { url: 'https://b/mcp', optional: true }] });
+        expect('optional' in a).toBe(false);
+        expect(b.optional).toBe(true);
+    });
+
     it('refuses an entry with both url and worker', () => {
         expect(() => resolveServers({ servers: [{ url: 'https://a/mcp', worker: 'w.js' }] })).toThrow(/not both/);
+    });
+});
+
+describe('connectWithRetry', () => {
+    beforeEach(() => { vi.spyOn(console, 'warn').mockImplementation(() => {}); });
+    afterEach(() => vi.restoreAllMocks());
+
+    it('backs off 2 s, then 4 s, at most 8 s', () => {
+        expect([0, 1, 2, 3].map(retryDelay)).toEqual([2000, 4000, 8000, 8000]);
+    });
+
+    it('stops at the first success', async () => {
+        let n = 0;
+        const waits = [];
+        await connectWithRetry({ connect: async () => { if (++n < 2) throw new Error('down'); } }, { wait: async (ms) => waits.push(ms) });
+        expect(n).toBe(2);
+        expect(waits).toEqual([2000]);
+    });
+
+    it('throws the last error after every attempt fails, and does not retry a refused token', async () => {
+        let n = 0;
+        const client = { connect: async () => { n++; throw new Error(`fail ${n}`); } };
+        await expect(connectWithRetry(client, { attempts: 3, wait: async () => {} })).rejects.toThrow('fail 3');
+        n = 0;
+        await expect(connectWithRetry(client, { isAuthError: () => true, wait: async () => {} })).rejects.toThrow('fail 1');
     });
 });
 
@@ -60,6 +93,7 @@ describe('mcp plugin setup', () => {
     let clients;
     let warn;
     let refuse;
+    let pending;
     let savedToken;
 
     class FakeClient {
@@ -70,6 +104,7 @@ describe('mcp plugin setup', () => {
             clients.push(this);
         }
         async connect() {
+            this.attempts = (this.attempts || 0) + 1;
             if (this.options.transport) {
                 this.transport = this.options.transport();
                 // The worker's file fails to load while the client waits.
@@ -81,6 +116,7 @@ describe('mcp plugin setup', () => {
                 throw new Error('Error POSTing to endpoint (HTTP 401): Unauthorized');
             }
             if (!listings[this.url]) throw new Error('unreachable');
+            if (pending.has(this.url)) await pending.get(this.url);
         }
         async setHeaders(h) { this.headers = h; }
         async reconnect() { this.reconnected = true; }
@@ -131,13 +167,17 @@ describe('mcp plugin setup', () => {
         loadTokenHelpers: async () => tokenHelpers,
         loadTransport: async () => FakeTransport,
         startWorker: (server) => new FakeWorker(server),
+        wait: async (ms) => { waits.push(ms); },
     };
+    let waits;
 
     beforeEach(() => {
         clients = [];
+        waits = [];
         workers = [];
         failWorkers = false;
         refuse = new Set();
+        pending = new Map();
         savedToken = '';
         warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
         vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -192,15 +232,70 @@ describe('mcp plugin setup', () => {
 
     it('goes on past a server it cannot reach', async () => {
         const { ctx, tools } = context();
-        await plugin.setup(ctx, { servers: [{ url: 'https://down/mcp' }, { url: 'https://b/mcp' }] });
+        await plugin.setup(ctx, { servers: [{ url: 'https://b/mcp' }, { url: 'https://down/mcp' }] });
         expect(tools.registerRemote).toHaveBeenCalledTimes(1);
-        expect(tools.registerRemote.mock.calls[0][3].rank).toBe(1);
+        expect(tools.registerRemote.mock.calls[0][3].rank).toBe(0);
         expect(warn).toHaveBeenCalledWith(expect.stringContaining('https://down/mcp'), 'unreachable');
     });
 
-    it('fails when no server can be reached, so the app logs the plugin as failed', async () => {
+    it('tries a server three times with a backoff before giving up', async () => {
         const { ctx } = context();
-        await expect(plugin.setup(ctx, { url: 'https://down/mcp' })).rejects.toThrow(/no MCP server/);
+        await plugin.setup(ctx, { servers: [{ url: 'https://b/mcp' }, { url: 'https://down/mcp' }] });
+        expect(clients[1].attempts).toBe(3);
+        expect(waits).toEqual([2000, 4000]);
+        expect(clients[0].attempts).toBe(1);
+    });
+
+    it('stands in a query tool for an unreachable first server, which its own tools replace on reconnect', async () => {
+        const { ctx, tools, ready } = context();
+        await plugin.setup(ctx, { url: 'https://down/mcp', exclude: ['fit_sdm'] });
+        expect(tools.registerRemote).toHaveBeenCalledTimes(1);
+        expect(tools.registerRemote.mock.calls[0][0]).toEqual([QUERY_STAND_IN]);
+        expect(tools.registerRemote.mock.calls[0][1]).toBe(clients[0]);
+        expect(tools.registerRemote.mock.calls[0][3]).toEqual({ rank: 0, include: undefined, exclude: ['fit_sdm'] });
+        // The server comes back: the harness reconnects and calls the hook.
+        clients[0].onReconnect([tool('query'), tool('get_schema'), tool('register_hex_tiles')]);
+        expect(tools.clearRemote).toHaveBeenCalledWith(clients[0]);
+        expect(tools.registerRemote.mock.calls.at(-1)[0].map(t => t.name)).toEqual(['query', 'register_hex_tiles']);
+        // The chat says SQL is unavailable, once the chat exists.
+        const ui = { addMessage: vi.fn(), enableMcpToken: vi.fn() };
+        for (const fn of ready) await fn({ ui });
+        expect(ui.addMessage).toHaveBeenCalledWith('system', SQL_UNAVAILABLE_NOTICE);
+    });
+
+    it('registers no stand-in when another server answers query', async () => {
+        const { ctx, tools } = context();
+        tools.tools = new Map([['query', {}]]);
+        await plugin.setup(ctx, { servers: [{ url: 'https://down/mcp' }, { url: 'https://b/mcp' }] });
+        expect(tools.registerRemote.mock.calls.map(c => c[1])).toEqual([clients[1]]);
+    });
+
+    it('posts no notice when every server is reached', async () => {
+        const { ctx, ready } = context();
+        await plugin.setup(ctx, { url: 'https://b/mcp', headers: { Authorization: 'Bearer app' } });
+        expect(ready).toHaveLength(0);
+    });
+
+    it('does not wait for an optional server, and adds its tools when it answers', async () => {
+        let answer;
+        pending.set('https://b/mcp', new Promise((r) => { answer = r; }));
+        const { ctx, tools } = context();
+        await plugin.setup(ctx, { servers: [{ url: 'https://a/mcp' }, { url: 'https://b/mcp', optional: true, prompt: 'p' }] });
+        expect(tools.registerRemote.mock.calls.map(c => c[1])).toEqual([clients[0]]);
+        answer();
+        await new Promise((r) => setTimeout(r, 0));
+        expect(tools.registerRemote.mock.calls.map(c => c[1])).toEqual([clients[0], clients[1]]);
+        expect(tools.registerRemote.mock.calls[1][3].rank).toBe(1);
+    });
+
+    it('leaves out an optional server that never answers, trying once and posting nothing', async () => {
+        const { ctx, tools, ready } = context();
+        await plugin.setup(ctx, { servers: [{ url: 'https://a/mcp', headers: { Authorization: 'Bearer app' } }, { url: 'https://down/mcp', optional: true }] });
+        await new Promise((r) => setTimeout(r, 0));
+        expect(clients[1].attempts).toBe(1);
+        expect(tools.registerRemote).toHaveBeenCalledTimes(1);
+        expect(ready).toHaveLength(0);
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('Optional server https://down/mcp'), 'unreachable');
     });
 
     it('sends a saved visitor token to the first server only (glen#442)', async () => {
@@ -223,18 +318,27 @@ describe('mcp plugin setup', () => {
     it('opens the token field when the server refuses us at start', async () => {
         refuse.add('https://a/mcp');
         const { ctx, ready } = context();
-        await expect(plugin.setup(ctx, { url: 'https://a/mcp' })).rejects.toThrow(/no MCP server/);
-        const ui = { enableMcpToken: vi.fn() };
-        await ready[0]({ ui });
+        await plugin.setup(ctx, { url: 'https://a/mcp' });
+        // A refused token is not retried.
+        expect(clients[0].attempts).toBe(1);
+        const ui = { enableMcpToken: vi.fn(), addMessage: vi.fn() };
+        for (const fn of ready) await fn({ ui });
         expect(ui.enableMcpToken).toHaveBeenCalledWith(expect.objectContaining({ authFailed: true }));
+        // The token field says what is wrong; there is no second notice.
+        expect(ui.addMessage).not.toHaveBeenCalled();
+        // A token entered later reconnects, and the reconnect hook registers the tools.
+        await ui.enableMcpToken.mock.calls[0][0].apply('good');
+        expect(clients[0].headers).toEqual({ Authorization: 'Bearer good' });
+        expect(clients[0].reconnected).toBe(true);
     });
 
     it('does not report an unreachable server as a token problem', async () => {
         const { ctx, ready } = context();
         await plugin.setup(ctx, { servers: [{ url: 'https://down/mcp' }, { url: 'https://b/mcp' }] });
-        const ui = { enableMcpToken: vi.fn() };
-        await ready[0]({ ui });
+        const ui = { enableMcpToken: vi.fn(), addMessage: vi.fn() };
+        for (const fn of ready) await fn({ ui });
         expect(ui.enableMcpToken.mock.calls[0][0].authFailed).toBe(false);
+        expect(ui.addMessage).toHaveBeenCalledWith('system', SQL_UNAVAILABLE_NOTICE);
     });
 
     it('reconnects the first server with a token saved later', async () => {
@@ -277,11 +381,13 @@ describe('mcp plugin setup', () => {
         const { ctx } = context();
         await plugin.setup(ctx, { servers: [{ worker: 'w.js' }, { url: 'https://b/mcp' }] });
         expect(warn).toHaveBeenCalledWith(expect.stringContaining('worker:w.js'), 'Connection closed');
-        expect(workers[0].terminated).toBe(true);
+        // Each of the three tries starts a new worker.
+        expect(workers).toHaveLength(3);
+        expect(workers.every(w => w.terminated)).toBe(true);
         failWorkers = false;
         await clients[0].connect();
-        expect(workers).toHaveLength(2);
-        expect(clients[0].transport.port).toBe(workers[1]);
+        expect(workers).toHaveLength(4);
+        expect(clients[0].transport.port).toBe(workers[3]);
     });
 
     it('replaces a worker whose last connection got no answer', async () => {

@@ -29,7 +29,16 @@
  * serves every tool to other clients.
  *
  * A server that cannot be reached leaves the map tools and the other
- * servers' tools working; the plugin logs the failure and goes on.
+ * servers' tools working; the plugin logs the failure and goes on. Each
+ * server gets three tries at start, with a short backoff, as in the full app.
+ * If the first server still cannot be reached, the chat says so and the plugin
+ * registers a stand-in `query` tool on its client: the agent's next query
+ * makes the harness reconnect, and the server's own tools replace the
+ * stand-in, with no reload.
+ *
+ * A server whose entry has `optional: true` does not hold up the start: it
+ * connects in the background, its tools join when it answers, and a server
+ * that never answers is left out without a notice.
  *
  * The agent's catalog tools, `get_schema` and `get_stac_details`, are answered
  * in the browser from the collections the app loaded: `read_parquet` paths,
@@ -89,10 +98,63 @@ export function resolveServers(options = {}, config = {}, runtime = {}) {
     // The full app's `auth_token` is a bearer token for that server alone.
     const withToken = (headers, token) => (token && !Object.keys(headers || {}).some((k) => k.toLowerCase() === 'authorization')
         ? { ...(headers || {}), Authorization: `Bearer ${token}` } : (headers || {}));
-    return servers.map(({ url, headers, auth_token: token, prompt, include, exclude, worker, worker_config }) => (given(worker)
-        ? { url: `worker:${worker}`, worker, worker_config: worker_config || {}, headers: {}, prompt, include, exclude }
-        : { url, headers: withToken(headers, token), prompt, include, exclude }));
+    return servers.map(({ url, headers, auth_token: token, prompt, include, exclude, worker, worker_config, optional }) => ({
+        ...(given(worker)
+            ? { url: `worker:${worker}`, worker, worker_config: worker_config || {}, headers: {}, prompt, include, exclude }
+            : { url, headers: withToken(headers, token), prompt, include, exclude }),
+        ...(optional === true ? { optional: true } : {}),
+    }));
 }
+
+/** The pause before each retry: 2 s, then 4 s, at most 8 s, as in the full app. */
+export const retryDelay = (attempt) => Math.min(2000 * 2 ** attempt, 8000);
+
+/**
+ * Connect a client, trying up to `attempts` times with a backoff between
+ * tries. A refused token is not retried, since it will not change.
+ *
+ * @param {Object} client - the harness's MCPClient
+ * @param {Object} [opts]
+ * @param {number} [opts.attempts=3]
+ * @param {(err: Error) => boolean} [opts.isAuthError]
+ * @param {(ms: number) => Promise<void>} [opts.wait]
+ * @param {string} [opts.label] - the server, for the console
+ */
+export async function connectWithRetry(client, {
+    attempts = 3, isAuthError = () => false, wait = (ms) => new Promise((r) => setTimeout(r, ms)), label = '',
+} = {}) {
+    let lastErr;
+    for (let i = 0; i < attempts; i++) {
+        try {
+            await client.connect();
+            return;
+        } catch (err) {
+            lastErr = err;
+            if (isAuthError(err)) break;
+            console.warn(`[mcp plugin] ${label} connect attempt ${i + 1}/${attempts} failed: ${err.message}`);
+            if (i < attempts - 1) await wait(retryDelay(i));
+        }
+    }
+    throw lastErr;
+}
+
+/**
+ * Stands in for the first server's `query` tool when that server cannot be
+ * reached at start. Calling it makes the harness reconnect, and the
+ * reconnect hook then registers the server's real tools in its place.
+ */
+export const QUERY_STAND_IN = {
+    name: 'query',
+    description: 'Execute a read-only SQL query against a DuckDB database that is pre-loaded with H3 geospatial extensions, spatial functions, and httpfs for accessing remote parquet data. The database supports partitioned hive-style parquet files on S3.',
+    inputSchema: {
+        type: 'object',
+        properties: { sql_query: { type: 'string', description: 'The SQL query to execute. Must be a read-only SELECT statement.' } },
+        required: ['sql_query'],
+    },
+};
+
+/** The chat notice when the first server cannot be reached at start. */
+export const SQL_UNAVAILABLE_NOTICE = 'The data server could not be reached, so SQL queries will fail until it comes back.';
 
 /** The URL a worker entry starts from: its path against the page, with its configuration. */
 export function workerUrl(server, base) {
@@ -125,6 +187,11 @@ export default {
         return worker;
     },
 
+    /** Waits between connection attempts. Tests replace this. */
+    wait(ms) {
+        return new Promise((r) => setTimeout(r, ms));
+    },
+
     /** The harness's token helpers (glen#442), from the same module. Tests replace this. */
     async loadTokenHelpers() {
         const { userTokenApplies, withUserToken, isMcpAuthError, loadMcpToken } = await import(HARNESS_MCP_CLIENT);
@@ -137,14 +204,13 @@ export default {
         const token = await this.loadTokenHelpers();
         // Only the first server takes a visitor's token.
         const offerToken = !servers[0].worker && token.userTokenApplies(servers[0]);
-        const primary = { client: null, authFailed: false };
+        const primary = { client: null, authFailed: false, down: null };
         if (offerToken) {
             ctx.onReady(({ ui }) => ui.enableMcpToken?.({
                 authFailed: primary.authFailed,
                 apply: async (value) => {
-                    // A server that refused us at start has no tools here yet;
-                    // starting over registers them with the new token.
-                    if (!primary.client) { window.location.reload(); return; }
+                    // A server that refused us at start registers its tools
+                    // through the reconnect hook once the new token works.
                     await primary.client.setHeaders(token.withUserToken(servers[0].headers, value));
                     await primary.client.reconnect();
                 },
@@ -156,41 +222,61 @@ export default {
         // A server's own catalog tools would replace the local ones and reach
         // beyond this app's collections.
         const computeOnly = (tools) => tools.filter((t) => !MCP_CATALOG_TOOLS.includes(t.name));
-        const prompts = [];
-        let connected = 0;
+        const register = (client, tools, filters) => ctx.tools.registerRemote(computeOnly(tools), client, null, filters);
+        // Required servers connect side by side, optional ones in the
+        // background; each one's prompt keeps its rank in the system prompt.
+        const clients = [];
         for (const [rank, server] of servers.entries()) {
-            const filters = { rank, include: server.include, exclude: server.exclude };
             const headers = rank === 0 && offerToken
                 ? token.withUserToken(server.headers, token.loadMcpToken())
                 : server.headers;
-            const client = server.worker
+            clients.push(server.worker
                 ? await this.workerClient(MCPClient, server)
-                : new MCPClient(server.url, headers);
-            try {
-                await client.connect();
-            } catch (err) {
-                if (rank === 0 && offerToken && token.isMcpAuthError(err)) primary.authFailed = true;
-                console.warn(`[mcp plugin] ${server.url} unavailable; continuing without its tools:`, err.message);
-                continue;
-            }
-            if (rank === 0) primary.client = client;
-            const count = ctx.tools.registerRemote(computeOnly(client.getTools()), client, null, filters);
+                : new MCPClient(server.url, headers));
+        }
+        primary.client = clients[0];
+        const required = await Promise.all(servers.map(async (server, rank) => {
+            const filters = { rank, include: server.include, exclude: server.exclude };
+            const client = clients[rank];
+            // The harness calls this after each reconnect, including the first
+            // successful one after a failed start.
             client.setOnReconnect((tools) => {
                 ctx.tools.clearRemote(client);
-                ctx.tools.registerRemote(computeOnly(tools), client, null, filters);
+                const n = register(client, tools, filters);
+                console.log(`[mcp plugin] ${n} tools from ${server.url} after reconnect`);
             });
-            console.log(`[mcp plugin] ${count} tools from ${server.url}`);
-            connected++;
-            if (server.prompt) {
-                try {
-                    const text = await client.getPrompt(server.prompt);
-                    if (text) prompts.push(text);
-                } catch (err) {
-                    console.warn(`[mcp plugin] Prompt "${server.prompt}" unavailable:`, err.message);
-                }
+            const connect = (attempts) => connectWithRetry(client, {
+                attempts, isAuthError: token.isMcpAuthError, wait: (ms) => this.wait(ms), label: server.url,
+            });
+            if (server.optional) {
+                connect(1)
+                    .then(() => console.log(`[mcp plugin] ${register(client, client.getTools(), filters)} tools from optional server ${server.url}`))
+                    .catch((err) => console.warn(`[mcp plugin] Optional server ${server.url} unavailable; its tools are left out:`, err.message));
+                return null;
             }
-        }
-        if (!connected) throw new Error('mcp plugin: no MCP server could be reached');
+            try {
+                await connect(3);
+            } catch (err) {
+                console.warn(`[mcp plugin] ${server.url} unavailable; continuing without its tools:`, err.message);
+                if (rank !== 0) return null;
+                if (offerToken && token.isMcpAuthError(err)) primary.authFailed = true;
+                else ctx.onReady(({ ui }) => ui.addMessage?.('system', SQL_UNAVAILABLE_NOTICE));
+                primary.down = filters;
+                return null;
+            }
+            console.log(`[mcp plugin] ${register(client, client.getTools(), filters)} tools from ${server.url}`);
+            if (!server.prompt) return null;
+            try {
+                return await client.getPrompt(server.prompt);
+            } catch (err) {
+                console.warn(`[mcp plugin] Prompt "${server.prompt}" unavailable:`, err.message);
+                return null;
+            }
+        }));
+        const prompts = required.filter(Boolean);
+        // The stand-in for the first server's tools, unless another server
+        // already answers `query`.
+        if (primary.down && !ctx.tools.tools?.has?.('query')) register(primary.client, [QUERY_STAND_IN], primary.down);
         // The data files' paths are get_schema's, not the prompt's.
         for (const text of prompts) ctx.addPrompt(text);
     },

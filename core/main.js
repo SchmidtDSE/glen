@@ -24,30 +24,37 @@
 import { MapManager } from '../app/map-manager.js';
 import { buildLayout, sidebarHooks } from '../app/layout-manager.js';
 import { createGeocoder } from '../app/geocoder.js';
-import { mountDataPage } from '../app/data-page.js';
+import { mountDataPage, dataFooterLinks } from '../app/data-page.js';
 import { mountH3GridToggle } from '../app/h3-grid.js';
 // glen-harness, loaded from jsDelivr at a release tag, as apps load glen
 // itself. Its ./core entry is the agent loop and tool registry without the MCP
-// client. Both URLs name the same tag; bump them together.
+// client. All three URLs name the same tag; bump them together.
 import {
     Agent, ToolRegistry, applyProxyModelList, buildUserModels, loadUserSettings,
 } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.5.0/src/core.js';
 import { ChatUI } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.5.0/ui/chat-ui.js';
+import { CHAT_SCRIPTS } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.5.0/ui/deps.js';
 import { PortolanCatalog, exportCatalogView } from './portolan-catalog.js';
 import { createCoreMapTools } from './map-tools.js';
 import { loadPrompts } from './prompt.js';
 import { ensurePanelActions } from '../app/panel-actions.js';
+import { initialView, loadHighlighter } from './boot.js';
 
 /**
  * The harness's chat, with Export in the panel's action row beside Globe and
  * Upload, where v3 had it. The harness alone puts a bare icon in the chat
  * footer, which people did not find. Without a layer panel (floating layout)
- * it falls back to the footer.
+ * it falls back to the footer. The footer links the data sources page, as in
+ * v3, unless the app header's nav already does.
  */
 class GlenChatUI extends ChatUI {
     exportRow() {
         const controls = document.getElementById('layer-controls-container');
         return controls ? ensurePanelActions(controls) : null;
+    }
+
+    footerLinks(links) {
+        return [...super.footerLinks(links), ...dataFooterLinks(links, { absorbed: this.linksAbsorbed })];
     }
 }
 
@@ -90,12 +97,10 @@ export async function start({ plugins: extraPlugins = [] } = {}) {
     // system-prompt.md beside the page).
     const promptP = loadPrompts(appConfig, { baseUrl: new URL('./system-prompt.md', import.meta.url).href, pageUrl: document.baseURI });
     const catalog = new PortolanCatalog();
+    // highlight.js colours the SQL in tool calls; the page need not load it.
+    loadHighlighter(CHAT_SCRIPTS).catch(err => console.warn('[core] highlight.js failed:', err.message));
     const mapManager = new MapManager('map', {
-        center: appConfig.view?.center || [0, 20],
-        zoom: appConfig.view?.zoom ?? 2,
-        pitch: appConfig.view?.pitch ?? 0,
-        bearing: appConfig.view?.bearing ?? 0,
-        globe: appConfig.view?.globe ?? false,
+        ...initialView(appConfig.view),
         titilerUrl: appConfig.titiler_url || 'https://titiler.nrp-nautilus.io',
         maptilerKey: runtimeConfig?.maptiler_key || '',
         defaultBasemap: appConfig.default_basemap || 'natgeo',

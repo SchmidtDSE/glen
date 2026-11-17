@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
-    DATA_PAGE_HASH, resolveDataLink, catalogDatasets, dataPageHtml, mountDataPage,
+    DATA_PAGE_HASH, resolveDataLink, dataFooterLinks, catalogDatasets, dataPageHtml, mountDataPage,
 } from '../app/data-page.js';
 import { datasetCitation, datasetItemHtml, datasetTextLines } from '../app/dataset-citations.js';
 
@@ -31,6 +31,20 @@ describe('resolveDataLink', () => {
         expect(resolveDataLink({ data: { label: ' Data sources ' } }).label).toBe('Data sources');
         expect(resolveDataLink({ data: { label: '  ' } }).label).toBe('Data');
         expect(resolveDataLink({ data: true }).label).toBe('Data');
+    });
+});
+
+describe('dataFooterLinks', () => {
+    it('links the page from the chat footer, as v3 did', () => {
+        expect(dataFooterLinks({})).toEqual([{
+            label: 'Data', href: '#data', className: 'data-link',
+            title: 'The datasets this app uses, and how to cite them',
+        }]);
+        expect(dataFooterLinks({ data: { label: 'Sources' } })[0].label).toBe('Sources');
+    });
+    it('is left out when the header nav shows the link, or the app turns it off', () => {
+        expect(dataFooterLinks({}, { absorbed: true })).toEqual([]);
+        expect(dataFooterLinks({ data: false })).toEqual([]);
     });
 });
 

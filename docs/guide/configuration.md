@@ -54,7 +54,7 @@ Controls the initial camera position. All fields are optional. Without `view`, t
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `center` | `[lon, lat]` | `[0, 20]` | Initial map center (longitude first). |
-| `zoom` | number | `2` | Initial zoom level (0–22). |
+| `zoom` | number | `6` with a `center`, else `2` | Initial zoom level (0–22). |
 | `pitch` | number | `0` | Camera tilt in degrees (0 = flat, 60 = steep). |
 | `bearing` | number | `0` | Map rotation in degrees clockwise from north (0 = north-up). |
 | `globe` | boolean | `false` | Start in globe (spherical Earth) projection. Users can also toggle this at runtime via the "Globe view" checkbox in the basemap panel. Globe view automatically transitions back to flat Mercator at zoom ~12, where the projections converge — this is handled by MapLibre internally. |
@@ -1049,8 +1049,9 @@ A plugin that fails to load or throws is logged and skipped, and the map and its
 | `headers` | Other request headers for this server. |
 | `prompt` | An MCP prompt of this server's to add to the system prompt, such as duckdb-mcp's `geospatial-analyst`. |
 | `include`, `exclude` | Tool names: register only these, or all but these. |
+| `optional` | `true` to connect in the background, so the app starts without waiting for this server. Its tools join when it answers, and it is tried once. Its `prompt` is not added, since the system prompt is built before it answers. |
 
-**The first server is the primary.** The deploy-time `config.json` sets its URL and token with `mcp_server_url` and `mcp_auth_token`, so a deployment can inject the duckdb-mcp URL there while other servers stay listed in `layers-input.json`. When two servers list a tool of the same name, the one listed first keeps it. A server that cannot be reached is skipped, and each server reconnects on its own.
+**The first server is the primary.** The deploy-time `config.json` sets its URL and token with `mcp_server_url` and `mcp_auth_token`, so a deployment can inject the duckdb-mcp URL there while other servers stay listed in `layers-input.json`. When two servers list a tool of the same name, the one listed first keeps it. Each server gets three tries at start, a few seconds apart. A server that still cannot be reached is skipped, and each server reconnects on its own. If the primary cannot be reached, the chat says that SQL queries will fail, and the agent keeps a `query` tool for it: the next query reconnects, and the server's own tools come back without a reload.
 
 The plugin also adds `filter_by_query`, which filters a layer to the feature ids an SQL query returns without passing them through the model.
 
