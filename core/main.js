@@ -36,6 +36,20 @@ import { ChatUI } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.5
 import { PortolanCatalog, exportCatalogView } from './portolan-catalog.js';
 import { createCoreMapTools } from './map-tools.js';
 import { loadPrompts } from './prompt.js';
+import { ensurePanelActions } from '../app/panel-actions.js';
+
+/**
+ * The harness's chat, with Export in the panel's action row beside Globe and
+ * Upload, where v3 had it. The harness alone puts a bare icon in the chat
+ * footer, which people did not find. Without a layer panel (floating layout)
+ * it falls back to the footer.
+ */
+class GlenChatUI extends ChatUI {
+    exportRow() {
+        const controls = document.getElementById('layer-controls-container');
+        return controls ? ensurePanelActions(controls) : null;
+    }
+}
 
 /** The ref this module was loaded at (a tag or SHA on jsDelivr), or 'dev'. */
 export const CORE_VERSION = import.meta.url.match(/glen@([^/]+)/)?.[1] || 'dev';
@@ -164,7 +178,7 @@ export async function start({ plugins: extraPlugins = [] } = {}) {
     // unless its config turns it on, and then the harness loads it on first use.
     // It redraws the session's charts with the charts plugin's renderer.
     appConfig.export ??= false;
-    const ui = new ChatUI(agent, appConfig, layoutRefs.chatMount, mapManager, ctx.charts || null);
+    const ui = new GlenChatUI(agent, appConfig, layoutRefs.chatMount, mapManager, ctx.charts || null);
     ui.catalog = exportCatalogView(catalog);
     ctx.agent = agent;
     ctx.ui = ui;
