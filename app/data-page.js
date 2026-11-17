@@ -39,6 +39,20 @@ export function resolveDataLink(links) {
 }
 
 /**
+ * The data page's entry in the chat footer, in the shape of glen-harness's
+ * `ChatUI.footerLinks`. It is left out when the app header's nav already
+ * links the page (`absorbed`), or when the app has turned the link off.
+ *
+ * @param {object} [links] - the app's `links` block
+ * @param {{absorbed?: boolean}} [opts]
+ * @returns {Array<{href: string, label: string, title: string, className: string}>}
+ */
+export function dataFooterLinks(links, { absorbed = false } = {}) {
+    const data = absorbed ? null : resolveDataLink(links);
+    return data ? [{ ...data, title: 'The datasets this app uses, and how to cite them', className: 'data-link' }] : [];
+}
+
+/**
  * Citation records for every dataset the catalog loaded, in catalog order.
  * A collection that groups sub-collections lists them under it, each with its
  * own citation, since a query reads (and a citation is owed to) the child.

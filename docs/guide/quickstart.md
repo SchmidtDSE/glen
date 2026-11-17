@@ -27,7 +27,7 @@ No JavaScript to write. glen core (the map and its tools) and its plugins load f
 
 ## index.html
 
-The HTML shell loads two kinds of code: a set of **pinned third-party libraries** (MapLibre, PMTiles, marked, DOMPurify) as page-global `<script>` tags, and **glen core** (JS + CSS) from the CDN. There is no import map. glen-harness loads highlight.js itself when the chat first shows code, and the MCP plugin loads a pre-bundled MCP SDK, so the only hosts your page contacts are the CDNs. The `<body>` only needs two placeholder `<div>`s — the layout manager builds the rest (chat panel, controls, etc.) dynamically.
+The HTML shell loads two kinds of code: a set of **pinned third-party libraries** (MapLibre, PMTiles, marked, DOMPurify) as page-global `<script>` tags, and **glen core** (JS + CSS) from the CDN. There is no import map. glen core loads highlight.js and its theme at start (from the list glen-harness pins), unless the page already has it, so SQL in the chat is highlighted; the MCP plugin loads a pre-bundled MCP SDK, so the only hosts your page contacts are the CDNs. The `<body>` only needs two placeholder `<div>`s — the layout manager builds the rest (chat panel, controls, etc.) dynamically.
 
 ::: warning Copy this file from the template — don't hand-author it
 The canonical `index.html` is `core/index.html` in this repository, as glen-template uses it. **Copy it verbatim** rather than retyping the script tags below. In particular, never hand-edit the `integrity="sha384-…"` hashes — see [Subresource Integrity](#about-the-integrity-hashes) for why. The block below is reproduced for reference and matches the template at the pinned release.

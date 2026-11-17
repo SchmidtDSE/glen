@@ -48,8 +48,8 @@ describe('glen core module graph', () => {
     it('loads glen-harness from a release tag, not the full app\'s agent or chat', () => {
         const main = readFileSync(resolve(root, 'core/main.js'), 'utf8');
         const urls = [...main.matchAll(/from '(https:\/\/cdn\.jsdelivr\.net\/gh\/SchmidtDSE\/glen-harness@([^/]+)\/[^']+)'/g)];
-        expect(urls.map(m => m[1].split('@')[1].replace(/^[^/]+/, ''))).toEqual(['/src/core.js', '/ui/chat-ui.js']);
-        // One tag for both, and a tag rather than a branch.
+        expect(urls.map(m => m[1].split('@')[1].replace(/^[^/]+/, ''))).toEqual(['/src/core.js', '/ui/chat-ui.js', '/ui/deps.js']);
+        // One tag for all, and a tag rather than a branch.
         expect(new Set(urls.map(m => m[2])).size).toBe(1);
         expect(urls[0][2]).toMatch(/^v\d+\.\d+\.\d+$/);
     });
