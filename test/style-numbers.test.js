@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
-import { isNumericPaint, numericStyleValue } from '../app/style-numbers.js';
+import { isNumericPaint, numericStyleNote, numericStyleValue } from '../app/style-numbers.js';
 import { MapManager } from '../app/map-manager.js';
 
 describe('numeric strings in paint expressions (SchmidtDSE/glen#499)', () => {
@@ -39,6 +39,7 @@ describe('numeric strings in paint expressions (SchmidtDSE/glen#499)', () => {
     it('reads a plain numeric string only for a numeric property', () => {
         expect(numericStyleValue('fill-opacity', '0.8').value).toBe(0.8);
         expect(numericStyleValue('line-width', '2').value).toBe(2);
+        expect(numericStyleNote('fill-opacity', ['0.8'])).toBe('In fill-opacity, "0.8" was read as a number. Send numbers, not strings, where an expression needs a number.');
         expect(isNumericPaint('circle-stroke-width')).toBe(true);
         expect(isNumericPaint('fill-color')).toBe(false);
         expect(numericStyleValue('fill-pattern', '1').value).toBe('1');

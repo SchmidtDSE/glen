@@ -67,5 +67,6 @@ export function numericStyleValue(prop, value) {
 export function numericStyleNote(prop, converted) {
     const shown = converted.slice(0, 3).map((v) => `"${v}"`).join(', ');
     const more = converted.length > 3 ? ` and ${converted.length - 3} more` : '';
-    return `In ${prop}, ${shown}${more} were read as numbers. Send numbers, not strings, where an expression needs a number.`;
+    const verb = converted.length === 1 ? 'was' : 'were';
+    return `In ${prop}, ${shown}${more} ${verb} read as ${converted.length === 1 ? 'a number' : 'numbers'}. Send numbers, not strings, where an expression needs a number.`;
 }
