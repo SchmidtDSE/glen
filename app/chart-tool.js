@@ -11,7 +11,10 @@ import { validateChartSpec } from './chart-renderer.js';
 import { expand, tokensIn, matchesWhen, fillText } from './params.js';
 
 const CHART_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
-const DEBOUNCE_MS = 300;
+// Long enough to take two quick clicks (an area, then a module that hides
+// the chart) as one change, so a chart the second click hides never sends
+// a query that would hold up the SQL server for the charts still showing.
+const DEBOUNCE_MS = 800;
 
 /**
  * Parse a JSON array from DuckDB MCP query result text.
@@ -137,7 +140,12 @@ export class LiveCharts {
         c.stale = false;
         if (c.timer) clearTimeout(c.timer);
         this.renderer.setStatus?.(id, { loading: true });
-        c.timer = setTimeout(() => { c.timer = null; this.run(id); }, this.debounceMs);
+        c.timer = setTimeout(() => {
+            c.timer = null;
+            // hidden while it waited: run when it is next shown
+            if (!this.applies(id)) { c.stale = true; this.renderer.setStatus?.(id, {}); return; }
+            this.run(id);
+        }, this.debounceMs);
     }
 
     /** Re-run a chart's SQL at the current settings and redraw it in place. */

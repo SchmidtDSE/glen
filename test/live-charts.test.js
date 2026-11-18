@@ -309,3 +309,27 @@ describe('redrawing a configured chart by id (#508)', () => {
         expect(card().hidden).toBe(false);
     });
 });
+
+describe('a chart hidden while its re-run waits (#508)', () => {
+    beforeEach(() => { vi.useFakeTimers(); globalThis.Plot = fakePlot; document.body.replaceChildren(); });
+    afterEach(() => { vi.useRealTimers(); delete globalThis.Plot; });
+
+    it('sends no query, and runs when it is shown again', async () => {
+        const bus = new ParamBus([{ id: 'module', token: 'MODULE', options: ['loss', 'attribution'] }, { id: 'area', token: 'AREA', options: ['a', 'b'] }]);
+        const renderer = new ChartRenderer();
+        const query = fakeQuery([{ y: 1, v: 2 }]);
+        const tool = createRenderChartTool(renderer, query, { params: () => bus, debounceMs: 50 });
+        await tool.drawConfigured({ chart_id: 'loss', chart_type: 'bar', x: 'y', y: 'v', sql: "SELECT '{{AREA}}' AS y, 2 AS v" }, { when: { module: 'loss' } });
+        expect(query).toHaveBeenCalledTimes(1);
+        bus.set('area', 'b');
+        await vi.advanceTimersByTimeAsync(20);
+        bus.set('module', 'attribution');
+        await vi.advanceTimersByTimeAsync(200);
+        expect(query).toHaveBeenCalledTimes(1);
+        expect(document.querySelector('[data-chart-id="loss"]').classList.contains('chart-card--loading')).toBe(false);
+        bus.set('module', 'loss');
+        await vi.advanceTimersByTimeAsync(200);
+        expect(query).toHaveBeenCalledTimes(2);
+        expect(query.mock.calls[1][0]).toContain("'b' AS y");
+    });
+});
