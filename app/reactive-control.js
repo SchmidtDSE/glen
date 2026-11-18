@@ -24,12 +24,25 @@ import { mountOverlay, SLOT } from './overlay-rail.js';
 const DEFAULTS = {
     type: 'slider',
     bind: 'filter',
-    mode: 'cumulative',   // 'cumulative' (<=) | 'step' (==)
+    mode: '<=',   // '<=' | '>=' | '==' (or the older names 'cumulative' and 'step')
     step: 1,
     animate: false,
     duration_seconds: 20,
     loop: true,
 };
+
+/** The older mode names, kept so existing configs and sessions still work. */
+const MODE_ALIASES = { cumulative: '<=', step: '==' };
+
+/**
+ * The comparison a filter slider makes: `<=` shows features up to the value,
+ * `>=` those at or above it (a threshold, #362), `==` only the value itself.
+ * Unknown modes fall back to `<=`.
+ */
+export function comparison(mode) {
+    const op = MODE_ALIASES[mode] || mode;
+    return ['<=', '>=', '=='].includes(op) ? op : '<=';
+}
 
 /**
  * Pure mapping from (control config, current value) → a map action.
@@ -46,10 +59,7 @@ export function buildControlAction(config, value) {
     if (bind === 'filter') {
         const field = config.field;
         if (!field) return null;
-        const expr = config.mode === 'step'
-            ? ['==', ['get', field], value]
-            : ['<=', ['get', field], value];
-        return { kind: 'filter', expr };
+        return { kind: 'filter', expr: [comparison(config.mode), ['get', field], value] };
     }
     // 'style' and 'query' binds are reserved for follow-up work (the
     // landscape-frontiers weight slider). Unknown bind → no-op.
@@ -59,9 +69,10 @@ export function buildControlAction(config, value) {
 /** Initial slider value when the config doesn't pin one. */
 function initialValue(config) {
     if (config.default != null) return config.default;
-    // Cumulative temporal: default to the high end so the static (pre-play)
-    // state shows every feature; step mode starts at the low end.
-    return config.mode === 'step' ? config.min : config.max;
+    // Start where the layer shows the most: `<=` at the high end, `>=` at the
+    // low end, so the static (pre-play) state shows every feature. `==` starts
+    // at the low end.
+    return comparison(config.mode) === '<=' ? config.max : config.min;
 }
 
 export class ReactiveControl {
@@ -110,13 +121,13 @@ export class ReactiveControl {
     }
 
     /**
-     * A step slider binds `field == value`, so its value must be on the step
-     * grid: autoplay advances continuously, and a fractional value matches no
-     * feature and empties the layer (#360). Cumulative sliders keep the
-     * fractional value, so their sweep stays smooth.
+     * An `==` slider must stay on the step grid: autoplay advances
+     * continuously, and a fractional value matches no feature and empties the
+     * layer (#360). `<=` and `>=` sliders keep the fractional value, so their
+     * sweep stays smooth.
      */
     _quantize(v) {
-        if (this.config.mode !== 'step') return v;
+        if (comparison(this.config.mode) !== '==') return v;
         const { min, max } = this.config;
         const step = Number(this.config.step) > 0 ? Number(this.config.step) : 1;
         const snapped = min + Math.round((v - min) / step) * step;

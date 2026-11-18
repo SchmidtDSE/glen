@@ -502,7 +502,16 @@
             "RPL_THEMES"
           ],
           "legend_type": "continuous",
-          "legend_label": "SVI percentile"
+          "legend_label": "SVI percentile",
+          "control": {
+            "type": "slider",
+            "field": "RPL_THEMES",
+            "label": "SVI at or above",
+            "min": 0,
+            "max": 1,
+            "step": 0.05,
+            "mode": ">="
+          }
         }
       ]
     },
@@ -624,7 +633,7 @@
             "min": 1900,
             "max": 2021,
             "step": 1,
-            "mode": "cumulative",
+            "mode": "<=",
             "animate": true,
             "duration_seconds": 20
           }

@@ -813,9 +813,9 @@ export class MapManager {
     /**
      * Create a slider that filters a vector layer by a numeric/temporal field,
      * client-side, with no round-trip per step (#147). Used by the agent's
-     * `create_slider` tool. The slider is bound as a MapLibre filter:
-     * cumulative (`<=`) reveals everything up to the value; step (`==`) shows
-     * only the matching value.
+     * `create_slider` tool. The slider is bound as a MapLibre filter: `<=`
+     * reveals everything up to the value, `>=` everything at or above it, and
+     * `==` only the matching value.
      *
      * @param {Object} args
      * @param {string} args.layer_id
@@ -823,7 +823,7 @@ export class MapManager {
      * @param {number} args.min
      * @param {number} args.max
      * @param {number} [args.step=1]
-     * @param {'cumulative'|'step'} [args.mode='cumulative']
+     * @param {'<='|'>='|'=='|'cumulative'|'step'} [args.mode='<=']
      * @param {string} [args.label]
      * @param {boolean} [args.animate=false] — show a play button that sweeps the range
      * @param {number} [args.default]
@@ -841,7 +841,8 @@ export class MapManager {
         if (!field || min == null || max == null) {
             return { success: false, error: 'create_slider requires field, min, and max.' };
         }
-        const mode = args.mode === 'step' ? 'step' : 'cumulative';
+        const { comparison } = await import('./reactive-control.js');
+        const mode = comparison(args.mode);
         const controlConfig = {
             type: 'slider',
             bind: 'filter',
