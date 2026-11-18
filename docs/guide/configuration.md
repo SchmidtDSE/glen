@@ -348,7 +348,7 @@ For *temporal filtering of static features* — stepping a year/date field on an
 
 ## Reactive-parameter controls (sliders)
 
-A `control` block turns an asset into a layer with a slider that rebinds a map property as you drag it — entirely client-side, with no LLM round-trip per step. The headline use is a **temporal filter**: scrub a year/date field across its range, either cumulatively ("show everything up to year N"), from a threshold up ("show cells at or above N") or one step at a time ([#147](https://github.com/SchmidtDSE/glen/issues/147)). The slider panel floats over the map (like the trajectory controls) and appears whenever the layer is visible.
+A `control` block turns an asset into a layer with a slider that rebinds a map property as you drag it — entirely client-side, with no LLM round-trip per step. The headline use is a **temporal filter**: scrub a year/date field across its range, either cumulatively ("show everything up to year N"), from a threshold up ("show cells at or above N") or one step at a time ([#147](https://github.com/SchmidtDSE/glen/issues/147)). The slider is a row in the **Settings** section at the top of the side panel, beside any [controls](#controls), and shows whenever the layer is visible.
 
 The same control is also available to the agent at runtime via the **`create_slider`** tool — e.g. "let me step through the fire years" attaches a year slider to the active layer without any config.
 
@@ -394,7 +394,7 @@ The slider composes with the layer's configured `default_filter` (applied as `["
 
 ## Raster time series
 
-A raster asset whose data is published as one COG per date can step through those dates ([#421](https://github.com/SchmidtDSE/glen/issues/421)). Give it a `control` with `"bind": "frame"`. The layer then shows a player in the overlay rail, with play and pause, back and forward, a slider over the dates, and the date on screen. The colormap, `rescale`, `unscale` and legend are the layer's own and do not change between frames.
+A raster asset whose data is published as one COG per date can step through those dates ([#421](https://github.com/SchmidtDSE/glen/issues/421)). Give it a `control` with `"bind": "frame"`. The layer then shows a player in the side panel's **Settings**, with play and pause, back and forward, a slider over the dates, and the date on screen. The colormap, `rescale`, `unscale` and legend are the layer's own and do not change between frames.
 
 The player keeps the frame on screen and the next three on the map, the next ones at zero opacity so their tiles load before they are needed. A frame replaces the one on screen only once its tiles have loaded, so the map never goes blank between frames, whether playing, dragging the slider or jumping to a date. On a slow connection playback slows down to wait for each frame, for up to `max_wait_ms`.
 
@@ -663,7 +663,7 @@ If your `index.html` contains a `<div id="chat-container">` block with nested ch
 ```json
 "sidebar": {
     "enabled": true,
-    "default_width": 420,
+    "default_width": 480,
     "title": "Data Assistant",
     "chat_title": "Chatbot"
 }
@@ -672,7 +672,7 @@ If your `index.html` contains a `<div id="chat-container">` block with nested ch
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `enabled` | boolean | `false` | Opts in to sidebar mode. Omitting the whole `sidebar` block is equivalent to `false`. |
-| `default_width` | number | `420` | Starting width in pixels. The user's last-dragged width (stored in `localStorage`) overrides this on reload, as long as it's within bounds. |
+| `default_width` | number | `480` | Starting width in pixels. The user's last-dragged width (stored in `localStorage`) overrides this on reload, as long as it's within bounds. |
 | `title` | string | `"Data Assistant"` | Text shown in the sidebar header (and in the floating panel header too — this key applies to both modes). This is the header at the **top** of the sidebar, above both the layers and the chat. |
 | `chat_title` | string | _(unset)_ | Optional heading shown **persistently above the chat section**, mirroring the layers "Overlays" label. When unset, the chat section has no visible heading except a "Chat" label that appears only while the chat pane is collapsed. |
 
@@ -730,8 +730,8 @@ visibly reflows from one app to the next. The reserved gap collapses below
 > inside — standing in until a real one exists.
 
 The split it introduces: *app-level* things (who made this, what else there is
-to read) belong in the header; *map-level* things (legend, sliders, hex
-controls) belong on the map, in the [overlay rail](#map-overlay-rail-and-stacking-order).
+to read) belong in the header; the legend belongs on the map, in the [overlay rail](#map-overlay-rail-and-stacking-order); and controls that change what the map or a chart shows
+(sliders, players, settings) belong in the side panel's **Settings**.
 
 ```json
 {
@@ -921,7 +921,7 @@ palette to start from and the rest recolours it — no CSS needed:
 | `primary` | Buttons, checkboxes, sliders, the send button — every control. Hover and selected states are derived from it, so this one key moves the whole set. |
 | `surface` | The chrome surface: header band and sidebar. |
 | `text` | Primary text on that surface. |
-| `panel` | Floating panels over the map (legend, sliders, charts). |
+| `panel` | Panels over the map (the legend). |
 | `backdrop` | The area behind the globe, under the hex texture. |
 
 Values may be hex, `rgb()`, `hsl()` or a named colour. Anything else is
@@ -1072,7 +1072,7 @@ The token comes from the server's operator. In user-provided mode the field sits
 
 `plugins/charts.js` adds a `render_chart` tool that turns a query result into a **bar**, **line**, **scatter**, or **histogram** chart ([#277](https://github.com/SchmidtDSE/glen/issues/277)). Without the plugin, the agent answers with the map and SQL result tables.
 
-Charts are cards in a Charts section at the top of the side panel, newest first, under the [settings](#controls) if the app has any ([#391](https://github.com/SchmidtDSE/glen/issues/391)). They never cover the map. On a phone they are in the Layers tab of the bottom sheet. Each card has a button that shows the chart large and a ✕ that removes it.
+Charts are cards in a Charts section at the top of the side panel, newest first, under the [settings](#controls) if the app has any ([#391](https://github.com/SchmidtDSE/glen/issues/391)). They never cover the map. On a phone they are in the Layers tab of the bottom sheet. Each card has a button that shows the chart large and a ▾ that folds it to its title. A chart the agent drew also has a ✕ that removes it; a chart from the app's config has none, since nothing could bring it back.
 
 The agent calls `render_chart` with a chart type, the columns to plot (`x`, `y`, optional `series`), and the data — either an inline `data` array it already computed, or a `sql` query the card runs through the `query` tool of an SQL server added with `plugins/mcp.js` (so large result sets never pass back through the LLM; if both are supplied, `sql` wins). An optional `title` and `x_label` / `y_label` name the chart and its axes.
 
@@ -1620,8 +1620,7 @@ Trade-offs, by design:
 
 Not a config block — background for apps that ship their own CSS overrides.
 
-Every panel that floats over the map bottom-left — the legend, reactive-parameter
-sliders, trajectory playback controls, and the H3 resolution badge — mounts into a single container, `#map-overlay-rail`. The rail is a bottom-anchored
+Every panel that floats over the map bottom-left — the legend and the H3 resolution badge — mounts into a single container, `#map-overlay-rail`. Since SchmidtDSE/glen#426, layer filter sliders, the raster time-series player and the trajectory playback controls are rows in the side panel's **Settings** instead, and use the rail only on a page with no layer panel. The rail is a bottom-anchored
 flex column, so panels queue above one another in a fixed order instead of each
 anchoring itself to the same corner. Adding or removing a panel reflows the rest
 automatically.

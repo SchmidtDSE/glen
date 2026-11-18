@@ -40,7 +40,7 @@ describe('glen core controls plugin (#426)', () => {
         expect(ctx.params.tokens()).toMatchObject({ YEAR_MIN: '2001', YEAR_MAX: '2020', UNIT: 'hex', K: '1' });
         const section = document.querySelector('#menu > .param-controls');
         expect(section).not.toBeNull();
-        expect(document.querySelector('#menu').firstElementChild).toBe(section);
+        expect(document.querySelector('#menu .menu-header').nextElementSibling).toBe(section);
         expect([...section.querySelectorAll('.param')].map(r => r.dataset.paramId)).toEqual(['years', 'unit', 'radius']);
         expect(section.querySelector('[data-param-id="radius"]').hidden).toBe(true);
     });

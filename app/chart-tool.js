@@ -244,25 +244,25 @@ export function createRenderChartTool(chartRenderer, query, { endpointArgs = fal
         if (when && args.sql && args.chart_id && bus && !matchesWhen(when, bus.params, bus.values)) {
             try {
                 validateChartSpec(args);
-                const { id } = await chartRenderer.render(chartSpec(args, bus.tokens()), [], { id: String(args.chart_id) });
+                const { id } = await chartRenderer.render(chartSpec(args, bus.tokens()), [], { id: String(args.chart_id), removable: false });
                 live.track(id, args, { when, stale: true });
                 return { success: true, chart_id: id, deferred: true };
             } catch (err) {
                 return { success: false, error: err.message };
             }
         }
-        const res = await draw(args, { when });
+        const res = await draw(args, { when, removable: false });
         if (res.success || !args.sql || !args.chart_id) return res;
         try {
             validateChartSpec(args);
-            const { id } = await chartRenderer.render(chartSpec(args, params?.()?.tokens() || null), [], { id: String(args.chart_id) });
+            const { id } = await chartRenderer.render(chartSpec(args, params?.()?.tokens() || null), [], { id: String(args.chart_id), removable: false });
             live.track(id, args, { when });
             chartRenderer.setStatus?.(id, { error: res.error });
         } catch { /* a bad spec stays undrawn */ }
         return res;
     };
 
-    const draw = async (args, { when = null } = {}) => {
+    const draw = async (args, { when = null, removable = true } = {}) => {
         // Reject a bad spec cheaply, before paying for any SQL round-trip.
         try {
             validateChartSpec(args);
@@ -310,7 +310,7 @@ export function createRenderChartTool(chartRenderer, query, { endpointArgs = fal
 
         let id;
         try {
-            ({ id } = await chartRenderer.render(chartSpec(args, tokens), rows, args.chart_id ? { id: String(args.chart_id) } : {}));
+            ({ id } = await chartRenderer.render(chartSpec(args, tokens), rows, { ...(args.chart_id && { id: String(args.chart_id) }), removable }));
         } catch (err) {
             return { success: false, error: `Could not render chart: ${err.message}` };
         }

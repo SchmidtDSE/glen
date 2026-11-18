@@ -84,6 +84,26 @@ describe('ChartRenderer in place (#426)', () => {
         expect(seen).toHaveBeenCalledWith('c1');
         expect(r.has('c1')).toBe(false);
     });
+
+    it('folds a card to its title and opens it again', async () => {
+        const r = new ChartRenderer();
+        await r.render({ chart_type: 'bar', x: 'a', y: 'b' }, [{ a: 1, b: 2 }], { id: 'c1' });
+        const card = document.querySelector('.chart-card');
+        const fold = card.querySelector('.chart-card-fold');
+        fold.click();
+        expect(card.classList.contains('chart-card--folded')).toBe(true);
+        expect(fold.getAttribute('aria-expanded')).toBe('false');
+        fold.click();
+        expect(card.classList.contains('chart-card--folded')).toBe(false);
+        expect(r.has('c1')).toBe(true);
+    });
+
+    it('gives a card no remove button when asked, so a configured chart cannot be lost', async () => {
+        const r = new ChartRenderer();
+        await r.render({ chart_type: 'bar', x: 'a', y: 'b' }, [{ a: 1, b: 2 }], { id: 'c1', removable: false });
+        expect(document.querySelector('.chart-card-close')).toBe(null);
+        expect(document.querySelector('.chart-card-fold')).not.toBe(null);
+    });
 });
 
 describe('render_chart with controls (#426)', () => {
@@ -188,6 +208,7 @@ describe('render_chart with controls (#426)', () => {
         const res = await tool.drawConfigured({ chart_type: 'line', x: 'y', y: 'v', sql, chart_id: 'loss' });
         expect(res.success).toBe(false);
         expect(renderer.has('loss')).toBe(true);
+        expect(document.querySelector('.chart-card-close')).toBe(null);
         expect(document.querySelector('.chart-card-status').textContent).toMatch(/401/);
         bus.set('land', 'soy');
         await vi.advanceTimersByTimeAsync(60);

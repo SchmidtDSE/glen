@@ -733,7 +733,11 @@ body.has-app-header:not(.app-header-solid) .maplibregl-ctrl-top-right {
     cursor: default;
 }
 
-#menu.collapsed #menu-body {
+#menu.collapsed #menu-body,
+#menu.collapsed > .param-controls,
+#menu.collapsed > .chart-cards,
+#sidebar-layers-pane.collapsed > .param-controls,
+#sidebar-layers-pane.collapsed > .chart-cards {
     display: none;
 }
 
@@ -1287,137 +1291,78 @@ details.layer-group:not([open]) .layer-group-title::before {
 }
 
 /* Animated trajectory layer controls */
-.anim-controls {
+/* ── Map controls in the Settings section (#147, #421, #426) ──────────────
+   Layer filter sliders, the raster time-series player and the trajectory
+   playback controls are rows of the side panel's Settings, beside the app's
+   params (settings-section.js): a label and readout over a row of buttons
+   and the slider. A page with no layer panel puts them in the overlay rail,
+   on the panel surface below. */
+.rc-row {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
-    background: var(--panel-bg);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid var(--panel-line);
-    border-radius: 6px;
-    font-family: 'Open Sans', sans-serif;
-    font-size: 12px;
-    color: var(--panel-fg);
-    box-shadow: 0 2px 4px var(--panel-shadow);
+    gap: 6px;
 }
 
+.rc-row .rc-slider {
+    flex: 1 1 auto;
+    min-width: 80px;
+    margin: 0;
+    cursor: pointer;
+}
+
+.reactive-controls .rc-label,
 .anim-controls .anim-label {
-    font-weight: 600;
-    max-width: 160px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
 }
 
-.anim-controls .anim-play {
-    border: 1px solid var(--panel-line);
-    background: var(--control-bg);
-    border-radius: 4px;
-    width: 26px;
-    height: 26px;
+.rc-play {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--line-strong, var(--panel-line));
+    background: var(--card-bg, var(--panel-bg));
+    color: var(--text, var(--panel-fg));
+    border-radius: 999px;
     cursor: pointer;
+    font: inherit;
     font-size: 11px;
     line-height: 1;
 }
 
-.anim-controls .anim-play:hover {
-    background: var(--control-bg-hover);
-}
-
-.anim-controls .anim-time {
-    font-variant-numeric: tabular-nums;
-    min-width: 120px;
-    color: var(--panel-fg-muted);
+.rc-play:hover {
+    background: var(--primary-wash, var(--control-bg-hover));
 }
 
 .anim-controls .anim-speed,
 .anim-controls .anim-mode {
-    border: 1px solid var(--panel-line);
-    border-radius: 4px;
-    padding: 2px 4px;
-    background: var(--control-bg);
+    border: 1px solid var(--line-strong, var(--panel-line));
+    border-radius: 8px;
+    padding: 4px 6px;
+    background: var(--card-bg, var(--panel-bg));
+    color: var(--text, var(--panel-fg));
+    font: inherit;
     font-size: 12px;
 }
 
-/* ── Reactive-parameter controls (temporal / value sliders, #147) ────────
-   Same frosted-glass surface as .anim-controls. Placement comes from
-   #map-overlay-rail (SLOT.REACTIVE), not from this rule. */
-.reactive-controls {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
+.frame-player.loading .rc-value {
+    opacity: 0.5;
+}
+
+#map-overlay-rail > .reactive-controls,
+#map-overlay-rail > .anim-controls {
+    width: 280px;
+    padding: 8px 10px;
     background: var(--panel-bg);
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
     border: 1px solid var(--panel-line);
     border-radius: 6px;
-    font-family: 'Open Sans', sans-serif;
     font-size: 12px;
     color: var(--panel-fg);
     box-shadow: 0 2px 4px var(--panel-shadow);
-}
-
-.reactive-controls .rc-label {
-    font-weight: 600;
-    max-width: 160px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.reactive-controls .rc-play {
-    border: 1px solid var(--panel-line);
-    background: var(--control-bg);
-    border-radius: 4px;
-    width: 26px;
-    height: 26px;
-    cursor: pointer;
-    font-size: 11px;
-    line-height: 1;
-}
-
-.reactive-controls .rc-play:hover {
-    background: var(--control-bg-hover);
-}
-
-.reactive-controls .rc-slider {
-    width: 160px;
-    cursor: pointer;
-}
-
-.reactive-controls .rc-value {
-    font-variant-numeric: tabular-nums;
-    min-width: 48px;
-    text-align: right;
-    color: var(--panel-fg-muted);
-}
-
-/* ── Raster time-series player (#421) ────────────────────────────────────
-   Shares the .reactive-controls surface. The date readout is wider than a
-   slider value, and dims while the next frame's tiles are loading. */
-.frame-player {
-    gap: 4px;
-}
-
-.frame-player .rc-label {
-    margin-right: 4px;
-}
-
-.frame-player .rc-slider {
-    flex: 1 1 120px;
-    min-width: 80px;
-    margin: 0 4px;
-}
-
-.frame-player .rc-value {
-    min-width: 76px;
-}
-
-.frame-player.loading .rc-value {
-    opacity: 0.5;
 }
 
 /* ── Settings and charts in the side panel (#391, #426) ───────────────────
@@ -1596,6 +1541,7 @@ details.layer-group:not([open]) .layer-group-title::before {
 }
 
 .chart-card-pop,
+.chart-card-fold,
 .chart-card-close {
     border: none;
     background: transparent;
@@ -1608,9 +1554,18 @@ details.layer-group:not([open]) .layer-group-title::before {
 }
 
 .chart-card-pop:hover,
+.chart-card-fold:hover,
 .chart-card-close:hover {
     background: var(--panel-hover);
     color: var(--text);
+}
+
+.chart-card-fold { transition: transform 120ms; }
+.chart-card--folded .chart-card-fold { transform: rotate(-90deg); }
+.chart-card--folded > .sub,
+.chart-card--folded > .chart-card-body,
+.chart-card--folded > .chart-card-status {
+    display: none;
 }
 
 .chart .sub {

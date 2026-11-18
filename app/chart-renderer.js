@@ -37,6 +37,7 @@ const SERIES_1 = '#2a78d6';   // default single-series color (bold blue)
 const INK = '#1a1a1a';        // axis / label text
 const CHART_FONT = "'Open Sans', system-ui, -apple-system, sans-serif";
 
+import { placeFirst } from './settings-section.js';
 import { renderBarChart, barSpecFromChart } from './svg-bar-chart.js';
 
 /** Load a JS script by URL with SRI; resolves when loaded. */
@@ -217,10 +218,7 @@ export class ChartRenderer {
         const list = d.createElement('div');
         list.className = 'chart-cards-list';
         section.append(title, list);
-        const mount = this.mount || d.body;
-        const settings = mount.querySelector?.(':scope > .param-controls');
-        if (settings) settings.after(section);
-        else mount.prepend(section);
+        placeFirst(this.mount || d.body, section);
         this._section = section;
         this._list = list;
         return list;
@@ -235,8 +233,11 @@ export class ChartRenderer {
      * @param {Object} [opts]
      * @param {string} [opts.id] - the chart's id: an existing chart to update,
      *   or the id a new chart takes
+     * @param {boolean} [opts.removable=true] - give a new card a remove button.
+     *   An app's configured charts have none, since nothing could bring one
+     *   back; every card folds to its title instead.
      */
-    async render(spec, rows, { id: wantId } = {}) {
+    async render(spec, rows, { id: wantId, removable = true } = {}) {
         validateChartSpec(spec);      // reject a bad spec before touching the DOM
         if (spec.chart_type !== 'bar') await this._loadPlot();
 
@@ -268,9 +269,15 @@ export class ChartRenderer {
         actions.className = 'chart-card-actions';
         const pop = button(d, 'chart-card-pop', 'Enlarge chart', '⤢');
         pop.addEventListener('click', () => this.enlarge(id));
-        const close = button(d, 'chart-card-close', 'Remove chart', '✕');
-        close.addEventListener('click', () => this.remove(id));
-        actions.append(pop, close);
+        const fold = button(d, 'chart-card-fold', 'Fold chart', '▾');
+        fold.setAttribute('aria-expanded', 'true');
+        fold.addEventListener('click', () => this.setFolded(id, fold.getAttribute('aria-expanded') === 'true'));
+        actions.append(pop, fold);
+        if (removable) {
+            const close = button(d, 'chart-card-close', 'Remove chart', '✕');
+            close.addEventListener('click', () => this.remove(id));
+            actions.append(close);
+        }
         head.append(title, actions);
 
         const sub = d.createElement('div');
@@ -283,7 +290,7 @@ export class ChartRenderer {
         card.append(head, sub, body, status);
         list.prepend(card);   // newest first
 
-        const entry = { card, title, sub, body, status, spec, rows, observer: null, raf: 0, width: 0 };
+        const entry = { card, title, sub, body, status, fold, spec, rows, observer: null, raf: 0, width: 0 };
         this._fillHead(entry);
         this._drawFigure(entry);
 
@@ -299,8 +306,23 @@ export class ChartRenderer {
 
         this._panels.set(id, entry);
         this._syncSection();
-        card.scrollIntoView?.({ block: 'nearest' });
+        // bring a chart the agent just drew into view; an app's own charts open in place
+        if (removable) card.scrollIntoView?.({ block: 'nearest' });
         return { id };
+    }
+
+    /**
+     * Fold a card to its title, or open it again. A folded card keeps its
+     * place and stays live; it redraws at its width when opened.
+     */
+    setFolded(id, folded) {
+        const entry = this._panels.get(id);
+        if (!entry) return;
+        entry.card.classList.toggle('chart-card--folded', !!folded);
+        entry.fold.setAttribute('aria-expanded', String(!folded));
+        entry.fold.setAttribute('aria-label', folded ? 'Open chart' : 'Fold chart');
+        entry.fold.title = folded ? 'Open chart' : 'Fold chart';
+        if (!folded) this._drawFigure(entry);
     }
 
     _fillHead(entry) {

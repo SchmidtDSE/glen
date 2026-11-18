@@ -43,8 +43,9 @@ A map of the layers in [Portolan](https://www.portolan-sdi.org/) or STAC collect
 - `raster-frames.js` / `frame-player.js` — Raster time series (#421): find a series' dated COGs (STAC frame-list asset, bucket listing or items) and play them, preloading the next frames
 - `hex-tools.js`, `query-filter-tool.js`, `chart-tool.js`, `draw-tools.js`, `upload-tools.js` — The tools behind the plugins
 - `params.js`, `control-panel.js`, `chart-renderer.js`, `svg-bar-chart.js`, `chart-format.js` — Settings and charts in the side panel (#391, #426). Params, the controls' markup and styles, the SVG bar chart and its number formats are ported from glen-charts, so a param or chart spec reads the same in both libraries. Charts and controls never float over the map.
-- `overlay-rail.js` — Shared bottom-left rail every map-scoped overlay panel mounts into (legend, sliders, H3 resolution badge). New floating panels go here, not onto `document.body` with their own anchors.
-- `app-header.js` — Optional app chrome band (logos, top-level nav) in `scrim` or `solid` mode. App-level UI goes here; map-scoped controls go in the overlay rail.
+- `settings-section.js` — The Settings section at the top of the layer panel. Params, layer filter sliders, the raster time-series player and trajectory playback mount here (#426); new controls go here, not over the map.
+- `overlay-rail.js` — Shared bottom-left rail for what stays on the map (the legend, the H3 resolution badge), and the fallback for Settings rows on a page with no layer panel. Don't add floating panels.
+- `app-header.js` — Optional app chrome band (logos, top-level nav) in `scrim` or `solid` mode. App-level UI goes here; controls go in Settings (`settings-section.js`).
 - `layout-manager.js` / `mobile-sheet.js` — The floating or sidebar layout; below 700px the sidebar becomes a bottom sheet with peek/half/full detents. No gesture is bound to the map.
 - `h3-grid.js` — The "Hex grid" button and the H3 grid it draws, with h3-js loaded on first use
 - `geocoder.js` / `map-geocoder.js` — The geocoder behind the `geocode` tool, and the optional search box (`geocoder.search_box`), loaded only when an app shows it
@@ -227,6 +228,7 @@ When a PR touches a covered module, expect tests to change too. When it touches 
 
 | Module | Coverage | What changes here should be tested |
 |---|---:|---|
+| `app/settings-section.js` | covered | `test/settings-section.test.js` — the section first in the layer panel, hidden when nothing in it shows, the rail fallback, a filter slider beside the params. |
 | `app/overlay-rail.js` | 100% | `test/overlay-rail.test.js` — rail creation, slot ordering, mount/remove, per-document mounting |
 | `app/app-header.js` | 100% | `test/app-header.test.js` — config resolution, nav derivation from `links`, logo slots, mobile takeover |
 | `app/theme.js` | 100% | `test/theme.test.js` — theme resolution, fallback, body class application |

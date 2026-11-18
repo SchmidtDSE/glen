@@ -3,7 +3,9 @@
  * app's params as controls (SchmidtDSE/glen#426). The markup and its styles
  * are glen-charts' settings controls: pill buttons, a slider over clickable
  * stops, a two-handle range over the same stops, and a menu for long lists.
- * It goes first in the layer panel, in the floating and sidebar layouts alike.
+ * It goes first in the layer panel, in the floating and sidebar layouts alike,
+ * and shares the section with the map's filter sliders and players
+ * (settings-section.js).
  *
  * The panel only shows and sets values; the ParamBus (params.js) holds them.
  * A slider or range sets its value when the handle is released, not while it
@@ -12,6 +14,7 @@
  */
 
 import { optionValue, optionLabel, controlKind, paramValueLabel, rangeValue } from './params.js';
+import { settingsList, refreshSettings, SETTING } from './settings-section.js';
 
 /** Past this many stops, label only every few, so the labels do not collide. */
 const MAX_STOP_LABELS = 7;
@@ -29,16 +32,13 @@ export class ControlPanel {
         this.rows = new Map();   // param id → { row, sync }
         this.section = null;
         if (!this.doc || !mount) return;
-        this.section = this.doc.createElement('section');
-        this.section.className = 'param-controls menu-section';
-        this.section.setAttribute('aria-label', 'Settings');
-        const title = this.doc.createElement('div');
-        title.className = 'section-title';
-        title.textContent = 'Settings';
+        // the params' rows share the Settings section with the map's own controls
+        const list = settingsList(this.doc, mount);
+        this.section = list.parentElement;
         this.list = this.doc.createElement('div');
-        this.list.className = 'param-controls-list';
-        this.section.append(title, this.list);
-        mount.prepend(this.section);
+        this.list.className = 'param-rows';
+        this.list.style.order = String(SETTING.PARAMS);
+        list.prepend(this.list);
         this._unsub = bus.subscribe(() => this.sync());
         this.render();
     }
@@ -65,12 +65,13 @@ export class ControlPanel {
             r.row.hidden = !this.bus.active(p);
             r.sync(this.bus.values[p.id]);
         }
-        this.section.hidden = this.bus.params.length === 0;
+        refreshSettings(this.doc, this.section);
     }
 
     destroy() {
         this._unsub?.();
-        this.section?.remove();
+        this.list?.remove();
+        if (this.section) refreshSettings(this.doc, this.section);
     }
 
     _build(p) {

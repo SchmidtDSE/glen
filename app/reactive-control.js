@@ -1,7 +1,7 @@
 /**
  * reactive-control.js — Reactive-parameter controls (sliders)
  *
- * A ReactiveControl renders a small slider panel over the map and, on each
+ * A ReactiveControl renders a slider in the side panel's Settings and, on each
  * (debounced) change, rebinds a map property derived from the slider value —
  * with no LLM round-trip per tick. The agent (or a `control` block in
  * layers-input.json) sets up the binding once; the control drives it
@@ -13,13 +13,14 @@
  * reactive parameters (a weight slider that re-styles, etc.) by adding `bind`
  * kinds to `buildControlAction` — `filter` is implemented here.
  *
- * Owns a single DOM panel (`.reactive-controls`), mounted into the shared
- * map overlay rail, and, when `animate` is set, a RAF autoplay loop.
+ * Owns a single DOM row (`.reactive-controls`), mounted in the Settings
+ * section (settings-section.js), and, when `animate` is set, a RAF autoplay loop.
  * Lifecycle methods (setVisible / destroy) let MapManager treat it like the
  * trajectory animation's controls.
  */
 
-import { mountOverlay, SLOT } from './overlay-rail.js';
+import { SLOT } from './overlay-rail.js';
+import { mountSetting, refreshSettings, SETTING } from './settings-section.js';
 
 const DEFAULTS = {
     type: 'slider',
@@ -145,22 +146,26 @@ export class ReactiveControl {
 
     _build() {
         const panel = this.doc.createElement('div');
-        panel.className = 'reactive-controls';
+        panel.className = 'param reactive-controls';
         panel.dataset.layerId = this.layerId;
 
         const label = this.config.label || this.displayName;
         const playBtn = this.config.animate
-            ? '<button class="rc-play" title="Play / Pause">▶</button>'
+            ? '<button type="button" class="rc-play" title="Play / Pause" aria-label="Play">▶</button>'
             : '';
         panel.innerHTML = `
-            <span class="rc-label" title="${escapeAttr(label)}">${escapeHtml(label)}</span>
-            ${playBtn}
-            <input class="rc-slider" type="range"
-                   min="${this.config.min}" max="${this.config.max}"
-                   step="${this.config.step}" value="${this.value}" />
-            <span class="rc-value"></span>
+            <div class="param-head">
+                <span class="step-label rc-label" title="${escapeAttr(label)}">${escapeHtml(label)}</span>
+                <span class="param-value rc-value"></span>
+            </div>
+            <div class="rc-row">
+                ${playBtn}
+                <input class="rc-slider" type="range" aria-label="${escapeAttr(label)}"
+                       min="${this.config.min}" max="${this.config.max}"
+                       step="${this.config.step}" value="${this.value}" />
+            </div>
         `;
-        mountOverlay(panel, SLOT.REACTIVE, this.doc);
+        mountSetting(panel, SETTING.FILTER, { doc: this.doc, railSlot: SLOT.REACTIVE });
 
         this._panel = panel;
         this._slider = panel.querySelector('.rc-slider');
@@ -237,6 +242,7 @@ export class ReactiveControl {
     setVisible(visible) {
         this.visible = visible;
         if (this._panel) this._panel.style.display = visible ? '' : 'none';
+        refreshSettings(this.doc);
         if (!visible) this.pause();
     }
 
@@ -244,6 +250,7 @@ export class ReactiveControl {
         this.destroyed = true;
         this.pause();
         if (this._panel) this._panel.remove();
+        refreshSettings(this.doc);
     }
 }
 

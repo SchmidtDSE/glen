@@ -2121,7 +2121,8 @@ export class MapManager {
         });
         menuHeader.appendChild(layersTitle);
         menuHeader.appendChild(menuToggle);
-        container.appendChild(menuHeader);
+        // first, ahead of a Settings section a layer's slider may have made already
+        container.prepend(menuHeader);
 
         // ── Collapsible body ─────────────────────────────────────────────
         const menuBody = document.createElement('div');
