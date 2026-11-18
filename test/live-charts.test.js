@@ -288,3 +288,24 @@ describe('the configured charts (#508)', () => {
         expect(done).toBeInstanceOf(Promise);
     });
 });
+
+describe('redrawing a configured chart by id (#508)', () => {
+    beforeEach(() => { globalThis.Plot = fakePlot; document.body.replaceChildren(); });
+    afterEach(() => { delete globalThis.Plot; });
+
+    it('keeps its `when`, so it stays hidden where the config hides it', async () => {
+        const bus = new ParamBus([{ id: 'module', token: 'MODULE', options: ['loss', 'attribution'] }]);
+        const renderer = new ChartRenderer();
+        const tool = createRenderChartTool(renderer, fakeQuery([{ y: 1, v: 2 }]), { params: () => bus, debounceMs: 10 });
+        const args = { chart_id: 'loss', chart_type: 'bar', x: 'y', y: 'v', sql: 'SELECT 1 AS y, 2 AS v' };
+        await tool.drawConfigured(args, { when: { module: 'loss' } });
+        bus.set('module', 'attribution');
+        const card = () => document.querySelector('[data-chart-id="loss"]');
+        expect(card().hidden).toBe(true);
+        const res = JSON.parse(await tool.execute({ ...args, title: 'Again' }));
+        expect(res).toMatchObject({ success: true, hidden: true });
+        expect(card().hidden).toBe(true);
+        bus.set('module', 'loss');
+        expect(card().hidden).toBe(false);
+    });
+});

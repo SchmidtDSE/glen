@@ -289,6 +289,9 @@ export function createRenderChartTool(chartRenderer, query, { endpointArgs = fal
     };
 
     const draw = async (args, { when = null, removable = true } = {}) => {
+        // Redrawing a chart by its id keeps the chart's `when`, so an app's
+        // configured chart stays hidden at the settings its config hides it at.
+        if (when == null && args.chart_id != null) when = live.charts.get(String(args.chart_id))?.when || null;
         // Reject a bad spec cheaply, before paying for any SQL round-trip.
         try {
             validateChartSpec(args);
@@ -345,6 +348,7 @@ export function createRenderChartTool(chartRenderer, query, { endpointArgs = fal
         chartRenderer.setStatus?.(id, { error: rows.length ? null : 'No rows at these settings.' });
         return {
             success: true, chart_id: id, chart_type: args.chart_type, title: args.title || null, points: rows.length,
+            ...(when && !live.applies(id) && { hidden: true, note: 'Drawn, but hidden at the current settings by the chart\'s `when`.' }),
             ...(used.size && bus && { live: true, tokens: [...used] }),
         };
     };
