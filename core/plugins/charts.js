@@ -39,7 +39,10 @@ const plugin = {
             import('../../app/chart-renderer.js'),
             import('../../app/chart-tool.js'),
         ]);
-        const renderer = new ChartRenderer();
+        // Charts are cards in the side panel, above the layers (#391).
+        const doc = typeof document !== 'undefined' ? document : null;
+        const mount = doc && ctx.layout?.menuMountId ? doc.getElementById(ctx.layout.menuMountId) : null;
+        const renderer = new ChartRenderer({ mount });
         // Exposed for other plugins, such as a session export that redraws charts.
         ctx.charts = renderer;
         // The controls plugin's ParamBus, read when a chart is drawn, so the
@@ -59,7 +62,7 @@ const plugin = {
             ctx.onReady?.(async () => {
                 for (const spec of charts) {
                     const { when, ...args } = spec || {};
-                    const res = await tool.draw(args, { when: when || null });
+                    const res = await tool.drawConfigured(args, { when: when || null });
                     if (!res.success) console.warn(`[charts] Chart ${args.chart_id || args.title || ''} not drawn:`, res.error);
                 }
             });

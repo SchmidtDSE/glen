@@ -41,7 +41,7 @@ describe('glen core controls plugin (#426)', () => {
         const section = document.querySelector('#menu > .param-controls');
         expect(section).not.toBeNull();
         expect(document.querySelector('#menu').firstElementChild).toBe(section);
-        expect([...section.querySelectorAll('.param-control')].map(r => r.dataset.paramId)).toEqual(['years', 'unit', 'radius']);
+        expect([...section.querySelectorAll('.param')].map(r => r.dataset.paramId)).toEqual(['years', 'unit', 'radius']);
         expect(section.querySelector('[data-param-id="radius"]').hidden).toBe(true);
     });
 
@@ -86,7 +86,7 @@ describe('create_control', () => {
         expect(ctx.params.tokens().PATH).toBe('a');
         const buttons = document.querySelectorAll('[data-param-id="land"] button');
         expect([...buttons].map(b => b.textContent)).toEqual(['Cocoa', 'Soy']);
-        expect(buttons[0].getAttribute('aria-pressed')).toBe('true');
+        expect(buttons[0].getAttribute('aria-checked')).toBe('true');
     });
 
     it('sets a value by id alone, and refuses one that is not an option', async () => {
@@ -102,7 +102,7 @@ describe('create_control', () => {
         const { ctx, call } = await setup();
         await call('create_control', { id: 'unit', label: 'Unit of analysis' });
         expect(ctx.params.get('unit')).toMatchObject({ label: 'Unit of analysis', token: 'UNIT', options: ['hex', 'radius'] });
-        expect(document.querySelector('[data-param-id="unit"] .param-control-label').textContent).toBe('Unit of analysis');
+        expect(document.querySelector('[data-param-id="unit"] .step-label').textContent).toBe('Unit of analysis');
     });
 
     it('reports a bad definition', async () => {
@@ -154,22 +154,40 @@ describe('ControlPanel', () => {
 
         const k = document.querySelector('[data-param-id="radius"] input');
         k.value = '2';
-        k.dispatchEvent(new Event('input'));
+        k.dispatchEvent(new Event('input'));             // dragging moves the handle only
+        expect(bus.values.radius).toBe(1);
+        k.dispatchEvent(new Event('change'));            // the value is set on release
         expect(bus.values.radius).toBe(3);
+        document.querySelectorAll('[data-param-id="radius"] .param-stops button')[1].click();
+        expect(bus.values.radius).toBe(2);
 
-        const [lo, hi] = document.querySelectorAll('[data-param-id="years"] input');
+        const [lo, hi] = document.querySelectorAll('[data-param-id="years"] .pr-track input');
         hi.value = '1';
         hi.dispatchEvent(new Event('input'));
+        expect(document.querySelector('[data-param-id="years"] .param-value').textContent).toBe('2001 – 2010');
+        hi.dispatchEvent(new Event('change'));
         expect(bus.values.years).toEqual([2001, 2010]);
-        expect(document.querySelector('[data-param-id="years"] .param-control-value').textContent).toBe('2001 – 2010');
         lo.value = '2';                                   // past the high handle: held to it
         lo.dispatchEvent(new Event('input'));
+        lo.dispatchEvent(new Event('change'));
         expect(bus.values.years).toEqual([2010, 2010]);
+        // a stop moves the nearer handle
+        document.querySelectorAll('[data-param-id="years"] .param-stops button')[0].click();
+        expect(bus.values.years).toEqual([2001, 2010]);
+    });
+
+    it('labels only every few stops when there are many', () => {
+        const yrs = new ParamBus([{ id: 'y', control: 'range', options: Array.from({ length: 25 }, (_, i) => 2001 + i) }]);
+        document.body.innerHTML = '<div id="m2"></div>';
+        new ControlPanel(yrs, { mount: document.getElementById('m2') });
+        const labels = [...document.querySelectorAll('.param-stops button')].map(b => b.textContent).filter(Boolean);
+        expect(labels).toEqual(['2001', '2005', '2009', '2013', '2017', '2021', '2025']);
+        expect(document.querySelectorAll('.param-stops button')[1].getAttribute('aria-label')).toBe('2002');
     });
 
     it('shows a value the agent set', () => {
         bus.set('years', [2010, 2020]);
-        const [lo, hi] = document.querySelectorAll('[data-param-id="years"] input');
+        const [lo, hi] = document.querySelectorAll('[data-param-id="years"] .pr-track input');
         expect([lo.value, hi.value]).toEqual(['1', '2']);
     });
 });

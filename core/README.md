@@ -150,7 +150,7 @@ The plugin answers the catalog tools itself. `get_schema` and `get_stac_details`
 
 When the first server is on another origin from the page and its entry sets no `Authorization` header, a visitor can enter their own token for it under ⚙ in the chat, as in the v3 full app ([configuration guide](../docs/guide/configuration.md#a-visitor-s-mcp-token)). If the server refuses the connection at start, the chat says so and opens the settings.
 
-`plugins/charts.js` adds the v3 full app's `render_chart` tool: bar, line, scatter and histogram charts in a floating panel. The agent passes rows it has, or a SELECT that the panel runs through the `query` tool of an SQL server added with `plugins/mcp.js`, so the rows never pass through the model. Without such a server, charts from rows still work. Observable Plot loads from jsDelivr the first time a chart is drawn.
+`plugins/charts.js` adds the v3 full app's `render_chart` tool: bar, line, scatter and histogram charts, on cards in the side panel. Bars are glen-charts' horizontal SVG bars; the other types use Observable Plot. The agent passes rows it has, or a SELECT that the panel runs through the `query` tool of an SQL server added with `plugins/mcp.js`, so the rows never pass through the model. Without such a server, charts from rows still work. Observable Plot loads from jsDelivr the first time a line, scatter or histogram is drawn. With `plugins/controls.js`, a Settings section above the charts holds controls whose values enter chart SQL as `{{TOKEN}}`s, and charts that use them re-run when the reader changes one.
 
 ```json
 "plugins": [
@@ -199,7 +199,8 @@ The agent loop, tool registry and chat come from [glen-harness](https://github.c
 | `system-prompt.md` | The base prompt. The app's own prompt follows it |
 | `prompt.js` | Joins the base prompt and the app's: `system_prompt_url`, or a `system-prompt.md` beside the page |
 | `plugins/mcp.js` | Plugin that adds the tools of one or more MCP servers, filtered by `include` or `exclude`, and the collections' GeoParquet URLs |
-| `plugins/charts.js` | Plugin that adds `render_chart`, with SQL run through the registered `query` tool |
+| `plugins/charts.js` | Plugin that adds `render_chart`, with SQL run through the registered `query` tool, and the charts an app's config lists |
+| `plugins/controls.js` | Plugin that adds the Settings panel: controls whose values enter chart SQL as `{{TOKEN}}`s, with `create_control` and `remove_widget` |
 | `plugins/draw.js` | Plugin that adds the polygon draw button and `get_drawn_region` |
 | `plugins/hex.js` | Plugin that adds `add_hex_tile_layer` and `remove_hex_tile_layer`, and geo-query-wasm's tile protocol with a worker server |
 | `plugins/uploads.js` | Plugin that adds the GeoJSON upload and `get_uploaded_dataset` |

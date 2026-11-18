@@ -29,23 +29,47 @@ describe('ChartRenderer in place (#426)', () => {
         const r = new ChartRenderer();
         await r.render({ chart_type: 'bar', x: 'a', y: 'b', title: 'One' }, [{ a: 1, b: 2 }], { id: 'c1' });
         await r.render({ chart_type: 'bar', x: 'a', y: 'b', title: 'Two' }, [{ a: 1, b: 3 }], { id: 'c1' });
-        expect(document.querySelectorAll('.chart-panel')).toHaveLength(1);
-        expect(document.querySelector('.chart-panel-title').textContent).toBe('Two');
+        expect(document.querySelectorAll('.chart-card')).toHaveLength(1);
+        expect(document.querySelector('.chart-card-title').textContent).toBe('Two');
         expect(r.describe()).toEqual([{ chart_id: 'c1', title: 'Two', chart_type: 'bar', rows: 1 }]);
         const { id } = await r.render({ chart_type: 'bar', x: 'a', y: 'b' }, [{ a: 1, b: 3 }]);
         expect(id).not.toBe('c1');
     });
 
+    it('puts the Charts section after Settings in the side panel, newest first', async () => {
+        document.body.innerHTML = '<div id="menu"><section class="param-controls"></section><div class="layers"></div></div>';
+        const r = new ChartRenderer({ mount: document.getElementById('menu') });
+        await r.render({ chart_type: 'bar', x: 'a', y: 'b', title: 'One' }, [{ a: 'x', b: 2 }], { id: 'c1' });
+        await r.render({ chart_type: 'bar', x: 'a', y: 'b', title: 'Two' }, [{ a: 'x', b: 2 }], { id: 'c2' });
+        const kids = [...document.getElementById('menu').children].map(e => e.className);
+        expect(kids).toEqual(['param-controls', 'chart-cards menu-section', 'layers']);
+        expect([...document.querySelectorAll('.chart-card-title')].map(t => t.textContent)).toEqual(['Two', 'One']);
+        r.remove('c1');
+        r.remove('c2');
+        expect(document.querySelector('.chart-cards').hidden).toBe(true);
+    });
+
+    it('draws bars as SVG rows in row order, without Plot, and exports them', async () => {
+        delete globalThis.Plot;
+        const r = new ChartRenderer();
+        const rows = [{ c: 'Zebra', v: 1 }, { c: 'Apple', v: 3 }];
+        await r.render({ chart_type: 'bar', x: 'c', y: 'v', y_label: 'Count' }, rows, { id: 'b' });
+        const labels = [...document.querySelectorAll('.chart-card-body svg text[text-anchor="end"]')].map(t => t.textContent);
+        expect(labels).toEqual(['Zebra', 'Apple']);
+        expect(document.querySelector('.chart-card .sub').textContent).toBe('Count');
+        expect(r.exportFigure('b')).toMatch(/^<svg[^>]*width="780"/);
+    });
+
     it('shows loading and error states, and hides a panel', async () => {
         const r = new ChartRenderer();
         await r.render({ chart_type: 'bar', x: 'a', y: 'b' }, [{ a: 1, b: 2 }], { id: 'c1' });
-        const panel = document.querySelector('.chart-panel');
+        const panel = document.querySelector('.chart-card');
         r.setStatus('c1', { loading: true });
-        expect(panel.classList.contains('chart-panel--loading')).toBe(true);
+        expect(panel.classList.contains('chart-card--loading')).toBe(true);
         expect(panel.getAttribute('aria-busy')).toBe('true');
         r.setStatus('c1', { error: 'boom' });
-        expect(panel.classList.contains('chart-panel--loading')).toBe(false);
-        expect(panel.querySelector('.chart-panel-status').textContent).toBe('boom');
+        expect(panel.classList.contains('chart-card--loading')).toBe(false);
+        expect(panel.querySelector('.chart-card-status').textContent).toBe('boom');
         r.setHidden('c1', true);
         expect(panel.hidden).toBe(true);
         expect(r.describe()[0].hidden).toBe(true);
@@ -56,7 +80,7 @@ describe('ChartRenderer in place (#426)', () => {
         const seen = vi.fn();
         r.onRemove(seen);
         await r.render({ chart_type: 'bar', x: 'a', y: 'b' }, [{ a: 1, b: 2 }], { id: 'c1' });
-        document.querySelector('.chart-panel-close').click();
+        document.querySelector('.chart-card-close').click();
         expect(seen).toHaveBeenCalledWith('c1');
         expect(r.has('c1')).toBe(false);
     });
@@ -87,12 +111,12 @@ describe('render_chart with controls (#426)', () => {
         await tool.execute({ chart_type: 'line', x: 'y', y: 'v', sql, chart_id: 'loss' });
         bus.set('years', [2001, 2010]);
         bus.set('land', 'soy');
-        expect(document.querySelector('.chart-panel').classList.contains('chart-panel--loading')).toBe(true);
+        expect(document.querySelector('.chart-card').classList.contains('chart-card--loading')).toBe(true);
         await vi.advanceTimersByTimeAsync(60);
         expect(query).toHaveBeenCalledTimes(2);
         expect(ranSql(query, 1)).toBe("SELECT y, v FROM 'b.parquet' WHERE y BETWEEN 2001 AND 2010");
-        expect(document.querySelectorAll('.chart-panel')).toHaveLength(1);
-        expect(document.querySelector('.chart-panel').classList.contains('chart-panel--loading')).toBe(false);
+        expect(document.querySelectorAll('.chart-card')).toHaveLength(1);
+        expect(document.querySelector('.chart-card').classList.contains('chart-card--loading')).toBe(false);
     });
 
     it('does not re-run for a control its SQL does not use', async () => {
@@ -120,7 +144,7 @@ describe('render_chart with controls (#426)', () => {
         query.mockRejectedValueOnce(new Error('timeout'));
         bus.set('land', 'soy');
         await vi.advanceTimersByTimeAsync(60);
-        expect(document.querySelector('.chart-panel-status').textContent).toMatch(/timeout/);
+        expect(document.querySelector('.chart-card-status').textContent).toMatch(/timeout/);
         expect(renderer.has('loss')).toBe(true);
     });
 
@@ -149,14 +173,37 @@ describe('render_chart with controls (#426)', () => {
     it('hides a chart whose `when` does not match, and re-runs it when shown', async () => {
         await tool.draw({ chart_type: 'line', x: 'y', y: 'v', sql, chart_id: 'loss' }, { when: { unit: 'hex' } });
         bus.set('unit', 'admin');
-        expect(document.querySelector('.chart-panel').hidden).toBe(true);
+        expect(document.querySelector('.chart-card').hidden).toBe(true);
         bus.set('land', 'soy');                          // changes while hidden: no run yet
         await vi.advanceTimersByTimeAsync(60);
         expect(query).toHaveBeenCalledTimes(1);
         bus.set('unit', 'hex');
         await vi.advanceTimersByTimeAsync(60);
-        expect(document.querySelector('.chart-panel').hidden).toBe(false);
+        expect(document.querySelector('.chart-card').hidden).toBe(false);
         expect(query).toHaveBeenCalledTimes(2);
+    });
+
+    it('opens a configured chart whose query failed, and tries again when a control changes', async () => {
+        query.mockRejectedValueOnce(new Error('HTTP 401'));
+        const res = await tool.drawConfigured({ chart_type: 'line', x: 'y', y: 'v', sql, chart_id: 'loss' });
+        expect(res.success).toBe(false);
+        expect(renderer.has('loss')).toBe(true);
+        expect(document.querySelector('.chart-card-status').textContent).toMatch(/401/);
+        bus.set('land', 'soy');
+        await vi.advanceTimersByTimeAsync(60);
+        expect(renderer._charts.get('loss').rows).toHaveLength(2);
+        expect(document.querySelector('.chart-card-status').textContent).toBe('');
+    });
+
+    it('does not run a configured chart its `when` hides until it is shown', async () => {
+        const res = await tool.drawConfigured({ chart_type: 'line', x: 'y', y: 'v', sql, chart_id: 'loss' }, { when: { unit: 'admin' } });
+        expect(res).toMatchObject({ success: true, deferred: true });
+        expect(query).not.toHaveBeenCalled();
+        expect(document.querySelector('.chart-card').hidden).toBe(true);
+        bus.set('unit', 'admin');
+        await vi.advanceTimersByTimeAsync(60);
+        expect(query).toHaveBeenCalledTimes(1);
+        expect(renderer._charts.get('loss').rows).toHaveLength(2);
     });
 
     it('refuses a bad chart_id', async () => {
@@ -185,10 +232,10 @@ describe('labels with tokens', () => {
         const tool = createRenderChartTool(renderer, query, { params: () => bus, debounceMs: 10 });
         const res = JSON.parse(await tool.execute({ chart_type: 'bar', x: 'y', y: 'v', data: [{ y: 1, v: 2 }], title: 'Loss ({{UNIT_LABEL}}) {{OTHER}}', chart_id: 'c' }));
         expect(res.live).toBe(true);
-        expect(document.querySelector('.chart-panel-title').textContent).toBe('Loss (km²) {{OTHER}}');
+        expect(document.querySelector('.chart-card-title').textContent).toBe('Loss (km²) {{OTHER}}');
         bus.set('unit', 'ha');
         await vi.advanceTimersByTimeAsync(20);
-        expect(document.querySelector('.chart-panel-title').textContent).toBe('Loss (ha) {{OTHER}}');
+        expect(document.querySelector('.chart-card-title').textContent).toBe('Loss (ha) {{OTHER}}');
         expect(query).not.toHaveBeenCalled();
         vi.useRealTimers();
         delete globalThis.Plot;

@@ -80,19 +80,19 @@ describe('ChartRenderer', () => {
         await expect(cr.render({ chart_type: 'pie', x: 'a', y: 'b' }, rows)).rejects.toThrow(/Unsupported/);
     });
 
-    it('_drawFigure re-plots sized to the panel body (resize reflow)', () => {
+    it('_drawFigure re-plots sized to the card body (resize reflow)', () => {
         const cr = new ChartRenderer({ doc: null });
         let captured;
         cr._plot = { ...fakePlot, plot: (o) => { captured = o; return { tag: 'fig' }; } };
         const replaced = [];
         const entry = {
             body: { clientWidth: 500, clientHeight: 400, replaceChildren: (f) => replaced.push(f) },
-            spec: { chart_type: 'bar', x: 'country', y: 'pct' },
+            spec: { chart_type: 'line', x: 'country', y: 'pct' },
             rows,
         };
         cr._drawFigure(entry);
         expect(captured.width).toBe(500);
-        expect(captured.height).toBe(400);
+        expect(captured.height).toBe(310);   // the card's height follows its width
         expect(replaced).toEqual([{ tag: 'fig' }]);
     });
 
@@ -107,7 +107,7 @@ describe('ChartRenderer', () => {
         };
         cr._drawFigure(entry);
         expect(captured.width).toBe(400);
-        expect(captured.height).toBe(300);
+        expect(captured.height).toBe(248);
     });
 
     describe('exportFigure (#388)', () => {
@@ -118,14 +118,14 @@ describe('ChartRenderer', () => {
 
         it('re-draws a chart at report width from the spec and rows it was drawn with', async () => {
             const cr = drawn();
-            const { id } = await cr.render({ chart_type: 'bar', x: 'country', y: 'pct' }, rows);
+            const { id } = await cr.render({ chart_type: 'line', x: 'country', y: 'pct' }, rows);
             expect(cr.exportFigure(id)).toBe('<svg width="780"></svg>');
             expect(cr.exportFigure(id, { width: 500 })).toBe('<svg width="500"></svg>');
         });
 
-        it('still exports a chart whose panel the user closed', async () => {
+        it('still exports a chart whose card the user closed', async () => {
             const cr = drawn();
-            const { id } = await cr.render({ chart_type: 'bar', x: 'country', y: 'pct' }, rows);
+            const { id } = await cr.render({ chart_type: 'line', x: 'country', y: 'pct' }, rows);
             cr.remove(id);
             expect(cr.exportFigure(id)).toBe('<svg width="780"></svg>');
         });
@@ -138,7 +138,7 @@ describe('ChartRenderer', () => {
 
         it('is null rather than throwing when the draw fails', async () => {
             const cr = drawn();
-            const { id } = await cr.render({ chart_type: 'bar', x: 'country', y: 'pct' }, rows);
+            const { id } = await cr.render({ chart_type: 'line', x: 'country', y: 'pct' }, rows);
             cr._plot = { ...fakePlot, plot: () => { throw new Error('boom'); } };
             expect(cr.exportFigure(id)).toBe(null);
         });

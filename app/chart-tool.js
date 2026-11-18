@@ -84,10 +84,10 @@ export class LiveCharts {
         renderer.onRemove?.((id) => this.untrack(id));
     }
 
-    track(id, args, { when = null } = {}) {
+    track(id, args, { when = null, stale = false } = {}) {
         const prev = this.charts.get(id);
         if (prev?.timer) clearTimeout(prev.timer);
-        this.charts.set(id, { args, used: new Set([...tokensIn(args.sql), ...labelTokens(args)]), when, seq: prev?.seq || 0, timer: null, stale: false });
+        this.charts.set(id, { args, used: new Set([...tokensIn(args.sql), ...labelTokens(args)]), when, seq: prev?.seq || 0, timer: null, stale });
         this._subscribe();
         this._applyWhen(id);
     }
@@ -213,8 +213,8 @@ function chartSpec(args, tokens = null) {
  * @param {number} [options.debounceMs] - how long a live chart waits for the
  *   controls to settle before it re-runs
  * @returns {Object} a tool definition (name/description/inputSchema/execute),
- *   with `draw(args, {when})` for charts an app's config lists and `live`, the
- *   LiveCharts that re-runs them
+ *   with `drawConfigured(args, {when})` for charts an app's config lists and
+ *   `live`, the LiveCharts that re-runs them
  */
 export function createRenderChartTool(chartRenderer, query, { endpointArgs = false, params = null, debounceMs } = {}) {
     const runQuery = typeof query === 'function' ? query
@@ -231,6 +231,36 @@ export function createRenderChartTool(chartRenderer, query, { endpointArgs = fal
         return runJsonArrayQuery((q) => (endpoint ? runQuery(q, endpoint) : runQuery(q)), wrappedSql);
     };
     const live = new LiveCharts({ renderer: chartRenderer, fetchRows, params, debounceMs });
+
+    /**
+     * A chart the app's config lists, whose query failed: open it with the
+     * error shown, and keep it live so the next change of a control it uses
+     * tries again. The reader sees the chart is missing and why.
+     */
+    const drawConfigured = async (args, { when = null } = {}) => {
+        // A chart hidden by its `when` waits to run until it is shown, so it
+        // does not hold up the SQL engine for the charts on screen.
+        const bus = params?.();
+        if (when && args.sql && args.chart_id && bus && !matchesWhen(when, bus.params, bus.values)) {
+            try {
+                validateChartSpec(args);
+                const { id } = await chartRenderer.render(chartSpec(args, bus.tokens()), [], { id: String(args.chart_id) });
+                live.track(id, args, { when, stale: true });
+                return { success: true, chart_id: id, deferred: true };
+            } catch (err) {
+                return { success: false, error: err.message };
+            }
+        }
+        const res = await draw(args, { when });
+        if (res.success || !args.sql || !args.chart_id) return res;
+        try {
+            validateChartSpec(args);
+            const { id } = await chartRenderer.render(chartSpec(args, params?.()?.tokens() || null), [], { id: String(args.chart_id) });
+            live.track(id, args, { when });
+            chartRenderer.setStatus?.(id, { error: res.error });
+        } catch { /* a bad spec stays undrawn */ }
+        return res;
+    };
 
     const draw = async (args, { when = null } = {}) => {
         // Reject a bad spec cheaply, before paying for any SQL round-trip.
@@ -295,10 +325,10 @@ export function createRenderChartTool(chartRenderer, query, { endpointArgs = fal
 
     const tool = {
         name: 'render_chart',
-        description: `Render query results as a chart in a floating panel. Use when a table or map can't show the shape of the data — e.g. "plot the top 10 countries", "show the distribution", "chart the trend over years".
+        description: `Render query results as a chart on a card in the side panel. Use when a table or map can't show the shape of the data — e.g. "plot the top 10 countries", "show the distribution", "chart the trend over years".
 
 Chart types:
-- bar: ranking / category comparison (x = category, y = value)
+- bar: ranking / category comparison (x = category, y = value). Bars run across, one row per category, in the order of the rows (ORDER BY in sql), or largest first with sort "desc". With series, stacked: true stacks the series in each row.
 - line: time series / trend (x = ordered field e.g. year, y = value)
 - scatter: relationship / trade-off (x, y = two numerics)
 - histogram: distribution of one numeric (x = the value; bars are counts — omit y)
@@ -324,12 +354,16 @@ sql, title and the axis labels may use the {{TOKEN}}s of the app's controls (get
                 series: { type: 'string', description: 'Optional column to split/color multiple series' },
                 x_label: { type: 'string', description: 'Optional x-axis label (defaults to the x column name)' },
                 y_label: { type: 'string', description: 'Optional y-axis label' },
+                stacked: { type: 'boolean', description: 'bar with series: stack the series in each row instead of grouping them' },
+                sort: { type: 'string', enum: ['desc'], description: 'bar: largest first, instead of row order' },
+                format: { type: 'string', enum: ['num', 'num1', 'num2', 'int', 'compact', 'pct', 'pct100', 'usd', 'km2', 'ha', 'acres'], description: 'bar: how values are written. pct takes 0–1, pct100 takes 0–100.' },
                 chart_id: { type: 'string', description: 'Optional: the id of a chart to update in place (as a previous call returned), or an id for a new chart' },
             },
             required: ['chart_type', 'x'],
         },
         execute: async (args) => JSON.stringify(await draw(args)),
         draw,
+        drawConfigured,
         live,
     };
     if (endpointArgs) {
