@@ -60,10 +60,9 @@ const plugin = {
         const charts = Array.isArray(options.charts) ? options.charts : [];
         if (charts.length) {
             ctx.onReady?.(async () => {
-                for (const spec of charts) {
-                    const { when, ...args } = spec || {};
-                    const res = await tool.drawConfigured(args, { when: when || null });
-                    if (!res.success) console.warn(`[charts] Chart ${args.chart_id || args.title || ''} not drawn:`, res.error);
+                const results = await tool.drawConfiguredAll(charts);
+                for (const res of results) {
+                    if (!res.success) console.warn(`[charts] Chart ${res.chart_id || res.title || ''} not drawn:`, res.error);
                 }
             });
         }

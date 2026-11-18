@@ -239,7 +239,8 @@ export class ChartRenderer {
      */
     async render(spec, rows, { id: wantId, removable = true } = {}) {
         validateChartSpec(spec);      // reject a bad spec before touching the DOM
-        if (spec.chart_type !== 'bar') await this._loadPlot();
+        // Plot loads when a chart has rows to draw, not for an empty placeholder
+        if (spec.chart_type !== 'bar' && rows?.length) await this._loadPlot();
 
         const existing = wantId ? this._panels.get(wantId) : null;
         if (existing) {

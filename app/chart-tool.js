@@ -224,7 +224,10 @@ export function createRenderChartTool(chartRenderer, query, { endpointArgs = fal
     // DuckDB's native list display is not valid JSON.
     const fetchRows = (sql, args) => {
         if (!runQuery) return Promise.resolve({ ok: false, error: 'No SQL engine available for the sql path — pass data instead.' });
-        const wrappedSql = `SELECT to_json(array_agg(_chart_rows)) AS rows FROM (${sql}) _chart_rows`;
+        // A trailing `;` would end the statement inside the wrapper, and a
+        // trailing `--` comment would swallow its close, hence the newline.
+        const body = String(sql).replace(/[\s;]+$/, '');
+        const wrappedSql = `SELECT to_json(array_agg(_chart_rows)) AS rows FROM (${body}\n) _chart_rows`;
         const endpoint = endpointArgs && args.s3_endpoint
             ? { s3_endpoint: args.s3_endpoint, ...(args.s3_scope ? { s3_scope: args.s3_scope } : {}) }
             : null;
@@ -260,6 +263,29 @@ export function createRenderChartTool(chartRenderer, query, { endpointArgs = fal
             chartRenderer.setStatus?.(id, { error: res.error });
         } catch { /* a bad spec stays undrawn */ }
         return res;
+    };
+
+    /**
+     * Draw every chart the app's config lists. Each card opens at once, in
+     * config order, then the queries run side by side, so a slow or stuck
+     * chart holds up none of the others.
+     * @param {Array<Object>} specs - render_chart arguments, each with an optional `when`
+     */
+    const drawConfiguredAll = async (specs) => {
+        const items = (specs || []).map((s) => { const { when, ...args } = s || {}; return { args, when: when || null }; });
+        const bus = params?.();
+        for (const { args, when } of [...items].reverse()) {   // newest first, so the last opened goes on top
+            if (!args.sql || args.chart_id == null || !CHART_ID_RE.test(String(args.chart_id))) continue;
+            try {
+                validateChartSpec(args);
+                const { id } = await chartRenderer.render(chartSpec(args, bus?.tokens() || null), [], { id: String(args.chart_id), removable: false });
+                if (when && bus && !matchesWhen(when, bus.params, bus.values)) chartRenderer.setHidden?.(id, true);
+                else chartRenderer.setStatus?.(id, { loading: true });
+            } catch { /* drawConfigured reports a bad spec */ }
+        }
+        return Promise.all(items.map(({ args, when }) => drawConfigured(args, { when })
+            .catch((err) => ({ success: false, error: err.message }))
+            .then((res) => ({ chart_id: args.chart_id ?? null, title: args.title ?? null, ...res }))));
     };
 
     const draw = async (args, { when = null, removable = true } = {}) => {
@@ -364,6 +390,7 @@ sql, title and the axis labels may use the {{TOKEN}}s of the app's controls (get
         execute: async (args) => JSON.stringify(await draw(args)),
         draw,
         drawConfigured,
+        drawConfiguredAll,
         live,
     };
     if (endpointArgs) {

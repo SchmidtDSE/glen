@@ -19,7 +19,7 @@ function fakeQuery(rows = [{ y: 2001, v: 1 }, { y: 2010, v: 2 }]) {
     return fn;
 }
 
-const ranSql = (q, i) => q.mock.calls[i][0].match(/FROM \((.*)\) _chart_rows/s)[1];
+const ranSql = (q, i) => q.mock.calls[i][0].match(/FROM \((.*)\n\) _chart_rows/s)[1];
 
 describe('ChartRenderer in place (#426)', () => {
     beforeEach(() => { globalThis.Plot = fakePlot; document.body.replaceChildren(); });
@@ -260,5 +260,31 @@ describe('labels with tokens', () => {
         expect(query).not.toHaveBeenCalled();
         vi.useRealTimers();
         delete globalThis.Plot;
+    });
+});
+
+describe('the configured charts (#508)', () => {
+    beforeEach(() => { globalThis.Plot = fakePlot; document.body.replaceChildren(); });
+    afterEach(() => { delete globalThis.Plot; });
+
+    it('opens every card in config order, and a stuck query holds up no other chart', async () => {
+        const bus = new ParamBus([{ id: 'module', token: 'MODULE', options: ['loss', 'attribution'] }]);
+        const renderer = new ChartRenderer();
+        const query = vi.fn((sql) => (sql.includes("'stuck'") ? new Promise(() => {}) : Promise.resolve('rows\n[{"y":1,"v":2}]')));
+        const tool = createRenderChartTool(renderer, query, { params: () => bus, debounceMs: 10 });
+        const chart = (id, s, when) => ({ chart_id: id, chart_type: 'bar', x: 'y', y: 'v', sql: s, when });
+        const done = tool.drawConfiguredAll([
+            chart('first', "SELECT 'stuck' AS y, 1 AS v", { module: 'loss' }),
+            chart('second', 'SELECT 1 AS y, 2 AS v;\n', { module: 'loss' }),
+            chart('third', "SELECT '{{MODULE}}' AS y, 3 AS v", { module: 'attribution' }),
+        ]);
+        await vi.waitFor(() => expect(renderer._charts.get('second')?.rows).toHaveLength(1));
+        const ids = [...document.querySelectorAll('.chart-card')].map(c => c.dataset.chartId);
+        expect(ids).toEqual(['first', 'second', 'third']);
+        expect(document.querySelector('[data-chart-id="first"]').classList.contains('chart-card--loading')).toBe(true);
+        expect(document.querySelector('[data-chart-id="third"]').hidden).toBe(true);
+        // the trailing `;` is gone before the query is wrapped
+        expect(query.mock.calls.map(c => c[0]).find(q => q.includes('2 AS v'))).toMatch(/2 AS v\n\) _chart_rows$/);
+        expect(done).toBeInstanceOf(Promise);
     });
 });
