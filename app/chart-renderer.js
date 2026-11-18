@@ -170,6 +170,7 @@ export class ChartRenderer {
         // id → { spec, rows } for every chart drawn this session, kept after
         // its panel closes: the exported report re-draws each one (#388).
         this._charts = new Map();
+        this._removeListeners = new Set();
     }
 
     /**
@@ -196,14 +197,29 @@ export class ChartRenderer {
 
     /**
      * Render a chart into a floating panel. Returns { id } once mounted.
+     * Given the id of a chart already drawn, redraws that chart in place with
+     * the new spec and rows (SchmidtDSE/glen#426).
      * @param {Object} spec — see buildPlotOptions
      * @param {Array<Object>} rows
+     * @param {Object} [opts]
+     * @param {string} [opts.id] - the chart's id: an existing chart to update,
+     *   or the id a new chart takes
      */
-    async render(spec, rows) {
+    async render(spec, rows, { id: wantId } = {}) {
         validateChartSpec(spec);      // reject a bad spec before touching the DOM
         await this._loadPlot();
 
-        const id = `chart-${++this._seq}`;
+        const existing = wantId ? this._panels.get(wantId) : null;
+        if (existing) {
+            existing.spec = spec;
+            existing.rows = rows;
+            this._charts.set(wantId, { spec, rows });
+            existing.title.textContent = spec.title || `${cap(spec.chart_type)} chart`;
+            this._drawFigure(existing);
+            return { id: wantId };
+        }
+        const id = wantId || `chart-${++this._seq}`;
+        if (wantId) ++this._seq;
         this._charts.set(id, { spec, rows });
         if (!this.doc) return { id };   // headless (shouldn't happen in-app)
 
@@ -275,7 +291,12 @@ export class ChartRenderer {
 
         this.doc.body.appendChild(panel);
 
-        const entry = { panel, body, spec, rows, observer: null, raf: 0 };
+        const status = this.doc.createElement('div');
+        status.className = 'chart-panel-status';
+        status.setAttribute('role', 'status');
+        panel.appendChild(status);
+
+        const entry = { panel, body, title, status, spec, rows, observer: null, raf: 0 };
         this._drawFigure(entry);
 
         // Re-plot to fit whenever the user drags the resize grip or pops out.
@@ -360,13 +381,58 @@ export class ChartRenderer {
         }
     }
 
-    remove(id) {
+    /**
+     * Show that a chart is re-running, or why its last run failed. The figure
+     * stays on screen, dimmed while loading, until new rows replace it.
+     * @param {string} id
+     * @param {{loading?: boolean, error?: string|null}} state
+     */
+    setStatus(id, { loading = false, error = null } = {}) {
         const entry = this._panels.get(id);
         if (!entry) return;
+        entry.panel.classList.toggle('chart-panel--loading', !!loading);
+        entry.panel.setAttribute('aria-busy', loading ? 'true' : 'false');
+        entry.status.textContent = loading ? 'Updating…' : (error || '');
+        entry.status.classList.toggle('chart-panel-status--error', !loading && !!error);
+    }
+
+    /** Hide or show a chart's panel, as a chart's `when` does. */
+    setHidden(id, hidden) {
+        const entry = this._panels.get(id);
+        if (entry) entry.panel.hidden = !!hidden;
+    }
+
+    /** Whether a chart's panel is open. */
+    has(id) {
+        return this._panels.has(id);
+    }
+
+    /** The open charts, for get_map_state. */
+    describe() {
+        return [...this._panels.entries()].map(([id, e]) => ({
+            chart_id: id,
+            title: e.spec.title || null,
+            chart_type: e.spec.chart_type,
+            rows: e.rows.length,
+            ...(e.panel.hidden && { hidden: true }),
+        }));
+    }
+
+    remove(id) {
+        const entry = this._panels.get(id);
+        if (!entry) return false;
         if (entry.observer) entry.observer.disconnect();
         if (entry.raf) cancelAnimationFrame(entry.raf);
         entry.panel.remove();
         this._panels.delete(id);
+        for (const fn of this._removeListeners) fn(id);
+        return true;
+    }
+
+    /** onRemove(fn): fn(id) whenever a chart's panel closes. */
+    onRemove(fn) {
+        this._removeListeners.add(fn);
+        return () => this._removeListeners.delete(fn);
     }
 
     removeAll() {

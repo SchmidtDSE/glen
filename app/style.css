@@ -1009,6 +1009,99 @@ details.layer-group:not([open]) .layer-group-title::before {
     color: var(--panel-fg);
 }
 
+/* Params panel (SchmidtDSE/glen#426): settings that enter the SQL of charts,
+   drawn at the top of the layer panel. */
+.param-controls[hidden],
+.param-control[hidden] {
+    display: none;
+}
+
+.param-controls-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 6px;
+}
+
+.param-control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--panel-fg);
+}
+
+.param-control-label {
+    font-weight: 600;
+}
+
+.param-control-value {
+    color: var(--panel-fg-muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.param-segmented {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+    gap: 4px;
+    padding-top: 4px;
+}
+
+.param-segmented .basemap-btn {
+    white-space: normal;
+    line-height: 1.2;
+}
+
+.param-select {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    font-size: 12px;
+    padding: 3px 6px;
+    background: var(--control-bg);
+    border: 1px solid var(--panel-line);
+    border-radius: 3px;
+    color: var(--panel-fg);
+    cursor: pointer;
+}
+
+.param-select option {
+    background: var(--panel-bg-strong);
+    color: var(--panel-fg);
+}
+
+.param-slider {
+    display: block;
+    width: 100%;
+    margin: 4px 0 0;
+    accent-color: var(--control-bg);
+}
+
+/* Two sliders stacked into one track: only their thumbs take the pointer. */
+.param-range {
+    position: relative;
+    height: 22px;
+    margin-top: 4px;
+}
+
+.param-range .param-slider {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    background: transparent;
+    pointer-events: none;
+}
+
+.param-range .param-slider::-webkit-slider-thumb {
+    pointer-events: auto;
+}
+
+.param-range .param-slider::-moz-range-thumb {
+    pointer-events: auto;
+}
+
 /* Toggle-group row (#349): names members with no data for the selected version */
 .toggle-group-note {
     margin: 3px 0 0 22px;
@@ -1538,6 +1631,32 @@ details.layer-group:not([open]) .layer-group-title::before {
     min-height: 0;
     padding: 8px 12px 12px;
     overflow: auto;
+}
+
+/* A chart re-running after a control moved keeps its figure, dimmed, until
+   the new rows arrive (SchmidtDSE/glen#426). */
+.chart-panel[hidden] {
+    display: none;
+}
+
+.chart-panel--loading .chart-panel-body {
+    opacity: 0.45;
+    transition: opacity 0.15s;
+}
+
+.chart-panel-status {
+    flex: 0 0 auto;
+    padding: 0 12px 8px;
+    font-size: 12px;
+    color: var(--panel-fg-muted);
+}
+
+.chart-panel-status:empty {
+    display: none;
+}
+
+.chart-panel-status--error {
+    color: #b42318;
 }
 
 /* ── Geocoder search box (maplibre-gl-geocoder) ──────────────────────────
