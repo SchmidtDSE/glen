@@ -151,7 +151,7 @@ export class LiveCharts {
     /** Re-run a chart's SQL at the current settings and redraw it in place. */
     async run(id) {
         const c = this.charts.get(id);
-        if (!c) return;
+        if (!c) return { success: false, error: `No chart ${id}.` };
         const seq = ++c.seq;
         this.renderer.setStatus?.(id, { loading: true });
         const tokens = this.params?.()?.tokens() || {};
@@ -160,26 +160,28 @@ export class LiveCharts {
             const rows = this.renderer._charts?.get(id)?.rows || c.args.data || [];
             await this.renderer.render(chartSpec(c.args, tokens), rows, { id });
             this.renderer.setStatus?.(id, {});
-            return;
+            return { success: true, points: rows.length };
         }
         let sql;
         try {
             sql = expand(c.args.sql, tokens, `chart ${id}`);
         } catch (err) {
             this.renderer.setStatus?.(id, { error: err.message });
-            return;
+            return { success: false, error: err.message };
         }
         const res = await this.fetchRows(sql, c.args);
-        if (this.charts.get(id) !== c || c.seq !== seq) return;   // removed, or a newer run started
+        if (this.charts.get(id) !== c || c.seq !== seq) return { success: true, superseded: true };   // removed, or a newer run started
         if (!res.ok) {
             this.renderer.setStatus?.(id, { error: res.error });
-            return;
+            return { success: false, error: res.error };
         }
         try {
             await this.renderer.render(chartSpec(c.args, tokens), res.rows, { id });
             this.renderer.setStatus?.(id, { error: res.rows.length ? null : 'No rows at these settings.' });
+            return { success: true, points: res.rows.length };
         } catch (err) {
             this.renderer.setStatus?.(id, { error: `Could not redraw: ${err.message}` });
+            return { success: false, error: `Could not redraw: ${err.message}` };
         }
     }
 }
@@ -244,33 +246,35 @@ export function createRenderChartTool(chartRenderer, query, { endpointArgs = fal
     const live = new LiveCharts({ renderer: chartRenderer, fetchRows, params, debounceMs });
 
     /**
-     * A chart the app's config lists, whose query failed: open it with the
-     * error shown, and keep it live so the next change of a control it uses
-     * tries again. The reader sees the chart is missing and why.
+     * Draw a chart the app's config lists. Its card opens before its query
+     * runs and stays open if the query fails, with the error shown, so the
+     * reader sees the chart is missing and why.
      */
     const drawConfigured = async (args, { when = null } = {}) => {
-        // A chart hidden by its `when` waits to run until it is shown, so it
-        // does not hold up the SQL engine for the charts on screen.
-        const bus = params?.();
-        if (when && args.sql && args.chart_id && bus && !matchesWhen(when, bus.params, bus.values)) {
-            try {
-                validateChartSpec(args);
-                const { id } = await chartRenderer.render(chartSpec(args, bus.tokens()), [], { id: String(args.chart_id), removable: false });
-                live.track(id, args, { when, stale: true });
-                return { success: true, chart_id: id, deferred: true };
-            } catch (err) {
-                return { success: false, error: err.message };
-            }
-        }
-        const res = await draw(args, { when, removable: false });
-        if (res.success || !args.sql || !args.chart_id) return res;
+        if (!args.sql || args.chart_id == null) return draw(args, { when, removable: false });
         try {
             validateChartSpec(args);
-            const { id } = await chartRenderer.render(chartSpec(args, params?.()?.tokens() || null), [], { id: String(args.chart_id), removable: false });
-            live.track(id, args, { when });
-            chartRenderer.setStatus?.(id, { error: res.error });
-        } catch { /* a bad spec stays undrawn */ }
-        return res;
+        } catch (err) {
+            return { success: false, error: err.message };
+        }
+        if (!CHART_ID_RE.test(String(args.chart_id))) {
+            return { success: false, error: 'chart_id takes letters, digits, "_" and "-".' };
+        }
+        const id = String(args.chart_id);
+        const bus = params?.();
+        if (!chartRenderer.has(id)) {
+            await chartRenderer.render(chartSpec(args, bus?.tokens() || null), [], { id, removable: false });
+        }
+        // Tracked before its query goes out, so a change of setting while the
+        // query runs hides the card (its `when`) or runs it again (its tokens).
+        // A chart hidden by its `when` waits to run until it is shown, so it
+        // does not hold up the SQL engine for the charts on screen. A failed
+        // query leaves the card open with its error, and the next change of a
+        // control it uses tries again.
+        const shown = !when || !bus || matchesWhen(when, bus.params, bus.values);
+        live.track(id, args, { when, stale: !shown });
+        if (!shown) return { success: true, chart_id: id, deferred: true };
+        return { chart_id: id, ...(await live.run(id)) };
     };
 
     /**

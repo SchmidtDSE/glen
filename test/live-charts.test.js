@@ -333,3 +333,30 @@ describe('a chart hidden while its re-run waits (#508)', () => {
         expect(query.mock.calls[1][0]).toContain("'b' AS y");
     });
 });
+
+describe('a configured chart whose query is still running (#508)', () => {
+    beforeEach(() => { globalThis.Plot = fakePlot; document.body.replaceChildren(); });
+    afterEach(() => { delete globalThis.Plot; });
+
+    it('hides when its `when` stops holding, and draws its rows when the query returns', async () => {
+        const bus = new ParamBus([{ id: 'module', token: 'MODULE', options: ['loss', 'impacts'] }]);
+        const renderer = new ChartRenderer();
+        let finish;
+        const query = vi.fn(() => new Promise((resolve) => { finish = resolve; }));
+        const tool = createRenderChartTool(renderer, query, { params: () => bus, debounceMs: 10 });
+        const done = tool.drawConfigured({ chart_id: 'ranked', chart_type: 'bar', x: 'y', y: 'v', sql: 'SELECT 1 AS y, 2 AS v' }, { when: { module: 'loss' } });
+        await vi.waitFor(() => expect(query).toHaveBeenCalledTimes(1));
+        const card = () => document.querySelector('[data-chart-id="ranked"]');
+        expect(card().hidden).toBe(false);
+        bus.set('module', 'impacts');
+        expect(card().hidden).toBe(true);
+        finish(`rows\n${JSON.stringify([{ y: 1, v: 2 }])}`);
+        const res = await done;
+        expect(res).toMatchObject({ success: true, chart_id: 'ranked' });
+        expect(card().hidden).toBe(true);
+        expect(card().getAttribute('aria-busy')).toBe('false');
+        bus.set('module', 'loss');
+        expect(card().hidden).toBe(false);
+        expect(query).toHaveBeenCalledTimes(1);
+    });
+});

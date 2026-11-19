@@ -138,6 +138,16 @@ export function buildPlotOptions(Plot, spec, rows) {
         marginBottom = Math.min(120, 48 + Math.round(longestX * 4.5));
     } else if (numericX) {
         xAxis.ticks = 6;
+        // Whole-number x values, such as years, get whole-number ticks: no
+        // 2021.5 between two years, and a year reads 2021, not 2,021.
+        const nums = xVals.filter(v => v != null);
+        if (type !== 'histogram' && nums.length && nums.every(Number.isInteger)) {
+            const lo = nums.reduce((m, v) => Math.min(m, v), Infinity);
+            const hi = nums.reduce((m, v) => Math.max(m, v), -Infinity);
+            const step = Math.max(1, Math.ceil((hi - lo) / 6));
+            xAxis.ticks = Array.from({ length: Math.floor((hi - lo) / step) + 1 }, (_, i) => lo + i * step);
+            if (lo >= 1000 && hi <= 9999) xAxis.tickFormat = 'd';
+        }
     }
 
     // Short SI tick labels (1k, 2.5M) keep the y axis readable and let the left

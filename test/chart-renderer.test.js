@@ -41,6 +41,18 @@ describe('buildPlotOptions', () => {
         expect(o.marks.some(m => m.mark === 'lineY')).toBe(true);
     });
 
+    it('gives whole-number x values whole-number ticks, and years no thousands comma', () => {
+        const years = [2019, 2020, 2021, 2022].map((year, i) => ({ year, v: i }));
+        const o = buildPlotOptions(fakePlot, { chart_type: 'line', x: 'year', y: 'v' }, years);
+        expect(o.x.ticks).toEqual([2019, 2020, 2021, 2022]);
+        expect(o.x.tickFormat).toBe('d');
+        const counts = buildPlotOptions(fakePlot, { chart_type: 'scatter', x: 'n', y: 'v' }, [{ n: 0, v: 1 }, { n: 120, v: 2 }]);
+        expect(counts.x.ticks).toEqual([0, 20, 40, 60, 80, 100, 120]);
+        expect(counts.x.tickFormat).toBeUndefined();
+        const frac = buildPlotOptions(fakePlot, { chart_type: 'line', x: 'n', y: 'v' }, [{ n: 0.5, v: 1 }, { n: 2, v: 2 }]);
+        expect(frac.x.ticks).toBe(6);
+    });
+
     it('histogram → rectY+binX, count on y, no y column required', () => {
         const o = buildPlotOptions(fakePlot, { chart_type: 'histogram', x: 'richness' }, rows);
         const rect = o.marks.find(m => m.mark === 'rectY');
