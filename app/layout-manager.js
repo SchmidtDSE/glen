@@ -118,7 +118,7 @@ function buildSidebarLayout(appConfig, title, linksAbsorbed = false) {
 
     // Apply initial --sidebar-width from config (localStorage override
     // is applied in Task 7 when resize persistence is added).
-    const defaultWidth = Number(appConfig.sidebar?.default_width) || 420;
+    const defaultWidth = Number(appConfig.sidebar?.default_width) || 480;
     document.documentElement.style.setProperty('--sidebar-width', defaultWidth + 'px');
 
     const sidebar = el('aside', { id: 'sidebar' });

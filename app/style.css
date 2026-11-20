@@ -14,7 +14,6 @@
 :root {
     --z-map: 1;               /* the map canvas */
     --z-map-overlay: 10;      /* #map-overlay-rail — legend, sliders, hex */
-    --z-chart-panel: 20;      /* chart panels, cascaded over the map */
     --z-sidebar: 30;          /* the sidebar (and the legacy floating chat) */
     --z-sidebar-show: 35;     /* re-open affordance, above the collapsed edge */
     --z-app-header: 40;       /* reserved: app chrome / nav band */
@@ -734,7 +733,11 @@ body.has-app-header:not(.app-header-solid) .maplibregl-ctrl-top-right {
     cursor: default;
 }
 
-#menu.collapsed #menu-body {
+#menu.collapsed #menu-body,
+#menu.collapsed > .param-controls,
+#menu.collapsed > .chart-cards,
+#sidebar-layers-pane.collapsed > .param-controls,
+#sidebar-layers-pane.collapsed > .chart-cards {
     display: none;
 }
 
@@ -1288,257 +1291,327 @@ details.layer-group:not([open]) .layer-group-title::before {
 }
 
 /* Animated trajectory layer controls */
-.anim-controls {
+/* ── Map controls in the Settings section (#147, #421, #426) ──────────────
+   Layer filter sliders, the raster time-series player and the trajectory
+   playback controls are rows of the side panel's Settings, beside the app's
+   params (settings-section.js): a label and readout over a row of buttons
+   and the slider. A page with no layer panel puts them in the overlay rail,
+   on the panel surface below. */
+.rc-row {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
-    background: var(--panel-bg);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid var(--panel-line);
-    border-radius: 6px;
-    font-family: 'Open Sans', sans-serif;
-    font-size: 12px;
-    color: var(--panel-fg);
-    box-shadow: 0 2px 4px var(--panel-shadow);
+    gap: 6px;
 }
 
+.rc-row .rc-slider {
+    flex: 1 1 auto;
+    min-width: 80px;
+    margin: 0;
+    cursor: pointer;
+}
+
+.reactive-controls .rc-label,
 .anim-controls .anim-label {
-    font-weight: 600;
-    max-width: 160px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
 }
 
-.anim-controls .anim-play {
-    border: 1px solid var(--panel-line);
-    background: var(--control-bg);
-    border-radius: 4px;
-    width: 26px;
-    height: 26px;
+.rc-play {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--line-strong, var(--panel-line));
+    background: var(--card-bg, var(--panel-bg));
+    color: var(--text, var(--panel-fg));
+    border-radius: 999px;
     cursor: pointer;
+    font: inherit;
     font-size: 11px;
     line-height: 1;
 }
 
-.anim-controls .anim-play:hover {
-    background: var(--control-bg-hover);
-}
-
-.anim-controls .anim-time {
-    font-variant-numeric: tabular-nums;
-    min-width: 120px;
-    color: var(--panel-fg-muted);
+.rc-play:hover {
+    background: var(--primary-wash, var(--control-bg-hover));
 }
 
 .anim-controls .anim-speed,
 .anim-controls .anim-mode {
-    border: 1px solid var(--panel-line);
-    border-radius: 4px;
-    padding: 2px 4px;
-    background: var(--control-bg);
+    border: 1px solid var(--line-strong, var(--panel-line));
+    border-radius: 8px;
+    padding: 4px 6px;
+    background: var(--card-bg, var(--panel-bg));
+    color: var(--text, var(--panel-fg));
+    font: inherit;
     font-size: 12px;
-}
-
-/* ── Reactive-parameter controls (temporal / value sliders, #147) ────────
-   Same frosted-glass surface as .anim-controls. Placement comes from
-   #map-overlay-rail (SLOT.REACTIVE), not from this rule. */
-.reactive-controls {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
-    background: var(--panel-bg);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid var(--panel-line);
-    border-radius: 6px;
-    font-family: 'Open Sans', sans-serif;
-    font-size: 12px;
-    color: var(--panel-fg);
-    box-shadow: 0 2px 4px var(--panel-shadow);
-}
-
-.reactive-controls .rc-label {
-    font-weight: 600;
-    max-width: 160px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.reactive-controls .rc-play {
-    border: 1px solid var(--panel-line);
-    background: var(--control-bg);
-    border-radius: 4px;
-    width: 26px;
-    height: 26px;
-    cursor: pointer;
-    font-size: 11px;
-    line-height: 1;
-}
-
-.reactive-controls .rc-play:hover {
-    background: var(--control-bg-hover);
-}
-
-.reactive-controls .rc-slider {
-    width: 160px;
-    cursor: pointer;
-}
-
-.reactive-controls .rc-value {
-    font-variant-numeric: tabular-nums;
-    min-width: 48px;
-    text-align: right;
-    color: var(--panel-fg-muted);
-}
-
-/* ── Raster time-series player (#421) ────────────────────────────────────
-   Shares the .reactive-controls surface. The date readout is wider than a
-   slider value, and dims while the next frame's tiles are loading. */
-.frame-player {
-    gap: 4px;
-}
-
-.frame-player .rc-label {
-    margin-right: 4px;
-}
-
-.frame-player .rc-slider {
-    flex: 1 1 120px;
-    min-width: 80px;
-    margin: 0 4px;
-}
-
-.frame-player .rc-value {
-    min-width: 76px;
 }
 
 .frame-player.loading .rc-value {
     opacity: 0.5;
 }
 
-/* ── Chart panels (opt-in charting primitive, #277) ──────────────────────
-   Floating card anchored bottom-right; multiple charts cascade. */
-.chart-panel {
-    position: absolute;
-    z-index: var(--z-chart-panel);
-    /* Anchor to the bottom-right of the MAP area: offset past the sidebar
-       (--sidebar-width is 0 in floating mode) plus the per-panel cascade, so
-       charts never hide behind a right-docked sidebar. */
-    right: calc(var(--sidebar-width, 0px) + var(--chart-cascade, 12px));
-    bottom: var(--chart-cascade, 12px);
-    width: min(440px, 80vw);
-    height: 320px;
-    /* Resize from the TOP-LEFT grip (.chart-panel-resize) — the panel is pinned
-       bottom-right, so that's the free corner. Native CSS `resize` only grips
-       the bottom-right, so it's not used here. */
-    min-width: 260px;
-    min-height: 200px;
-    max-width: 96vw;
-    max-height: 92vh;
-    display: flex;
-    flex-direction: column;
-    background: var(--panel-bg-strong);
+#map-overlay-rail > .reactive-controls,
+#map-overlay-rail > .anim-controls {
+    width: 280px;
+    padding: 8px 10px;
+    background: var(--panel-bg);
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
     border: 1px solid var(--panel-line);
-    border-radius: 8px;
-    box-shadow: 0 4px 16px var(--panel-shadow);
-    font-family: 'Open Sans', sans-serif;
-    overflow: hidden;
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--panel-fg);
+    box-shadow: 0 2px 4px var(--panel-shadow);
 }
 
-/* Popped out: a large centered view. right/bottom are released so the
-   transform-centering takes over; the ResizeObserver re-plots to the new box. */
-.chart-panel.chart-panel--popped {
-    right: auto;
-    bottom: auto;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: min(900px, 92vw);
-    height: min(640px, 86vh);
+/* ── Settings and charts in the side panel (#391, #426) ───────────────────
+   The controls and chart cards of glen-charts, with its markup and styles,
+   mapped onto glen's tokens so they follow the theme and `primary`. They sit
+   at the top of the layer panel, never over the map. */
+.param-controls,
+.chart-cards,
+.chart-dialog {
+    --primary: var(--control-bg);
+    --on-primary: var(--control-fg);
+    --primary-wash: var(--chrome-accent-wash);
+    --card-bg: var(--chrome-bg-raised);
+    --surface: var(--chrome-hover);
+    --text: var(--panel-fg);
+    --text-2: var(--panel-fg-muted);
+    --text-3: var(--panel-fg-faint);
+    --line: var(--chrome-line);
+    --line-strong: var(--panel-line);
+    --grid: var(--chrome-line);
+    color: var(--text);
 }
 
-/* Top-left resize grip. A small corner target with two diagonal ticks; the
-   drag itself is handled in chart-renderer.js (_wireResize). */
-.chart-panel-resize {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 18px;
-    height: 18px;
-    z-index: 1;   /* local to .chart-panel's stacking context */
-    cursor: nwse-resize;
-    background:
-        linear-gradient(-45deg, transparent 0 4px, var(--panel-fg-faint) 4px 5px, transparent 5px 8px, var(--panel-fg-faint) 8px 9px, transparent 9px) top left / 12px 12px no-repeat;
-    border-top-left-radius: 8px;
-}
-
-.chart-panel-resize:hover {
-    background:
-        linear-gradient(-45deg, transparent 0 4px, var(--panel-fg-muted) 4px 5px, transparent 5px 8px, var(--panel-fg-muted) 8px 9px, transparent 9px) top left / 12px 12px no-repeat;
-}
-
-/* Popped-out is center-anchored via a transform, so the bottom-right pin the
-   grip's math assumes doesn't hold — hide it there. */
-.chart-panel--popped .chart-panel-resize {
+.param-controls[hidden],
+.param[hidden],
+.chart-cards[hidden],
+.chart-card[hidden] {
     display: none;
 }
 
-.chart-panel-header {
+.param-controls-list {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    /* extra left padding clears the top-left resize grip */
-    padding: 8px 12px 8px 22px;
-    border-bottom: 1px solid var(--panel-line);
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 6px;
 }
 
-.chart-panel-title {
-    flex: 1 1 auto;
-    min-width: 0;
+.param-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.param .step-label {
+    font-size: 12px;
     font-weight: 600;
-    font-size: 13px;
-    color: var(--panel-fg);
-    overflow: hidden;
-    text-overflow: ellipsis;
+    color: var(--text-2);
+}
+
+.param-value {
+    font-size: 12px;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
 
-.chart-panel-close,
-.chart-panel-pop {
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.seg button {
+    border: 1px solid var(--line-strong);
+    background: var(--card-bg);
+    color: var(--text);
+    padding: 5px 11px;
+    border-radius: 999px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    transition: background 120ms, border-color 120ms;
+}
+.seg button:hover { background: var(--primary-wash); }
+.seg button[aria-checked="true"] {
+    background: var(--primary);
+    color: var(--on-primary);
+    border-color: var(--primary);
+}
+
+.param-select {
+    display: block;
+    width: 100%;
+    padding: 6px 10px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--card-bg);
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+/* "slider": a range input over evenly spaced, clickable stops */
+.param-slider { padding: 0 4px; }
+.param-slider input[type="range"] {
+    width: calc(100% - 100% / var(--n));
+    margin: 4px calc(50% / var(--n)) 0;
+    accent-color: var(--primary);
+    cursor: pointer;
+    display: block;
+}
+.param-stops { display: grid; grid-template-columns: repeat(var(--n), 1fr); }
+.param-stops button {
+    background: none;
+    border: 0;
+    padding: 2px 0;
+    min-height: 18px;
+    font: inherit;
+    font-size: 12px;
+    color: var(--text-3);
+    cursor: pointer;
+    text-align: center;
+    white-space: nowrap;
+    overflow: visible;
+}
+.param-stops button:hover { color: var(--text); }
+.param-stops button[aria-pressed="true"] { color: var(--text); font-weight: 600; }
+
+/* "range": two handles on one track over the stops */
+.param-span { padding: 0 4px; }
+.pr-track { position: relative; height: 18px; width: calc(100% - 100% / var(--n)); margin: 4px calc(50% / var(--n)) 0; }
+.pr-track::before, .pr-fill { content: ''; position: absolute; top: 50%; height: 4px; margin-top: -2px; border-radius: 2px; }
+.pr-track::before { left: 0; right: 0; background: var(--line-strong); }
+.pr-fill { background: var(--primary); left: calc(var(--lo, 0) / var(--last) * 100%); width: calc((var(--hi, 0) - var(--lo, 0)) / var(--last) * 100%); }
+.pr-track input[type="range"] { position: absolute; inset: 0; width: 100%; height: 18px; margin: 0; background: none; -webkit-appearance: none; appearance: none; pointer-events: none; }
+.pr-track input[type="range"]::-webkit-slider-runnable-track { background: none; }
+.pr-track input[type="range"]::-moz-range-track { background: none; }
+.pr-track input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; pointer-events: auto; cursor: pointer;
+    width: 14px; height: 14px; border-radius: 50%; background: var(--primary); border: 2px solid var(--card-bg); box-shadow: 0 0 0 1px var(--primary);
+}
+.pr-track input[type="range"]::-moz-range-thumb {
+    pointer-events: auto; cursor: pointer;
+    width: 10px; height: 10px; border-radius: 50%; background: var(--primary); border: 2px solid var(--card-bg); box-shadow: 0 0 0 1px var(--primary);
+}
+.pr-track input[type="range"]:focus-visible { outline: none; }
+.pr-track input[type="range"]:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--primary); outline-offset: 2px; }
+.pr-track input[type="range"]:focus-visible::-moz-range-thumb { outline: 2px solid var(--primary); outline-offset: 2px; }
+.param-span.lo-top .pr-track input[type="range"]:first-of-type { z-index: 1; }
+.param-span .param-stops button.in-range { color: var(--text-2); }
+
+/* Chart cards, newest first */
+.chart-cards-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 6px;
+}
+
+.chart-card {
+    background: var(--card-bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 12px;
+    min-width: 0;
+}
+
+.chart-card .card-head,
+.chart-dialog .card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.chart-card h4,
+.chart-dialog h4 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.chart-card-actions {
+    display: flex;
+    gap: 2px;
+    flex: none;
+}
+
+.chart-card-pop,
+.chart-card-fold,
+.chart-card-close {
     border: none;
     background: transparent;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 13px;
     line-height: 1;
-    color: var(--panel-fg-muted);
-    padding: 2px 4px;
+    color: var(--text-3);
+    padding: 3px 5px;
     border-radius: 4px;
 }
 
-.chart-panel-header {
-    flex: 0 0 auto;
-}
-
-.chart-panel-close:hover,
-.chart-panel-pop:hover {
+.chart-card-pop:hover,
+.chart-card-fold:hover,
+.chart-card-close:hover {
     background: var(--panel-hover);
-    color: var(--panel-fg);
+    color: var(--text);
 }
 
-.chart-panel-body {
-    flex: 1 1 auto;
-    min-height: 0;
-    padding: 8px 12px 12px;
-    overflow: auto;
+.chart-card-fold { transition: transform 120ms; }
+.chart-card--folded .chart-card-fold { transform: rotate(-90deg); }
+.chart-card--folded > .sub,
+.chart-card--folded > .chart-card-body,
+.chart-card--folded > .chart-card-status {
+    display: none;
 }
+
+.chart .sub {
+    font-size: 12px;
+    color: var(--text-3);
+    margin: 1px 0 6px;
+}
+
+.chart-card-body {
+    margin-top: 6px;
+    min-width: 0;
+    transition: opacity 0.15s;
+}
+
+.chart svg { display: block; max-width: 100%; height: auto; overflow: visible; }
+.chart .chart-figure svg text { font-size: 11.5px; fill: var(--text-2); font-variant-numeric: tabular-nums; }
+.chart .chart-figure svg .val { fill: var(--text); }
+.chart svg text.nodata { fill: var(--text-3); font-style: italic; }
+.chart .legend-row { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-2); margin: 2px 0 4px; }
+.chart .legend-row span { display: inline-flex; align-items: center; gap: 5px; }
+.chart .legend-row i { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
+
+/* A chart re-running after a control moved keeps its figure, dimmed, until
+   the new rows arrive. */
+.chart-card--loading .chart-card-body { opacity: 0.45; }
+
+.chart-card-status {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-3);
+}
+
+.chart-card-status:empty { display: none; }
+.chart-card-status--error { color: var(--danger-fg); }
+
+.chart-dialog {
+    width: min(1000px, 90vw);
+    max-height: 90vh;
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--card-bg);
+}
+
+.chart-dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+.chart-dialog-body { margin-top: 10px; }
 
 /* ── Geocoder search box (maplibre-gl-geocoder) ──────────────────────────
    Frosted-glass surface to match the app's other map controls (#menu,

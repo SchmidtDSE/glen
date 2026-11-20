@@ -16,7 +16,8 @@
  * injected clock, so it is unit-tested; the panel is checked by eye.
  */
 
-import { mountOverlay, SLOT } from './overlay-rail.js';
+import { SLOT } from './overlay-rail.js';
+import { mountSetting, refreshSettings, SETTING } from './settings-section.js';
 import { selectFrames, nearestFrameIndex } from './raster-frames.js';
 
 const DEFAULTS = {
@@ -205,6 +206,7 @@ export class FramePlayer {
     setVisible(visible) {
         this.visible = visible;
         if (this._panel) this._panel.style.display = visible ? '' : 'none';
+        refreshSettings(this.doc);
         if (!visible) this.pause();
         this.ops.setVisible?.(visible);
         if (visible) this.show(this.index);
@@ -215,6 +217,7 @@ export class FramePlayer {
         this.destroyed = true;
         if (this.ops.clear) this.ops.clear(); else this.ops.prune([]);
         if (this._panel) this._panel.remove();
+        refreshSettings(this.doc);
     }
 
     /** What the agent sees in get_map_state. */
@@ -240,18 +243,22 @@ export class FramePlayer {
 
     _build() {
         const panel = this.doc.createElement('div');
-        panel.className = 'reactive-controls frame-player';
+        panel.className = 'param reactive-controls frame-player';
         panel.dataset.layerId = this.layerId;
         const label = this.config.label || this.displayName;
         panel.innerHTML = `
-            <span class="rc-label" title="${escapeAttr(label)}">${escapeHtml(label)}</span>
-            <button type="button" class="rc-play fp-prev" aria-label="Previous frame">‹</button>
-            <button type="button" class="rc-play fp-toggle" aria-label="Play">▶</button>
-            <button type="button" class="rc-play fp-next" aria-label="Next frame">›</button>
-            <input class="rc-slider" type="range" min="0" max="0" step="1" value="0" aria-label="${escapeAttr(label)} date" />
-            <span class="rc-value" aria-live="polite"></span>
+            <div class="param-head">
+                <span class="step-label rc-label" title="${escapeAttr(label)}">${escapeHtml(label)}</span>
+                <span class="param-value rc-value" aria-live="polite"></span>
+            </div>
+            <div class="rc-row">
+                <button type="button" class="rc-play fp-prev" aria-label="Previous frame">‹</button>
+                <button type="button" class="rc-play fp-toggle" aria-label="Play">▶</button>
+                <button type="button" class="rc-play fp-next" aria-label="Next frame">›</button>
+                <input class="rc-slider" type="range" min="0" max="0" step="1" value="0" aria-label="${escapeAttr(label)} date" />
+            </div>
         `;
-        mountOverlay(panel, SLOT.REACTIVE, this.doc);
+        mountSetting(panel, SETTING.PLAYER, { doc: this.doc, railSlot: SLOT.REACTIVE });
         this._panel = panel;
         this._slider = panel.querySelector('.rc-slider');
         this._value = panel.querySelector('.rc-value');

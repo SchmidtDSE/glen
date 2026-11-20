@@ -24,7 +24,8 @@
  * destroy) let MapManager treat it like any other layer.
  */
 
-import { mountOverlay, SLOT } from './overlay-rail.js';
+import { SLOT } from './overlay-rail.js';
+import { mountSetting, refreshSettings, SETTING } from './settings-section.js';
 
 const DEFAULTS = {
     loop: true,
@@ -285,25 +286,30 @@ export class TrajectoryAnimation {
 
     _buildControls() {
         const panel = document.createElement('div');
-        panel.className = 'anim-controls';
+        panel.className = 'param anim-controls';
         panel.dataset.layerId = this.layerId;
         const modeSelect = this.config.mode_toggle ? `
-            <select class="anim-mode" title="Playback mode">
+            <select class="anim-mode" title="Playback mode" aria-label="Playback mode">
                 <option value="stepped">${MODE_LABELS.stepped}</option>
                 <option value="smooth">${MODE_LABELS.smooth}</option>
             </select>` : '';
+        const name = escapeHtml(this.displayName);
         panel.innerHTML = `
-            <span class="anim-label" title="${this.displayName}">${this.displayName}</span>
-            <button class="anim-play" title="Play / Pause">❚❚</button>
-            <span class="anim-time"></span>
-            ${modeSelect}
-            <select class="anim-speed" title="Speed">
-                <option value="1">1×</option>
-                <option value="2">2×</option>
-                <option value="4">4×</option>
-            </select>
+            <div class="param-head">
+                <span class="step-label anim-label" title="${name}">${name}</span>
+                <span class="param-value anim-time"></span>
+            </div>
+            <div class="rc-row">
+                <button type="button" class="rc-play anim-play" title="Play / Pause" aria-label="Play or pause">❚❚</button>
+                ${modeSelect}
+                <select class="anim-speed" title="Speed" aria-label="Speed">
+                    <option value="1">1×</option>
+                    <option value="2">2×</option>
+                    <option value="4">4×</option>
+                </select>
+            </div>
         `;
-        mountOverlay(panel, SLOT.ANIMATION);
+        mountSetting(panel, SETTING.ANIMATION, { railSlot: SLOT.ANIMATION });
 
         this._panel = panel;
         this._playBtn = panel.querySelector('.anim-play');
@@ -464,6 +470,7 @@ export class TrajectoryAnimation {
         }
         this._applyMode();
         if (this._panel) this._panel.style.display = visible ? '' : 'none';
+        refreshSettings();
         if (visible) this.lastFrame = null;
     }
 
@@ -532,6 +539,7 @@ export class TrajectoryAnimation {
             if (this.map.getSource(id)) this.map.removeSource(id);
         }
         if (this._panel) this._panel.remove();
+        refreshSettings();
     }
 }
 
@@ -616,4 +624,8 @@ export function cellBoundary(pos, resolution, h3lib) {
     const cell = lib.latLngToCell(pos[1], pos[0], resolution);
     const ring = lib.cellToBoundary(cell, true);   // [lng, lat]
     return [...ring, ring[0]];
+}
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }

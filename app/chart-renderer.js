@@ -1,13 +1,16 @@
 /**
  * chart-renderer.js — Opt-in lightweight charting primitive (#277)
  *
- * Turns a query result set into a static chart (bar / line / scatter /
- * histogram) rendered in a floating panel over the map. Generic, not
- * app-specific: the agent runs a `query`, then hands the rows (or the SQL) to
- * the `render_chart` tool, which calls ChartRenderer.render here.
+ * Turns a query result set into a chart (bar / line / scatter / histogram) on
+ * a card in the Charts section of the side panel, newest first
+ * (SchmidtDSE/glen#391, #426). Generic, not app-specific: the agent runs a
+ * `query`, then hands the rows (or the SQL) to the `render_chart` tool, which
+ * calls ChartRenderer.render here.
  *
- * The charting library (Observable Plot) is loaded lazily from the CDN the
- * first time a chart is drawn — so apps that don't enable charts pay nothing,
+ * Bar charts are glen-charts' horizontal SVG bars (svg-bar-chart.js): rows keep
+ * the order the query gave them, and long names wrap rather than rotate. Line,
+ * scatter and histogram are drawn with Observable Plot, loaded lazily from the
+ * CDN the first time one is drawn — so apps that don't draw them pay nothing,
  * and downstream apps don't need to add a <script> tag to their index.html.
  *
  * `buildPlotOptions` is pure (Plot is injected) so the mark-selection /
@@ -33,6 +36,9 @@ const CATEGORICAL = ['#2a78d6', '#1baf7a', '#eda100', '#008300', '#4a3aa7', '#e3
 const SERIES_1 = '#2a78d6';   // default single-series color (bold blue)
 const INK = '#1a1a1a';        // axis / label text
 const CHART_FONT = "'Open Sans', system-ui, -apple-system, sans-serif";
+
+import { placeFirst } from './settings-section.js';
+import { renderBarChart, barSpecFromChart } from './svg-bar-chart.js';
 
 /** Load a JS script by URL with SRI; resolves when loaded. */
 function loadScript(url, integrity) {
@@ -132,6 +138,16 @@ export function buildPlotOptions(Plot, spec, rows) {
         marginBottom = Math.min(120, 48 + Math.round(longestX * 4.5));
     } else if (numericX) {
         xAxis.ticks = 6;
+        // Whole-number x values, such as years, get whole-number ticks: no
+        // 2021.5 between two years, and a year reads 2021, not 2,021.
+        const nums = xVals.filter(v => v != null);
+        if (type !== 'histogram' && nums.length && nums.every(Number.isInteger)) {
+            const lo = nums.reduce((m, v) => Math.min(m, v), Infinity);
+            const hi = nums.reduce((m, v) => Math.max(m, v), -Infinity);
+            const step = Math.max(1, Math.ceil((hi - lo) / 6));
+            xAxis.ticks = Array.from({ length: Math.floor((hi - lo) / step) + 1 }, (_, i) => lo + i * step);
+            if (lo >= 1000 && hi <= 9999) xAxis.tickFormat = 'd';
+        }
     }
 
     // Short SI tick labels (1k, 2.5M) keep the y axis readable and let the left
@@ -160,16 +176,21 @@ export class ChartRenderer {
     /**
      * @param {Object} [opts]
      * @param {Document} [opts.doc] — injectable for tests
+     * @param {Element} [opts.mount] — the side panel the Charts section goes
+     *   in: after the Settings section if there is one, else first
      */
     constructor(opts = {}) {
-        this.doc = opts.doc || (typeof document !== 'undefined' ? document : null);
+        this.doc = opts.doc !== undefined ? opts.doc : (typeof document !== 'undefined' ? document : null);
+        this.mount = opts.mount || null;
         this._plot = null;
         this._seq = 0;
-        this._z = 3;                // top stacking order (matches .chart-panel z-index)
-        this._panels = new Map();   // id → panel element
+        this._panels = new Map();   // id → card entry
         // id → { spec, rows } for every chart drawn this session, kept after
-        // its panel closes: the exported report re-draws each one (#388).
+        // its card closes: the exported report re-draws each one (#388).
         this._charts = new Map();
+        this._removeListeners = new Set();
+        this._section = null;
+        this._list = null;
     }
 
     /**
@@ -194,93 +215,100 @@ export class ChartRenderer {
         return this._plot;
     }
 
+    /** The Charts section, made on the first chart. */
+    _ensureSection() {
+        if (this._section) return this._list;
+        const d = this.doc;
+        const section = d.createElement('section');
+        section.className = 'chart-cards menu-section';
+        section.setAttribute('aria-label', 'Charts');
+        const title = d.createElement('div');
+        title.className = 'section-title';
+        title.textContent = 'Charts';
+        const list = d.createElement('div');
+        list.className = 'chart-cards-list';
+        section.append(title, list);
+        placeFirst(this.mount || d.body, section);
+        this._section = section;
+        this._list = list;
+        return list;
+    }
+
     /**
-     * Render a chart into a floating panel. Returns { id } once mounted.
+     * Render a chart on a card. Returns { id } once mounted. Given the id of a
+     * chart already drawn, redraws that chart in place with the new spec and
+     * rows (SchmidtDSE/glen#426).
      * @param {Object} spec — see buildPlotOptions
      * @param {Array<Object>} rows
+     * @param {Object} [opts]
+     * @param {string} [opts.id] - the chart's id: an existing chart to update,
+     *   or the id a new chart takes
+     * @param {boolean} [opts.removable=true] - give a new card a remove button.
+     *   An app's configured charts have none, since nothing could bring one
+     *   back; every card folds to its title instead.
      */
-    async render(spec, rows) {
+    async render(spec, rows, { id: wantId, removable = true } = {}) {
         validateChartSpec(spec);      // reject a bad spec before touching the DOM
-        await this._loadPlot();
+        // Plot loads when a chart has rows to draw, not for an empty placeholder
+        if (spec.chart_type !== 'bar' && rows?.length) await this._loadPlot();
 
-        const id = `chart-${++this._seq}`;
+        const existing = wantId ? this._panels.get(wantId) : null;
+        if (existing) {
+            existing.spec = spec;
+            existing.rows = rows;
+            this._charts.set(wantId, { spec, rows });
+            this._fillHead(existing);
+            this._drawFigure(existing);
+            return { id: wantId };
+        }
+        const id = wantId || `chart-${++this._seq}`;
+        if (wantId) ++this._seq;
         this._charts.set(id, { spec, rows });
         if (!this.doc) return { id };   // headless (shouldn't happen in-app)
 
-        const panel = this.doc.createElement('div');
-        panel.className = 'chart-panel';
-        panel.dataset.chartId = id;
+        const d = this.doc;
+        const list = this._ensureSection();
+        const card = d.createElement('article');
+        card.className = 'card chart chart-card';
+        card.dataset.chartId = id;
 
-        const header = this.doc.createElement('div');
-        header.className = 'chart-panel-header';
-        const title = this.doc.createElement('span');
-        title.className = 'chart-panel-title';
-        title.textContent = spec.title || `${cap(spec.chart_type)} chart`;
+        const head = d.createElement('div');
+        head.className = 'card-head';
+        const title = d.createElement('h4');
+        title.className = 'chart-card-title';
+        const actions = d.createElement('span');
+        actions.className = 'chart-card-actions';
+        const pop = button(d, 'chart-card-pop', 'Enlarge chart', '⤢');
+        pop.addEventListener('click', () => this.enlarge(id));
+        const fold = button(d, 'chart-card-fold', 'Fold chart', '▾');
+        fold.setAttribute('aria-expanded', 'true');
+        fold.addEventListener('click', () => this.setFolded(id, fold.getAttribute('aria-expanded') === 'true'));
+        actions.append(pop, fold);
+        if (removable) {
+            const close = button(d, 'chart-card-close', 'Remove chart', '✕');
+            close.addEventListener('click', () => this.remove(id));
+            actions.append(close);
+        }
+        head.append(title, actions);
 
-        // Pop-out: toggle between the docked corner card and a large centered
-        // view. The size change is picked up by the ResizeObserver, which
-        // re-plots to fit — so charts stay sharp at any size.
-        const pop = this.doc.createElement('button');
-        pop.className = 'chart-panel-pop';
-        pop.title = 'Pop out / restore';
-        pop.setAttribute('aria-label', 'Pop out or restore chart');
-        pop.textContent = '⤢';
-        pop.addEventListener('click', () => {
-            const popped = panel.classList.toggle('chart-panel--popped');
-            pop.textContent = popped ? '⤡' : '⤢';
-        });
+        const sub = d.createElement('div');
+        sub.className = 'sub';
+        const body = d.createElement('div');
+        body.className = 'chart-card-body';
+        const status = d.createElement('div');
+        status.className = 'chart-card-status';
+        status.setAttribute('role', 'status');
+        card.append(head, sub, body, status);
+        list.prepend(card);   // newest first
 
-        const close = this.doc.createElement('button');
-        close.className = 'chart-panel-close';
-        close.title = 'Close chart';
-        close.setAttribute('aria-label', 'Close chart');
-        close.textContent = '✕';
-        close.addEventListener('click', () => this.remove(id));
-
-        header.appendChild(title);
-        header.appendChild(pop);
-        header.appendChild(close);
-
-        const body = this.doc.createElement('div');
-        body.className = 'chart-panel-body';
-
-        // Custom resize grip in the TOP-LEFT corner. The panel is anchored to
-        // its bottom-right, so the free corner to drag is the top-left; native
-        // CSS `resize` can only grip the bottom-right (which sits jammed in the
-        // screen corner here), so we drive width/height from a pointer drag and
-        // let the ResizeObserver re-plot. Min/max come from the CSS box.
-        const grip = this.doc.createElement('div');
-        grip.className = 'chart-panel-resize';
-        grip.title = 'Drag to resize';
-
-        panel.appendChild(grip);
-        panel.appendChild(header);
-        panel.appendChild(body);
-        this._wireResize(panel, grip);
-
-        // Clicking anywhere in a panel raises it above the others, so a chart
-        // buried under the cascade can be brought forward without closing the
-        // ones on top of it. New panels also open on top.
-        panel.addEventListener('pointerdown', () => this._bringToFront(panel));
-        this._bringToFront(panel);
-
-        // Cascade panels up the bottom-right corner of the MAP area. Use the
-        // monotonic sequence (not the live panel count) so closing a middle
-        // panel can't make the next chart land exactly on an open one; wrap
-        // after a few so it stays on-screen. The base anchor is set in CSS via
-        // calc(--sidebar-width + --chart-cascade) so panels clear the sidebar
-        // in sidebar-mode layouts instead of hiding behind it.
-        const offset = 12 + ((this._seq - 1) % 6) * 20;
-        panel.style.setProperty('--chart-cascade', offset + 'px');
-
-        this.doc.body.appendChild(panel);
-
-        const entry = { panel, body, spec, rows, observer: null, raf: 0 };
+        const entry = { card, title, sub, body, status, fold, spec, rows, observer: null, raf: 0, width: 0 };
+        this._fillHead(entry);
         this._drawFigure(entry);
 
-        // Re-plot to fit whenever the user drags the resize grip or pops out.
+        // Re-draw when the side panel's width changes.
         if (typeof ResizeObserver !== 'undefined') {
             entry.observer = new ResizeObserver(() => {
+                if (Math.abs((body.clientWidth || 0) - entry.width) < 2) return;
                 if (entry.raf) cancelAnimationFrame(entry.raf);
                 entry.raf = requestAnimationFrame(() => this._drawFigure(entry));
             });
@@ -288,62 +316,94 @@ export class ChartRenderer {
         }
 
         this._panels.set(id, entry);
+        this._syncSection();
+        // bring a chart the agent just drew into view; an app's own charts open in place
+        if (removable) card.scrollIntoView?.({ block: 'nearest' });
         return { id };
     }
 
-    /** Raise a panel above every other chart panel. */
-    _bringToFront(panel) {
-        if (!panel) return;
-        panel.style.zIndex = String(++this._z);
-    }
-
     /**
-     * Drive a top-left resize grip. Dragging up/left grows the panel; the box
-     * stays pinned at its bottom-right anchor. Clamping is left to the CSS
-     * min/max-width/height. Pointer capture keeps the drag alive off-grip.
+     * Fold a card to its title, or open it again. A folded card keeps its
+     * place and stays live; it redraws at its width when opened.
      */
-    _wireResize(panel, grip) {
-        if (!grip || !grip.addEventListener) return;
-        grip.addEventListener('pointerdown', (e) => {
-            e.preventDefault();
-            const rect = panel.getBoundingClientRect();
-            const startX = e.clientX, startY = e.clientY;
-            const startW = rect.width, startH = rect.height;
-            const move = (ev) => {
-                panel.style.width = (startW + (startX - ev.clientX)) + 'px';
-                panel.style.height = (startH + (startY - ev.clientY)) + 'px';
-            };
-            const up = () => {
-                this.doc.removeEventListener('pointermove', move);
-                this.doc.removeEventListener('pointerup', up);
-            };
-            this.doc.addEventListener('pointermove', move);
-            this.doc.addEventListener('pointerup', up);
-        });
+    setFolded(id, folded) {
+        const entry = this._panels.get(id);
+        if (!entry) return;
+        entry.card.classList.toggle('chart-card--folded', !!folded);
+        entry.fold.setAttribute('aria-expanded', String(!folded));
+        entry.fold.setAttribute('aria-label', folded ? 'Open chart' : 'Fold chart');
+        entry.fold.title = folded ? 'Open chart' : 'Fold chart';
+        if (!folded) this._drawFigure(entry);
     }
 
-    /** (Re)render an entry's Plot figure sized to its current panel body. */
+    _fillHead(entry) {
+        const { spec } = entry;
+        entry.title.textContent = spec.title || `${cap(spec.chart_type)} chart`;
+        // A bar chart's value axis has no label of its own: name it under the title.
+        entry.sub.textContent = spec.chart_type === 'bar' ? (spec.y_label || '') : '';
+        entry.sub.hidden = !entry.sub.textContent;
+    }
+
+    /** (Re)draw an entry's figure at its card's current width. */
     _drawFigure(entry) {
-        if (!entry || !this._plot || !entry.body) return;
-        const { body, spec, rows } = entry;
-        const width = Math.max(220, body.clientWidth || 400);
-        const height = Math.max(160, body.clientHeight || 300);
-        let figure;
+        if (!entry || !entry.body) return;
+        const width = Math.max(220, entry.body.clientWidth || 400);
+        entry.width = entry.body.clientWidth || 0;
+        const figure = this._figure(entry.spec, entry.rows, { width, height: Math.round(Math.min(320, Math.max(200, width * 0.62))) });
+        if (figure) entry.body.replaceChildren(figure);
+    }
+
+    /** A figure element for a spec and rows, or null on a draw error. */
+    _figure(spec, rows, { width, height }) {
+        const d = this.doc || (typeof document !== 'undefined' ? document : null);
         try {
-            figure = this._plot.plot({ ...buildPlotOptions(this._plot, spec, rows), width, height });
+            if (spec.chart_type === 'bar') {
+                if (!d) return null;
+                const box = d.createElement('div');
+                box.className = 'chart-figure';
+                const bar = barSpecFromChart(spec, rows);
+                renderBarChart(box, bar.spec, bar.rows, { width });
+                return box;
+            }
+            if (!this._plot) return null;
+            return this._plot.plot({ ...buildPlotOptions(this._plot, spec, rows), width, height });
         } catch {
-            return;   // keep the prior figure on a transient draw error
+            return null;   // keep the prior figure on a transient draw error
         }
-        body.replaceChildren(figure);
+    }
+
+    /** Show one chart large, in a dialog over the page. */
+    enlarge(id) {
+        const chart = this._charts.get(id);
+        const d = this.doc;
+        if (!chart || !d) return;
+        const dialog = d.createElement('dialog');
+        dialog.className = 'chart-dialog';
+        const head = d.createElement('div');
+        head.className = 'card-head';
+        const title = d.createElement('h4');
+        title.textContent = chart.spec.title || `${cap(chart.spec.chart_type)} chart`;
+        const close = button(d, 'chart-card-close', 'Close', '✕');
+        close.addEventListener('click', () => dialog.close());
+        head.append(title, close);
+        const body = d.createElement('div');
+        body.className = 'chart chart-dialog-body';
+        dialog.append(head, body);
+        dialog.addEventListener('close', () => dialog.remove());
+        dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
+        d.body.appendChild(dialog);
+        dialog.showModal?.();
+        const width = Math.min(960, Math.max(320, (d.defaultView?.innerWidth || 1000) * 0.8 - 40));
+        const figure = this._figure(chart.spec, chart.rows, { width, height: Math.round(width * 0.55) });
+        if (figure) body.replaceChildren(figure);
     }
 
     /**
      * A chart as static markup for the exported report: re-drawn at report
-     * width from the spec and rows it was first drawn with, so the size the
-     * user dragged its panel to doesn't matter and a closed chart still
-     * exports. Plot writes data values as text nodes, so the markup is
-     * escaped by construction. Null when the chart is unknown or Plot is not
-     * loaded (no chart was ever drawn).
+     * width from the spec and rows it was last drawn with, so a closed chart
+     * still exports. Data values are written as text nodes, so the markup is
+     * escaped by construction. Null when the chart is unknown, or Plot is not
+     * loaded for a chart that needs it.
      *
      * @param {string} id - the `chart_id` render_chart returned
      * @param {{width?: number, height?: number}} [size]
@@ -351,27 +411,91 @@ export class ChartRenderer {
      */
     exportFigure(id, { width = 780, height = 380 } = {}) {
         const chart = this._charts.get(id);
-        if (!chart || !this._plot) return null;
-        try {
-            const figure = this._plot.plot({ ...buildPlotOptions(this._plot, chart.spec, chart.rows), width, height });
-            return figure.outerHTML;
-        } catch {
-            return null;
-        }
+        if (!chart) return null;
+        const fig = this._figure(chart.spec, chart.rows, { width, height });
+        if (!fig) return null;
+        return chart.spec.chart_type === 'bar' ? fig.innerHTML : fig.outerHTML;
+    }
+
+    /**
+     * Show that a chart is re-running, or why its last run failed. The figure
+     * stays on screen, dimmed while loading, until new rows replace it.
+     * @param {string} id
+     * @param {{loading?: boolean, error?: string|null}} state
+     */
+    setStatus(id, { loading = false, error = null } = {}) {
+        const entry = this._panels.get(id);
+        if (!entry) return;
+        entry.card.classList.toggle('chart-card--loading', !!loading);
+        entry.card.setAttribute('aria-busy', loading ? 'true' : 'false');
+        entry.status.textContent = loading ? 'Updating…' : (error || '');
+        entry.status.classList.toggle('chart-card-status--error', !loading && !!error);
+        // a chart that never drew shows its error alone
+        if (error && !entry.rows.length) entry.body.replaceChildren();
+    }
+
+    /** Hide or show a chart's card, as a chart's `when` does. */
+    setHidden(id, hidden) {
+        const entry = this._panels.get(id);
+        if (!entry) return;
+        entry.card.hidden = !!hidden;
+        if (!hidden) this._drawFigure(entry);   // a hidden card had no width to draw at
+        this._syncSection();
+    }
+
+    /** Whether a chart's card is open. */
+    has(id) {
+        return this._panels.has(id);
+    }
+
+    /** The open charts, for get_map_state. */
+    describe() {
+        return [...this._panels.entries()].map(([id, e]) => ({
+            chart_id: id,
+            title: e.spec.title || null,
+            chart_type: e.spec.chart_type,
+            rows: e.rows.length,
+            ...(e.card.hidden && { hidden: true }),
+        }));
     }
 
     remove(id) {
         const entry = this._panels.get(id);
-        if (!entry) return;
+        if (!entry) return false;
         if (entry.observer) entry.observer.disconnect();
         if (entry.raf) cancelAnimationFrame(entry.raf);
-        entry.panel.remove();
+        entry.card.remove();
         this._panels.delete(id);
+        this._syncSection();
+        for (const fn of this._removeListeners) fn(id);
+        return true;
+    }
+
+    /** onRemove(fn): fn(id) whenever a chart's card closes. */
+    onRemove(fn) {
+        this._removeListeners.add(fn);
+        return () => this._removeListeners.delete(fn);
     }
 
     removeAll() {
         for (const id of [...this._panels.keys()]) this.remove(id);
     }
+
+    /** The section shows only while it has a chart to show. */
+    _syncSection() {
+        if (!this._section) return;
+        this._section.hidden = ![...this._panels.values()].some(e => !e.card.hidden);
+    }
+}
+
+function button(d, className, label, text) {
+    const b = d.createElement('button');
+    b.type = 'button';
+    b.className = className;
+    b.title = label;
+    b.setAttribute('aria-label', label);
+    b.textContent = text;
+    return b;
 }
 
 function cap(s) {

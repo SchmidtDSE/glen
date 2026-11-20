@@ -348,7 +348,7 @@ For *temporal filtering of static features* — stepping a year/date field on an
 
 ## Reactive-parameter controls (sliders)
 
-A `control` block turns an asset into a layer with a slider that rebinds a map property as you drag it — entirely client-side, with no LLM round-trip per step. The headline use is a **temporal filter**: scrub a year/date field across its range, either cumulatively ("show everything up to year N"), from a threshold up ("show cells at or above N") or one step at a time ([#147](https://github.com/SchmidtDSE/glen/issues/147)). The slider panel floats over the map (like the trajectory controls) and appears whenever the layer is visible.
+A `control` block turns an asset into a layer with a slider that rebinds a map property as you drag it — entirely client-side, with no LLM round-trip per step. The headline use is a **temporal filter**: scrub a year/date field across its range, either cumulatively ("show everything up to year N"), from a threshold up ("show cells at or above N") or one step at a time ([#147](https://github.com/SchmidtDSE/glen/issues/147)). The slider is a row in the **Settings** section at the top of the side panel, beside any [controls](#controls), and shows whenever the layer is visible.
 
 The same control is also available to the agent at runtime via the **`create_slider`** tool — e.g. "let me step through the fire years" attaches a year slider to the active layer without any config.
 
@@ -394,7 +394,7 @@ The slider composes with the layer's configured `default_filter` (applied as `["
 
 ## Raster time series
 
-A raster asset whose data is published as one COG per date can step through those dates ([#421](https://github.com/SchmidtDSE/glen/issues/421)). Give it a `control` with `"bind": "frame"`. The layer then shows a player in the overlay rail, with play and pause, back and forward, a slider over the dates, and the date on screen. The colormap, `rescale`, `unscale` and legend are the layer's own and do not change between frames.
+A raster asset whose data is published as one COG per date can step through those dates ([#421](https://github.com/SchmidtDSE/glen/issues/421)). Give it a `control` with `"bind": "frame"`. The layer then shows a player in the side panel's **Settings**, with play and pause, back and forward, a slider over the dates, and the date on screen. The colormap, `rescale`, `unscale` and legend are the layer's own and do not change between frames.
 
 The player keeps the frame on screen and the next three on the map, the next ones at zero opacity so their tiles load before they are needed. A frame replaces the one on screen only once its tiles have loaded, so the map never goes blank between frames, whether playing, dragging the slider or jumping to a date. On a slow connection playback slows down to wait for each frame, for up to `max_wait_ms`.
 
@@ -663,7 +663,7 @@ If your `index.html` contains a `<div id="chat-container">` block with nested ch
 ```json
 "sidebar": {
     "enabled": true,
-    "default_width": 420,
+    "default_width": 480,
     "title": "Data Assistant",
     "chat_title": "Chatbot"
 }
@@ -672,7 +672,7 @@ If your `index.html` contains a `<div id="chat-container">` block with nested ch
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `enabled` | boolean | `false` | Opts in to sidebar mode. Omitting the whole `sidebar` block is equivalent to `false`. |
-| `default_width` | number | `420` | Starting width in pixels. The user's last-dragged width (stored in `localStorage`) overrides this on reload, as long as it's within bounds. |
+| `default_width` | number | `480` | Starting width in pixels. The user's last-dragged width (stored in `localStorage`) overrides this on reload, as long as it's within bounds. |
 | `title` | string | `"Data Assistant"` | Text shown in the sidebar header (and in the floating panel header too — this key applies to both modes). This is the header at the **top** of the sidebar, above both the layers and the chat. |
 | `chat_title` | string | _(unset)_ | Optional heading shown **persistently above the chat section**, mirroring the layers "Overlays" label. When unset, the chat section has no visible heading except a "Chat" label that appears only while the chat pane is collapsed. |
 
@@ -730,8 +730,8 @@ visibly reflows from one app to the next. The reserved gap collapses below
 > inside — standing in until a real one exists.
 
 The split it introduces: *app-level* things (who made this, what else there is
-to read) belong in the header; *map-level* things (legend, sliders, hex
-controls) belong on the map, in the [overlay rail](#map-overlay-rail-and-stacking-order).
+to read) belong in the header; the legend belongs on the map, in the [overlay rail](#map-overlay-rail-and-stacking-order); and controls that change what the map or a chart shows
+(sliders, players, settings) belong in the side panel's **Settings**.
 
 ```json
 {
@@ -921,7 +921,7 @@ palette to start from and the rest recolours it — no CSS needed:
 | `primary` | Buttons, checkboxes, sliders, the send button — every control. Hover and selected states are derived from it, so this one key moves the whole set. |
 | `surface` | The chrome surface: header band and sidebar. |
 | `text` | Primary text on that surface. |
-| `panel` | Floating panels over the map (legend, sliders, charts). |
+| `panel` | Panels over the map (the legend). |
 | `backdrop` | The area behind the globe, under the hex texture. |
 
 Values may be hex, `rgb()`, `hsl()` or a named colour. Anything else is
@@ -1012,7 +1012,7 @@ working.
 
 ## Plugins
 
-A plugin adds tools, controls or prompt text to glen core: SQL through MCP servers, charts, drawing, uploads, hex tile layers and geolocation. List the plugins an app uses in `plugins`, each as a URL or as an object with `url` and `options`. Load them from jsDelivr at the same ref as `core/main.js`:
+A plugin adds tools, controls or prompt text to glen core: SQL through MCP servers, charts, settings that charts re-run on, drawing, uploads, hex tile layers and geolocation. List the plugins an app uses in `plugins`, each as a URL or as an object with `url` and `options`. Load them from jsDelivr at the same ref as `core/main.js`:
 
 ```json
 "plugins": [
@@ -1070,16 +1070,73 @@ The token comes from the server's operator. In user-provided mode the field sits
 
 ### Charts
 
-`plugins/charts.js` adds a `render_chart` tool that turns a query result into a **bar**, **line**, **scatter**, or **histogram** in a floating panel ([#277](https://github.com/SchmidtDSE/glen/issues/277)). Without the plugin, the agent answers with the map and SQL result tables.
+`plugins/charts.js` adds a `render_chart` tool that turns a query result into a **bar**, **line**, **scatter**, or **histogram** chart ([#277](https://github.com/SchmidtDSE/glen/issues/277)). Without the plugin, the agent answers with the map and SQL result tables.
 
-The agent calls `render_chart` with a chart type, the columns to plot (`x`, `y`, optional `series`), and the data — either an inline `data` array it already computed, or a `sql` query the panel runs through the `query` tool of an SQL server added with `plugins/mcp.js` (so large result sets never pass back through the LLM; if both are supplied, `sql` wins). An optional `title` and `x_label` / `y_label` override the panel heading and axis captions (axes default to the column names). Charts render client-side via [Observable Plot](https://observablehq.com/plot/), which (with d3) is fetched from the CDN via SRI-pinned scripts the first time a chart is drawn — downstream apps don't need to add any `<script>` tag. Each chart panel can be **resized** (drag the bottom-right grip — it re-plots to fit) or **popped out** to a large centered view, and closed with the ✕.
+Charts are cards in a Charts section at the top of the side panel, newest first, under the [settings](#controls) if the app has any ([#391](https://github.com/SchmidtDSE/glen/issues/391)). They never cover the map. On a phone they are in the Layers tab of the bottom sheet. Each card has a button that shows the chart large and a ▾ that folds it to its title. A chart the agent drew also has a ✕ that removes it; a chart from the app's config has none, since nothing could bring it back.
+
+The agent calls `render_chart` with a chart type, the columns to plot (`x`, `y`, optional `series`), and the data — either an inline `data` array it already computed, or a `sql` query the card runs through the `query` tool of an SQL server added with `plugins/mcp.js` (so large result sets never pass back through the LLM; if both are supplied, `sql` wins). An optional `title` and `x_label` / `y_label` name the chart and its axes.
+
+Bar charts are glen-charts' horizontal bars in plain SVG: one row per category, in the order of the rows (a query's `ORDER BY`), or largest first with `"sort": "desc"`, with long names wrapped. With `series`, the bars of each row are grouped, or stacked with `"stacked": true`. `format` writes the values as `int`, `num1`, `pct` (0–1), `pct100`, `km2`, `ha`, `usd` and so on. Line, scatter and histogram charts are drawn with [Observable Plot](https://observablehq.com/plot/), which (with d3) is fetched from the CDN via SRI-pinned scripts the first time one is drawn — downstream apps don't need to add any `<script>` tag.
 
 | Chart type | Shape | Channels |
 |---|---|---|
-| `bar` | ranking / category comparison | `x` = category, `y` = value |
+| `bar` | ranking / category comparison | `x` = category, `y` = value (bars run across) |
 | `line` | time series / trend | `x` = ordered field (e.g. year), `y` = value |
 | `scatter` | relationship / trade-off (e.g. a Pareto frontier) | `x`, `y` = two numerics |
 | `histogram` | distribution of one numeric | `x` = the value (bars are counts; omit `y`) |
+
+A chart can be changed in place: pass the `chart_id` that `render_chart` returned, or choose one, and the chart with that id is redrawn instead of a new panel opening. With the [controls plugin](#controls), a chart's `sql`, `title` and axis labels may use the controls' `{{TOKEN}}`s, and the chart re-runs when the reader changes one of them.
+
+The plugin's `charts` option lists charts to draw when the app opens. Each is a `render_chart` call, with an optional `when` that shows the chart only at some settings of the controls:
+
+```json
+{ "url": "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/core/plugins/charts.js",
+  "options": { "charts": [
+    { "chart_id": "loss-by-year", "chart_type": "bar", "title": "Tree cover loss by year",
+      "x": "year", "y": "loss", "y_label": "Loss ({{UNIT_LABEL}})",
+      "sql": "SELECT 2000 + loss_year AS year, SUM(frac * h3_cell_area(h8, 'km^2')) * {{SCALE}} AS loss FROM read_parquet('s3://…/loss-year/hex/h0=*/data_0.parquet') WHERE h0 = {{H0}} AND loss_year BETWEEN {{YEAR_MIN}} - 2000 AND {{YEAR_MAX}} - 2000 GROUP BY loss_year ORDER BY year",
+      "when": { "compare": "one" } }
+  ] } }
+```
+
+### Controls
+
+`plugins/controls.js` adds a Settings section at the top of the side panel, with controls whose values enter SQL as `{{TOKEN}}`s ([#426](https://github.com/SchmidtDSE/glen/issues/426)). The controls are glen-charts' settings controls: pill buttons, a menu, a slider over clickable stops, and a two-handle range. A slider or range sets its value when the handle is released. A chart whose SQL uses a token re-runs when the reader changes that control, after the controls have been still for a moment. While it re-runs the chart is dimmed and says it is updating, and a failed run is reported on the chart. A change re-runs only the charts that use a token it changed, and a chart hidden by its `when` runs only once it is shown.
+
+A control is the same object glen-charts takes in its `params`, so a control written for one library works in the other:
+
+```json
+{ "url": "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/core/plugins/controls.js",
+  "options": { "controls": [
+    { "id": "years", "label": "Loss years", "token": "YEAR", "control": "range",
+      "options": [2001, 2005, 2010, 2015, 2020, 2025], "default": [2010, 2025] },
+    { "id": "land", "label": "Land use", "token": "LAND", "options": [
+      { "value": "cocoa", "label": "Cocoa", "tokens": { "LAND_PATH": "s3://…/cocoa.parquet", "LAND_COL": "cocoa_frac" } },
+      { "value": "soy", "label": "Soy", "tokens": { "LAND_PATH": "s3://…/soy.parquet", "LAND_COL": "soy_frac" } } ] },
+    { "id": "unit", "label": "Unit of analysis", "token": "UNIT", "options": ["hex", "admin", "radius"] },
+    { "id": "radius", "label": "Radius", "token": "K", "control": "slider", "options": [1, 2, 3, 5],
+      "format": "{} rings", "when": { "unit": "radius" } }
+  ] } }
+```
+
+| Field | Description |
+|---|---|
+| `id` | **Required.** Letters, digits, `_` and `-`. |
+| `label` | Text shown on the control. |
+| `token` | The token's name, used as `{{TOKEN}}` in SQL. Defaults to the id in capitals. |
+| `options` | **Required.** The choices: values, or objects with `value`, `label` and `tokens`. The value is always one of these, so it is safe in SQL. |
+| `control` | How it is drawn: `"segmented"` (buttons), `"select"` (a menu), `"slider"` (one of ordered options) or `"range"` (two handles over ordered stops). Without it, five options or fewer are buttons and more are a menu. |
+| `default` | The starting value; two options for a range. Defaults to the first option, or a range's full span. |
+| `format` | A label for bare option values, with `{}` for the value: `"{} km"`. |
+| `when` | `{ "<control id>": value or [values] }`: show the control only at those settings of the controls before it. Elsewhere it is hidden and held at its default. |
+| `tokens` | On a range, the two token names, low then high. Defaults to `{{TOKEN_MIN}}` and `{{TOKEN_MAX}}`. |
+| `all_label` | On a range, what to show when the full span is chosen, such as "All years". |
+
+**An option's `tokens`** are bound while it is chosen, so one choice can set a dataset's path, its value column and a unit label together. They are config text, not reader input, so they are safe in SQL.
+
+**Filter sliders.** A control with `"bind": "filter"` is the layer slider described under [reactive-parameter controls](#reactive-parameter-controls-sliders): it filters one vector layer by a feature property, with no query. Give `layer_id`, `field`, `min` and `max`, and optionally `step`, `mode`, `label` and `animate`.
+
+**The agent's tools.** With this plugin the agent has `create_control`, which takes the same objects (and `bind: "filter"` for a filter slider, in place of `create_slider`), and `remove_widget`, which removes a control, a chart or a layer's filter slider. Calling `create_control` with the id of a control that exists changes it, and `value` alone sets what it shows. `get_map_state` lists the controls with their tokens and the values the reader chose, and the open charts with the tokens each re-runs on. The system prompt names the configured controls and their tokens, but not their values, so it stays the same while the reader moves them.
 
 ### Draw tool
 
@@ -1563,8 +1620,7 @@ Trade-offs, by design:
 
 Not a config block — background for apps that ship their own CSS overrides.
 
-Every panel that floats over the map bottom-left — the legend, reactive-parameter
-sliders, trajectory playback controls, and the H3 resolution badge — mounts into a single container, `#map-overlay-rail`. The rail is a bottom-anchored
+Every panel that floats over the map bottom-left — the legend and the H3 resolution badge — mounts into a single container, `#map-overlay-rail`. Since SchmidtDSE/glen#426, layer filter sliders, the raster time-series player and the trajectory playback controls are rows in the side panel's **Settings** instead, and use the rail only on a page with no layer panel. The rail is a bottom-anchored
 flex column, so panels queue above one another in a fixed order instead of each
 anchoring itself to the same corner. Adding or removing a panel reflows the rest
 automatically.
@@ -1593,7 +1649,6 @@ rather than ad-hoc numbers:
 |---|---:|---|
 | `--z-map` | 1 | map canvas |
 | `--z-map-overlay` | 10 | `#map-overlay-rail` and the layer menu |
-| `--z-chart-panel` | 20 | chart panels |
 | `--z-sidebar` | 30 | sidebar (and the legacy floating chat) |
 | `--z-sidebar-show` | 35 | sidebar re-open button |
 | `--z-app-header` | 40 | reserved for app chrome |

@@ -42,7 +42,7 @@ describe('glen core charts plugin (#441)', () => {
         const tool = ctx.tools.tools.get('render_chart');
         const ok = JSON.parse(await tool.execute({ chart_type: 'bar', x: 'c', y: 'v', sql: 'SELECT c, v FROM t' }));
         expect(ok).toMatchObject({ success: true, points: 2 });
-        expect(run.mock.calls[0][0].sql_query).toContain('FROM (SELECT c, v FROM t) _chart_rows');
+        expect(run.mock.calls[0][0].sql_query).toContain('FROM (SELECT c, v FROM t\n) _chart_rows');
 
         // Data on another host: the endpoint get_schema gave goes to query.
         await tool.execute({ chart_type: 'bar', x: 'c', y: 'v', sql: 'SELECT 1', s3_endpoint: 'storage.googleapis.com', s3_scope: 's3://b' });

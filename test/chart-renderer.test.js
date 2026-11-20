@@ -41,6 +41,18 @@ describe('buildPlotOptions', () => {
         expect(o.marks.some(m => m.mark === 'lineY')).toBe(true);
     });
 
+    it('gives whole-number x values whole-number ticks, and years no thousands comma', () => {
+        const years = [2019, 2020, 2021, 2022].map((year, i) => ({ year, v: i }));
+        const o = buildPlotOptions(fakePlot, { chart_type: 'line', x: 'year', y: 'v' }, years);
+        expect(o.x.ticks).toEqual([2019, 2020, 2021, 2022]);
+        expect(o.x.tickFormat).toBe('d');
+        const counts = buildPlotOptions(fakePlot, { chart_type: 'scatter', x: 'n', y: 'v' }, [{ n: 0, v: 1 }, { n: 120, v: 2 }]);
+        expect(counts.x.ticks).toEqual([0, 20, 40, 60, 80, 100, 120]);
+        expect(counts.x.tickFormat).toBeUndefined();
+        const frac = buildPlotOptions(fakePlot, { chart_type: 'line', x: 'n', y: 'v' }, [{ n: 0.5, v: 1 }, { n: 2, v: 2 }]);
+        expect(frac.x.ticks).toBe(6);
+    });
+
     it('histogram → rectY+binX, count on y, no y column required', () => {
         const o = buildPlotOptions(fakePlot, { chart_type: 'histogram', x: 'richness' }, rows);
         const rect = o.marks.find(m => m.mark === 'rectY');
@@ -80,19 +92,19 @@ describe('ChartRenderer', () => {
         await expect(cr.render({ chart_type: 'pie', x: 'a', y: 'b' }, rows)).rejects.toThrow(/Unsupported/);
     });
 
-    it('_drawFigure re-plots sized to the panel body (resize reflow)', () => {
+    it('_drawFigure re-plots sized to the card body (resize reflow)', () => {
         const cr = new ChartRenderer({ doc: null });
         let captured;
         cr._plot = { ...fakePlot, plot: (o) => { captured = o; return { tag: 'fig' }; } };
         const replaced = [];
         const entry = {
             body: { clientWidth: 500, clientHeight: 400, replaceChildren: (f) => replaced.push(f) },
-            spec: { chart_type: 'bar', x: 'country', y: 'pct' },
+            spec: { chart_type: 'line', x: 'country', y: 'pct' },
             rows,
         };
         cr._drawFigure(entry);
         expect(captured.width).toBe(500);
-        expect(captured.height).toBe(400);
+        expect(captured.height).toBe(310);   // the card's height follows its width
         expect(replaced).toEqual([{ tag: 'fig' }]);
     });
 
@@ -107,7 +119,7 @@ describe('ChartRenderer', () => {
         };
         cr._drawFigure(entry);
         expect(captured.width).toBe(400);
-        expect(captured.height).toBe(300);
+        expect(captured.height).toBe(248);
     });
 
     describe('exportFigure (#388)', () => {
@@ -118,14 +130,14 @@ describe('ChartRenderer', () => {
 
         it('re-draws a chart at report width from the spec and rows it was drawn with', async () => {
             const cr = drawn();
-            const { id } = await cr.render({ chart_type: 'bar', x: 'country', y: 'pct' }, rows);
+            const { id } = await cr.render({ chart_type: 'line', x: 'country', y: 'pct' }, rows);
             expect(cr.exportFigure(id)).toBe('<svg width="780"></svg>');
             expect(cr.exportFigure(id, { width: 500 })).toBe('<svg width="500"></svg>');
         });
 
-        it('still exports a chart whose panel the user closed', async () => {
+        it('still exports a chart whose card the user closed', async () => {
             const cr = drawn();
-            const { id } = await cr.render({ chart_type: 'bar', x: 'country', y: 'pct' }, rows);
+            const { id } = await cr.render({ chart_type: 'line', x: 'country', y: 'pct' }, rows);
             cr.remove(id);
             expect(cr.exportFigure(id)).toBe('<svg width="780"></svg>');
         });
@@ -138,7 +150,7 @@ describe('ChartRenderer', () => {
 
         it('is null rather than throwing when the draw fails', async () => {
             const cr = drawn();
-            const { id } = await cr.render({ chart_type: 'bar', x: 'country', y: 'pct' }, rows);
+            const { id } = await cr.render({ chart_type: 'line', x: 'country', y: 'pct' }, rows);
             cr._plot = { ...fakePlot, plot: () => { throw new Error('boom'); } };
             expect(cr.exportFigure(id)).toBe(null);
         });

@@ -869,6 +869,22 @@ export class MapManager {
         };
     }
 
+    /**
+     * Remove a layer's filter slider and restore the filter it had before.
+     * @param {string} layerId
+     */
+    removeSlider(layerId) {
+        const state = this.layers.get(layerId);
+        if (!state?.control) return { success: false, error: `No slider on layer: ${layerId}` };
+        state.control.destroy();
+        state.control = null;
+        const base = state.controlBaseFilter || null;
+        if (state.mapLayerId) this.map.setFilter(state.mapLayerId, base);
+        if (state.outlineLayerId) this.map.setFilter(state.outlineLayerId, base);
+        state.filter = base;
+        return { success: true, layer: layerId };
+    }
+
     // ---- Layer Visibility ----
 
     /**
@@ -1864,7 +1880,27 @@ export class MapManager {
                 ...(state.framePlayer && { timeSeries: state.framePlayer.describe() }),
             };
         }
-        return { success: true, layers };
+        const out = { success: true, layers };
+        // Plugins' own state, such as the controls and charts (#426).
+        for (const [name, fn] of this._stateSections || []) {
+            try {
+                const v = fn();
+                if (v != null) out[name] = v;
+            } catch (err) {
+                console.error(`[Map] State section ${name} failed:`, err);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Add a section to get_map_state's answer: fn() returns its value, or
+     * null to leave it out. Plugins report their own state this way.
+     * @param {string} name
+     * @param {() => any} fn
+     */
+    addStateSection(name, fn) {
+        (this._stateSections ||= new Map()).set(name, fn);
     }
 
     /**
@@ -2085,7 +2121,8 @@ export class MapManager {
         });
         menuHeader.appendChild(layersTitle);
         menuHeader.appendChild(menuToggle);
-        container.appendChild(menuHeader);
+        // first, ahead of a Settings section a layer's slider may have made already
+        container.prepend(menuHeader);
 
         // ── Collapsible body ─────────────────────────────────────────────
         const menuBody = document.createElement('div');

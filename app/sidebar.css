@@ -20,12 +20,15 @@ body.sidebar-mode #menu {
 
 /* ----- Sidebar container ------------------------------------------------- */
 
+/* Below the app header when there is one (--app-header-h is 0px without
+   one). style.css says so too, but this file loads later and tied it on
+   specificity, so the top of the panel sat under the band. */
 body.sidebar-mode #sidebar {
     position: fixed;
-    top: 0;
+    top: var(--app-header-h, 0px);
     right: 0;
     bottom: 0;
-    width: var(--sidebar-width, 420px);
+    width: var(--sidebar-width, 480px);
     background: var(--chrome-bg);
     color: var(--chrome-fg);
     display: flex;
