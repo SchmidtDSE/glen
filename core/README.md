@@ -186,7 +186,7 @@ A plugin that throws is logged and skipped, and the map and its tools keep worki
 
 ## Harness
 
-The agent loop, tool registry and chat come from [glen-harness](https://github.com/SchmidtDSE/glen-harness). `main.js` imports them from jsDelivr at a release tag, the same way apps load glen, so glen keeps no copy. It imports the `src/core.js` entry, which leaves out the MCP client, and turns the session export off unless the config sets `export`; the harness loads the export only if it runs. To move to a new harness release, change the tag in both import URLs in `main.js` and in `HARNESS_MCP_CLIENT` in `plugins/mcp.js`; a test checks that the three agree.
+The agent loop, tool registry and chat come from [glen-harness](https://github.com/SchmidtDSE/glen-harness). `main.js` imports them from jsDelivr at a release tag, the same way apps load glen, so glen keeps no copy. It imports the `src/core.js` entry, which leaves out the MCP client, and turns the session export off unless the config sets `export`; the harness loads the export only if it runs. The release is `HARNESS_TAG` in `harness.js`, which `main.js` and `plugins/mcp.js` both read; a new harness release is that one line. To try an unreleased harness, a page sets `window.GLEN_HARNESS_URL` (a base URL, such as a jsDelivr commit or a local checkout) before it loads `main.js`. On localhost, `?harness=<base url>` in the address does the same; other hosts ignore it, since anyone can send a link.
 
 ## Modules
 

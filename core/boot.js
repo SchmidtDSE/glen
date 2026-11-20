@@ -62,3 +62,32 @@ export async function loadHighlighter(scripts, { doc = document, win = globalThi
     }
     return true;
 }
+
+/**
+ * Add stylesheets to the page, each just before the page's link to glen's
+ * own app/chat.css when it has one, so a sheet keeps the place in the
+ * cascade it had when glen shipped a copy of it (SchmidtDSE/glen#510).
+ * Otherwise each goes before the first stylesheet, so the page's own
+ * stylesheets still win ties. A sheet already on the page is left alone.
+ *
+ * @param {string[]} hrefs
+ * @param {Object} [opts]
+ * @param {Document} [opts.doc]
+ * @returns {Promise<void>} once every sheet has loaded or failed (never rejects)
+ */
+export function loadStylesheets(hrefs, { doc = document } = {}) {
+    const anchor = doc.querySelector('link[rel="stylesheet"][href$="app/chat.css"]')
+        || doc.head.querySelector('link[rel="stylesheet"], style');
+    return Promise.all(hrefs.map((href) => {
+        if (doc.querySelector(`link[rel="stylesheet"][href="${href}"]`)) return null;
+        const link = doc.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = href;
+        const done = new Promise((resolve) => {
+            link.onload = resolve;
+            link.onerror = () => { console.warn(`[core] Could not load ${href}`); resolve(); };
+        });
+        if (anchor) anchor.before(link); else doc.head.append(link);
+        return done;
+    })).then(() => {});
+}

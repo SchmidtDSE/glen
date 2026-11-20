@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from 'vitest';
 import { initialView, loadHighlighter, HIGHLIGHT_THEME } from '../core/boot.js';
 
 describe('initialView', () => {
@@ -58,5 +58,46 @@ describe('loadHighlighter', () => {
         await loadHighlighter(SCRIPTS, { win: {} });
         expect(document.head.querySelectorAll('script')).toHaveLength(2);
         expect(console.warn).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('loadStylesheets: the harness chat.css in glen\'s place in the cascade (SchmidtDSE/glen#510)', () => {
+    const H = 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v9.9.9/ui/chat.css';
+    let loadStylesheets;
+    beforeAll(async () => { ({ loadStylesheets } = await import('../core/boot.js')); });
+    beforeEach(() => {
+        document.head.innerHTML = `
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.2.0/app/style.css">
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.2.0/app/chat.css">
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.2.0/app/sidebar.css">`;
+    });
+    const order = () => [...document.head.querySelectorAll('link')].map(l => l.href.split('/').slice(-2).join('/'));
+    const fire = (type) => document.head.querySelectorAll(`link[href="${H}"]`).forEach(l => l.dispatchEvent(new Event(type)));
+
+    it('goes just before glen\'s chat.css, and resolves when it loads', async () => {
+        const p = loadStylesheets([H]);
+        expect(order()).toEqual(['app/style.css', 'ui/chat.css', 'app/chat.css', 'app/sidebar.css']);
+        fire('load');
+        await expect(p).resolves.toBeUndefined();
+    });
+
+    it('resolves when a sheet fails, so the app still starts', async () => {
+        const p = loadStylesheets([H]);
+        fire('error');
+        await expect(p).resolves.toBeUndefined();
+    });
+
+    it('goes before the first stylesheet on a page without glen\'s chat.css', async () => {
+        document.head.innerHTML = '<style>.x{}</style><link rel="stylesheet" href="https://example.org/app.css">';
+        const p = loadStylesheets([H]);
+        expect(document.head.firstElementChild.getAttribute('href')).toBe(H);
+        fire('load');
+        await p;
+    });
+
+    it('leaves a sheet the page already loads alone', async () => {
+        document.head.insertAdjacentHTML('beforeend', `<link rel="stylesheet" href="${H}">`);
+        await loadStylesheets([H]);
+        expect(document.head.querySelectorAll(`link[href="${H}"]`)).toHaveLength(1);
     });
 });

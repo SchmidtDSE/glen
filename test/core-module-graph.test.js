@@ -45,13 +45,14 @@ function fullGraph(entries) {
 describe('glen core module graph', () => {
     const graph = staticGraph('core/main.js');
 
-    it('loads glen-harness from a release tag, not the full app\'s agent or chat', () => {
+    it('loads glen-harness through core/harness.js, not the full app\'s agent or chat (SchmidtDSE/glen#511)', () => {
         const main = readFileSync(resolve(root, 'core/main.js'), 'utf8');
-        const urls = [...main.matchAll(/from '(https:\/\/cdn\.jsdelivr\.net\/gh\/SchmidtDSE\/glen-harness@([^/]+)\/[^']+)'/g)];
-        expect(urls.map(m => m[1].split('@')[1].replace(/^[^/]+/, ''))).toEqual(['/src/core.js', '/ui/chat-ui.js', '/ui/deps.js']);
-        // One tag for all, and a tag rather than a branch.
-        expect(new Set(urls.map(m => m[2])).size).toBe(1);
-        expect(urls[0][2]).toMatch(/^v\d+\.\d+\.\d+$/);
+        // No harness URL is written out anywhere but harness.js.
+        for (const f of ['core/main.js', 'core/plugins/mcp.js']) {
+            expect(readFileSync(resolve(root, f), 'utf8')).not.toMatch(/glen-harness@/);
+        }
+        expect(main).toMatch(/\['src\/core\.js', 'ui\/chat-ui\.js', 'ui\/deps\.js'\]\.map\(p => import\(harnessUrl\(p\)\)\)/);
+        expect(graph).toContain('core/harness.js');
     });
 
     it('loads no SQL or chart code at start', () => {

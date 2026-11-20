@@ -437,11 +437,9 @@ describe('mcp plugin setup', () => {
 });
 
 describe('MCP client source', () => {
-    it('loads the MCP client from the same glen-harness tag as core/main.js', () => {
-        const main = readFileSync(new URL('../core/main.js', import.meta.url), 'utf8');
-        const tags = new Set([...main.matchAll(/glen-harness@([^/]+)\//g)].map((m) => m[1]));
-        expect(tags.size).toBe(1);
-        expect(HARNESS_MCP_CLIENT).toBe(`https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@${[...tags][0]}/src/mcp-client.js`);
+    it('loads the MCP client from the glen-harness release in core/harness.js', async () => {
+        const { HARNESS_TAG } = await import('../core/harness.js');
+        expect(HARNESS_MCP_CLIENT).toBe(`https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@${HARNESS_TAG}/src/mcp-client.js`);
     });
 });
 
