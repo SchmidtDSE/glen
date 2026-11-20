@@ -26,19 +26,22 @@ import { buildLayout, sidebarHooks } from '../app/layout-manager.js';
 import { createGeocoder } from '../app/geocoder.js';
 import { mountDataPage, dataFooterLinks } from '../app/data-page.js';
 import { mountH3GridToggle } from '../app/h3-grid.js';
-// glen-harness, loaded from jsDelivr at a release tag, as apps load glen
-// itself. Its ./core entry is the agent loop and tool registry without the MCP
-// client. All three URLs name the same tag; bump them together.
-import {
-    Agent, ToolRegistry, applyProxyModelList, buildUserModels, loadUserSettings,
-} from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.5.1/src/core.js';
-import { ChatUI } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.5.1/ui/chat-ui.js';
-import { CHAT_SCRIPTS } from 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@v0.5.1/ui/deps.js';
+import { harnessUrl } from './harness.js';
 import { PortolanCatalog, exportCatalogView } from './portolan-catalog.js';
 import { createCoreMapTools } from './map-tools.js';
 import { loadPrompts } from './prompt.js';
 import { ensurePanelActions } from '../app/panel-actions.js';
 import { initialView, loadHighlighter } from './boot.js';
+
+// glen-harness, from jsDelivr at the release tag in harness.js, as apps load
+// glen itself. Its src/core.js entry is the agent loop and tool registry
+// without the MCP client. A page may point harness.js at an unreleased
+// harness to try it (SchmidtDSE/glen#511).
+const [
+    { Agent, ToolRegistry, applyProxyModelList, buildUserModels, loadUserSettings },
+    { ChatUI },
+    { CHAT_SCRIPTS },
+] = await Promise.all(['src/core.js', 'ui/chat-ui.js', 'ui/deps.js'].map(p => import(harnessUrl(p))));
 
 /**
  * The harness's chat, with Export in the panel's action row beside Globe and
