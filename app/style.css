@@ -1897,3 +1897,77 @@ body.theme-dark .app-header-logo--dark {
 .data-page-body .ds-children .ds-list {
     margin-top: 8px;
 }
+
+/* ── Start-up progress (SchmidtDSE/glen#512) ──────────────────────────────
+   A full-screen overlay until the map is drawn, then a thin bar along the
+   bottom until the chat is ready (app/boot-progress.js). The overlay can
+   appear before theme.js sets the body's theme class, so every token has a
+   light fallback. */
+.glen-boot {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal, 70);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--chrome-bg, #f8f9fa);
+    color: var(--chrome-fg, #1a1a2e);
+    font: 15px/1.4 system-ui, -apple-system, sans-serif;
+    transition: opacity 0.3s ease;
+}
+.glen-boot-card {
+    width: min(320px, calc(100vw - 32px));
+    text-align: center;
+}
+.glen-boot-label {
+    margin: 0 0 12px;
+}
+.glen-boot-track,
+.glen-boot-bar-track {
+    overflow: hidden;
+    background: var(--chrome-line, rgba(0, 0, 0, 0.1));
+}
+.glen-boot-track {
+    height: 6px;
+    border-radius: 3px;
+}
+.glen-boot-fill {
+    height: 100%;
+    width: 0;
+    background: var(--control-accent, #2f6fd0);
+    transition: width 0.25s ease;
+}
+.glen-boot--failed .glen-boot-label,
+.glen-boot--failed .glen-boot-bar-label {
+    color: var(--danger-fg, #c0392b);
+}
+
+.glen-boot-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: var(--z-app-header, 40);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    /* Clears the map's attribution line along the bottom edge. */
+    gap: 30px;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+.glen-boot-bar-label {
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--panel-bg-strong, rgba(255, 255, 255, 0.97));
+    color: var(--panel-fg, #333333);
+    box-shadow: 0 1px 4px var(--panel-shadow, rgba(0, 0, 0, 0.2));
+    font: 13px/1.4 system-ui, -apple-system, sans-serif;
+}
+.glen-boot-bar-track {
+    align-self: stretch;
+    height: 3px;
+}
+.glen-boot--leaving {
+    opacity: 0;
+}

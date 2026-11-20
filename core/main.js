@@ -32,16 +32,28 @@ import { createCoreMapTools } from './map-tools.js';
 import { loadPrompts } from './prompt.js';
 import { ensurePanelActions } from '../app/panel-actions.js';
 import { initialView, loadHighlighter, loadStylesheets } from './boot.js';
+import { createBootProgress } from '../app/boot-progress.js';
 
 // glen-harness, from jsDelivr at the release tag in harness.js, as apps load
 // glen itself. Its src/core.js entry is the agent loop and tool registry
 // without the MCP client. A page may point harness.js at an unreleased
 // harness to try it (SchmidtDSE/glen#511).
+// The start-up overlay goes up before the harness downloads, so the page is
+// never blank while it loads, and says so if it cannot (SchmidtDSE/glen#512).
+const AUTO_START = typeof window !== 'undefined' && !window.GLEN_CORE_MANUAL_START;
+let earlyProgress = AUTO_START ? createBootProgress() : null;
+let harness;
+try {
+    harness = await Promise.all(['src/core.js', 'ui/chat-ui.js', 'ui/deps.js'].map(p => import(harnessUrl(p))));
+} catch (err) {
+    earlyProgress?.fail(`could not load glen-harness (${err.message})`);
+    throw err;
+}
 const [
     { Agent, ToolRegistry, applyProxyModelList, buildUserModels, loadUserSettings },
     { ChatUI },
     { CHAT_SCRIPTS, chatStylesheets },
-] = await Promise.all(['src/core.js', 'ui/chat-ui.js', 'ui/deps.js'].map(p => import(harnessUrl(p))));
+] = harness;
 
 /**
  * The harness's chat, with Export in the panel's action row beside Globe and
@@ -77,7 +89,21 @@ export const CORE_VERSION = import.meta.url.match(/glen@([^/]+)/)?.[1] || 'dev';
  * @returns {Promise<Object>} the plugin context, for scripts and tests
  */
 export async function start({ plugins: extraPlugins = [] } = {}) {
+    // The overlay until the map is drawn, then a bar until the chat is ready.
+    // On load it is already up, from before the harness was imported.
+    const progress = earlyProgress ?? createBootProgress();
+    earlyProgress = null;
+    try {
+        return await boot(extraPlugins, progress);
+    } catch (err) {
+        progress.fail(err.message);
+        throw err;
+    }
+}
+
+async function boot(extraPlugins, progress) {
     /* ── 1. Config ─────────────────────────────────────────────────────── */
+    progress.step('Loading settings\u2026', 0.1);
     // The chat's stylesheet comes from the harness, beside the config, so the
     // chat is styled before the layout builds it (SchmidtDSE/glen#510).
     const [appConfig, runtimeConfig] = await Promise.all([
@@ -104,6 +130,8 @@ export async function start({ plugins: extraPlugins = [] } = {}) {
 
     /* ── 2. Chrome, catalog and map (catalog and map load in parallel) ── */
     const layoutRefs = buildLayout(appConfig);
+    progress.holdInput(layoutRefs.chatMount?.input);
+    progress.step('Loading the map and data\u2026', 0.3);
     // Core's base prompt, then the app's own (system_prompt_url, or a
     // system-prompt.md beside the page).
     const promptP = loadPrompts(appConfig, { baseUrl: new URL('./system-prompt.md', import.meta.url).href, pageUrl: document.baseURI });
@@ -117,7 +145,10 @@ export async function start({ plugins: extraPlugins = [] } = {}) {
         defaultBasemap: appConfig.default_basemap || 'natgeo',
         customBasemap: appConfig.custom_basemap || null,
     });
-    await Promise.all([catalog.load(appConfig), mapManager.ready]);
+    let finished = 0;
+    const loaded = (p) => p.then((v) => { progress.step(null, 0.3 + 0.25 * ++finished); return v; });
+    await Promise.all([loaded(catalog.load(appConfig)), loaded(mapManager.ready)]);
+    progress.step('Drawing the layers\u2026', 0.9);
 
     // The data sources page (#data): every collection with its citation and license.
     try { mountDataPage(catalog); } catch (err) { console.error('[core] Data page failed to mount:', err); }
@@ -130,6 +161,9 @@ export async function start({ plugins: extraPlugins = [] } = {}) {
     try { mountH3GridToggle(mapManager.map); } catch (err) { console.error('[core] Hex grid button failed:', err); }
     // With no view configured, open on the data.
     if (!appConfig.view) fitToCatalog(mapManager, catalog);
+    progress.step(null, 1);
+    progress.mapReady();
+    progress.step(null, 0.2);
 
     /* ── 3. Map tools ──────────────────────────────────────────────────── */
     const tools = new ToolRegistry();
@@ -175,7 +209,8 @@ export async function start({ plugins: extraPlugins = [] } = {}) {
         ui: null,
     };
     const plugins = [...await loadPluginModules(appConfig.plugins || []), ...extraPlugins.map(p => ({ plugin: p, options: {} }))];
-    for (const { plugin, options } of plugins) {
+    for (const [i, { plugin, options }] of plugins.entries()) {
+        progress.step(null, 0.2 + 0.7 * (i / plugins.length));
         try {
             await plugin.setup?.(ctx, options || {});
             console.log(`[core] Plugin ready: ${plugin.name || '(unnamed)'}`);
@@ -188,12 +223,14 @@ export async function start({ plugins: extraPlugins = [] } = {}) {
     const systemPrompt = [await promptP, catalog.generatePrompt(), ...promptParts].join('\n\n');
     const tier = await modelListP;
     if (tier) console.log(`[core] Models from the proxy (${tier} tier): ${appConfig.llm_models.length}`);
+    progress.step(null, 0.95);
     const agent = new Agent(appConfig, tools, { clientName: `glen-core/${CORE_VERSION}` });
     agent.setSystemPrompt(systemPrompt);
     // The session export documents SQL sessions; a map-only app leaves it off
     // unless its config turns it on, and then the harness loads it on first use.
     // It redraws the session's charts with the charts plugin's renderer.
     appConfig.export ??= false;
+    progress.done();
     const ui = new GlenChatUI(agent, appConfig, layoutRefs.chatMount, mapManager, ctx.charts || null);
     ui.catalog = exportCatalogView(catalog);
     ctx.agent = agent;
@@ -256,7 +293,8 @@ async function fetchJson(url) {
 
 // Start on load unless the page asks to call start() itself (for plugins
 // passed as objects, or tests).
-if (typeof window !== 'undefined' && !window.GLEN_CORE_MANUAL_START) {
+if (AUTO_START) {
+    // start() shows the failure on the overlay or the bar; the chat says it too.
     start().catch(err => {
         console.error('[core] Fatal boot error:', err);
         const msg = document.getElementById('chat-messages');
