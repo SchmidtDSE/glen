@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { buildControlAction, ReactiveControl } from '../app/reactive-control.js';
+import { buildControlAction, comparison, ReactiveControl } from '../app/reactive-control.js';
 
 describe('buildControlAction', () => {
     it('cumulative filter binds field <= value', () => {
@@ -10,6 +10,16 @@ describe('buildControlAction', () => {
     it('step filter binds field == value', () => {
         const action = buildControlAction({ bind: 'filter', mode: 'step', field: 'YEAR_' }, 1990);
         expect(action).toEqual({ kind: 'filter', expr: ['==', ['get', 'YEAR_'], 1990] });
+    });
+
+    it('>= filter binds field >= value, for a threshold (#362)', () => {
+        const action = buildControlAction({ bind: 'filter', mode: '>=', field: 'bio5' }, 40);
+        expect(action).toEqual({ kind: 'filter', expr: ['>=', ['get', 'bio5'], 40] });
+    });
+
+    it('takes the comparison operators as modes', () => {
+        expect(buildControlAction({ mode: '<=', field: 'y' }, 1).expr[0]).toBe('<=');
+        expect(buildControlAction({ mode: '==', field: 'y' }, 1).expr[0]).toBe('==');
     });
 
     it('defaults to cumulative when mode is omitted', () => {
@@ -24,6 +34,18 @@ describe('buildControlAction', () => {
     it('returns null for unimplemented bind kinds (style/query reserved)', () => {
         expect(buildControlAction({ bind: 'style', field: 'x' }, 5)).toBeNull();
         expect(buildControlAction({ bind: 'query', field: 'x' }, 5)).toBeNull();
+    });
+});
+
+describe('comparison', () => {
+    it('maps the older names to operators', () => {
+        expect(comparison('cumulative')).toBe('<=');
+        expect(comparison('step')).toBe('==');
+    });
+
+    it('falls back to <= for a missing or unknown mode', () => {
+        expect(comparison(undefined)).toBe('<=');
+        expect(comparison('>')).toBe('<=');
     });
 });
 
@@ -52,6 +74,23 @@ describe('ReactiveControl (no-DOM core)', () => {
     it('step mode defaults the initial value to min', () => {
         const { actions } = makeControl({ field: 'YEAR_', min: 1835, max: 2024, mode: 'step' });
         expect(actions[0]).toEqual({ kind: 'filter', expr: ['==', ['get', 'YEAR_'], 1835] });
+    });
+
+    it('>= mode defaults the initial value to min, so every feature shows', () => {
+        const { actions } = makeControl({ field: 'bio5', min: 30, max: 50, mode: '>=' });
+        expect(actions[0]).toEqual({ kind: 'filter', expr: ['>=', ['get', 'bio5'], 30] });
+    });
+
+    it('== mode stays on the step grid like step mode', () => {
+        const { ctrl, actions } = makeControl({ field: 'y', min: 0, max: 10, step: 1, mode: '==' });
+        ctrl.setValue(3.4);
+        expect(actions.at(-1).expr).toEqual(['==', ['get', 'y'], 3]);
+    });
+
+    it('>= mode keeps a fractional value', () => {
+        const { ctrl, actions } = makeControl({ field: 'y', min: 0, max: 10, step: 1, mode: '>=' });
+        ctrl.setValue(3.4);
+        expect(actions.at(-1).expr).toEqual(['>=', ['get', 'y'], 3.4]);
     });
 
     it('honours an explicit default value', () => {

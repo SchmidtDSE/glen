@@ -348,7 +348,7 @@ For *temporal filtering of static features* — stepping a year/date field on an
 
 ## Reactive-parameter controls (sliders)
 
-A `control` block turns an asset into a layer with a slider that rebinds a map property as you drag it — entirely client-side, with no LLM round-trip per step. The headline use is a **temporal filter**: scrub a year/date field across its range, either cumulatively ("show everything up to year N") or one step at a time ([#147](https://github.com/SchmidtDSE/glen/issues/147)). The slider panel floats over the map (like the trajectory controls) and appears whenever the layer is visible.
+A `control` block turns an asset into a layer with a slider that rebinds a map property as you drag it — entirely client-side, with no LLM round-trip per step. The headline use is a **temporal filter**: scrub a year/date field across its range, either cumulatively ("show everything up to year N"), from a threshold up ("show cells at or above N") or one step at a time ([#147](https://github.com/SchmidtDSE/glen/issues/147)). The slider panel floats over the map (like the trajectory controls) and appears whenever the layer is visible.
 
 The same control is also available to the agent at runtime via the **`create_slider`** tool — e.g. "let me step through the fire years" attaches a year slider to the active layer without any config.
 
@@ -362,9 +362,9 @@ The slider composes with the layer's configured `default_filter` (applied as `["
 | `max` | number | — | **Required.** High end of the slider range. |
 | `step` | number | `1` | Slider increment. |
 | `bind` | string | `"filter"` | What the slider drives. Currently `"filter"` (a MapLibre filter expression); `"style"` and `"query"` binds are reserved for future work. |
-| `mode` | string | `"cumulative"` | For `filter` bind: `"cumulative"` shows `field <= value`; `"step"` shows `field == value`. |
+| `mode` | string | `"<="` | For `filter` bind, how the field compares with the slider value: `"<="`, `">="` or `"=="`. The older names `"cumulative"` (`<=`) and `"step"` (`==`) still work. |
 | `label` | string | field name | Text shown on the slider panel. |
-| `default` | number | `max` (cumulative) / `min` (step) | Initial slider value. |
+| `default` | number | `max` for `<=`, `min` for `>=` and `==` | Initial slider value. |
 | `animate` | boolean | `false` | Add a play/pause button that sweeps `min → max` automatically. |
 | `duration_seconds` | number | `20` | Real-time seconds for one autoplay sweep (when `animate` is set). |
 | `loop` | boolean | `true` | Restart at `min` after an autoplay sweep reaches `max`. |
@@ -383,7 +383,7 @@ The slider composes with the layer's configured `default_filter` (applied as `["
         "min": 1835,
         "max": 2024,
         "step": 1,
-        "mode": "cumulative",
+        "mode": "<=",
         "animate": true,
         "duration_seconds": 20
       }

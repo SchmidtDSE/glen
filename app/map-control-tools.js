@@ -208,8 +208,9 @@ Note: some layers have a config default filter applied at startup. This tool rem
             description: `Create an interactive slider that filters a vector layer by a numeric or temporal field — entirely client-side, with no round-trip per step. Use when the user wants to scrub, step, or animate through values of one field (e.g. "let me step through fire years", "add a year slider", "play the burn history over time").
 
 The slider binds as a MapLibre filter on \`field\`:
-- mode "cumulative" (default): shows every feature with field <= the slider value (e.g. fires accumulate as the year advances).
-- mode "step": shows only features whose field == the slider value (one year at a time).
+- mode "<=" (default): shows every feature with field <= the slider value (e.g. fires accumulate as the year advances).
+- mode ">=": shows every feature with field >= the slider value (a threshold, e.g. cells at or above a temperature).
+- mode "==": shows only features whose field == the slider value (one year at a time).
 
 Set animate: true to add a play/pause button that sweeps min→max automatically. Only one slider can be attached to a layer at a time (creating a new one replaces it). The slider panel is shown while the layer is visible — call show_layer first if it isn't already on.
 
@@ -222,7 +223,7 @@ ${pickLayerNudge}`,
                     min: { type: 'number', description: 'Slider minimum (low end of the field range)' },
                     max: { type: 'number', description: 'Slider maximum (high end of the field range)' },
                     step: { type: 'number', description: 'Slider step size (default 1)' },
-                    mode: { type: 'string', enum: ['cumulative', 'step'], description: 'cumulative (<=) or step (==). Default cumulative.' },
+                    mode: { type: 'string', enum: ['<=', '>=', '=='], description: 'How the field compares with the slider value. Default <=.' },
                     label: { type: 'string', description: 'Label shown on the slider panel (defaults to the field name)' },
                     animate: { type: 'boolean', description: 'Add a play button that sweeps the range (default false)' },
                 },

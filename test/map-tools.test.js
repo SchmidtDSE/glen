@@ -418,9 +418,9 @@ describe('create_slider', () => {
         expect(tool.inputSchema.required).toEqual(['layer_id', 'field', 'min', 'max']);
     });
 
-    it('constrains mode to cumulative | step', () => {
+    it('constrains mode to the three comparisons', () => {
         const { tool } = getTool();
-        expect(tool.inputSchema.properties.mode.enum).toEqual(['cumulative', 'step']);
+        expect(tool.inputSchema.properties.mode.enum).toEqual(['<=', '>=', '==']);
     });
 });
 
