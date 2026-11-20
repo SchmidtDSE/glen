@@ -834,6 +834,7 @@ details.layer-group:not([open]) .layer-group-title::before {
 /* A live hex layer rebuilding after a control moved, or why it could not
    (app/live-hex.js). The note wraps under the toggle and remove button. */
 .layer-item.has-remove:has(> .layer-status) { flex-wrap: wrap; }
+.layer-item[hidden] { display: none; }
 .layer-item--busy .layer-toggle { opacity: 0.6; }
 
 .layer-status {

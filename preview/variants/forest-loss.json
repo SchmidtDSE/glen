@@ -151,6 +151,9 @@
           {
             "layer_id": "loss",
             "display_name": "Tree cover loss",
+            "when": {
+              "compare": "one"
+            },
             "agg": "SUM",
             "value_column": "loss",
             "palette": "ylorrd",

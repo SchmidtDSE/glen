@@ -27,7 +27,8 @@
  * builds the tiles again when the reader changes one, so the map follows the
  * settings as the charts do. The agent makes one by passing `sql` to
  * `add_hex_tile_layer`; an app lists the ones to draw at start, each an
- * add_hex_tile_layer call with `layer_id`, `sql` and `agg`:
+ * add_hex_tile_layer call with `layer_id`, `sql` and `agg`, and optionally
+ * `when`, which hides the layer at other settings as it does a chart:
  *
  *   { "url": "…/core/plugins/hex.js", "options": { "layers": [
  *       { "layer_id": "loss", "display_name": "Tree cover loss", "agg": "SUM",

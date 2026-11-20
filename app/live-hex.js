@@ -12,9 +12,13 @@
  *
  * Changes are debounced, and a build a newer one overtook is dropped. A layer
  * the reader removed stops updating.
+ *
+ * A layer an app's config lists may carry `when`, as a chart does: at other
+ * settings its row is hidden and its hexes are off the map, and its tiles are
+ * not built until it applies again.
  */
 
-import { tokensIn, expand } from './params.js';
+import { tokensIn, expand, matchesWhen } from './params.js';
 import { chooseHexScale } from './hex-tools.js';
 
 export const DEBOUNCE_MS = 800;
@@ -73,9 +77,17 @@ export class LiveHexLayers {
         }
         const prev = this.layers.get(id);
         if (prev?.timer) clearTimeout(prev.timer);
-        const entry = { spec, used, seq: prev?.seq || 0, timer: null, added: !!this.map.layers?.has(id) };
+        const when = spec.when && typeof spec.when === 'object' ? spec.when : null;
+        const entry = { spec, used, when, seq: prev?.seq || 0, timer: null, added: !!this.map.layers?.has(id), stale: false, hiddenByWhen: prev?.hiddenByWhen || false, wasVisible: prev?.wasVisible ?? true };
         this.layers.set(id, entry);
-        if (used.size) this._subscribe();
+        if (used.size || when) this._subscribe();
+        if (!this.applies(id)) {
+            // built when it is next shown
+            entry.stale = true;
+            this._applyWhen(id);
+            return { success: true, layer_id: id, deferred: true, note: 'Not drawn at the current settings, because of the layer\'s `when`; it is built when they match.' };
+        }
+        this._applyWhen(id);
         const res = await this.build(id);
         if (!res.success && !entry.added) this.layers.delete(id);
         return { ...res, ...(used.size && res.success && { live: true, tokens: [...used] }) };
@@ -83,6 +95,38 @@ export class LiveHexLayers {
 
     has(id) {
         return this.layers.has(liveHexId(id));
+    }
+
+    /** Whether a layer's `when` holds at the current settings. */
+    applies(id) {
+        const e = this.layers.get(id);
+        const bus = this.params?.();
+        return !e?.when || !bus || matchesWhen(e.when, bus.params, bus.values);
+    }
+
+    /**
+     * Hide a layer whose `when` stopped holding, row and hexes, or bring it
+     * back as it was, building it if a change it missed made it stale.
+     */
+    _applyWhen(id) {
+        const e = this.layers.get(id);
+        if (!e) return;
+        const shown = this.applies(id);
+        const onMap = e.added && this.map.layers?.has(id);
+        if (!shown && !e.hiddenByWhen && onMap) {
+            e.wasVisible = this.map.layers.get(id)?.visible !== false;
+            if (e.wasVisible) this.map.hideLayer?.(id);
+            this.map.setLayerRowHidden?.(id, true);
+            e.hiddenByWhen = true;
+        } else if (shown && e.hiddenByWhen) {
+            e.hiddenByWhen = false;
+            if (onMap) {
+                this.map.setLayerRowHidden?.(id, false);
+                if (e.wasVisible) this.map.showLayer?.(id);
+                this.map.syncCheckbox?.(id);
+            }
+        }
+        if (shown && e.stale) this._schedule(id);
     }
 
     untrack(id) {
@@ -93,7 +137,7 @@ export class LiveHexLayers {
 
     /** The live layers, for get_map_state. */
     describe() {
-        return [...this.layers].map(([id, e]) => ({ layer_id: id, tokens: [...e.used] }));
+        return [...this.layers].map(([id, e]) => ({ layer_id: id, tokens: [...e.used], ...(e.when && { when: e.when, shown: this.applies(id) }) }));
     }
 
     _subscribe() {
@@ -101,7 +145,8 @@ export class LiveHexLayers {
         if (this._unsub || !bus) return;
         this._unsub = bus.subscribe((changed) => {
             for (const [id, e] of this.layers) {
-                if ([...e.used].some(t => changed.has(t))) this._schedule(id);
+                if ([...e.used].some(t => changed.has(t))) e.stale = true;
+                this._applyWhen(id);
             }
         });
     }
@@ -112,8 +157,14 @@ export class LiveHexLayers {
         // the reader removed it: stop updating
         if (e.added && !this.map.layers?.has(id)) { this.untrack(id); return; }
         if (e.timer) clearTimeout(e.timer);
-        this.map.setLayerStatus?.(id, { busy: true });
-        e.timer = setTimeout(() => { e.timer = null; this.build(id); }, this.debounceMs);
+        e.stale = false;
+        if (e.added) this.map.setLayerStatus?.(id, { busy: true });
+        e.timer = setTimeout(() => {
+            e.timer = null;
+            // hidden while it waited: build when it is next shown
+            if (!this.applies(id)) { e.stale = true; this.map.setLayerStatus?.(id, {}); return; }
+            this.build(id);
+        }, this.debounceMs);
     }
 
     /** Build the layer's tiles at the current settings and draw them. */
@@ -175,7 +226,10 @@ export class LiveHexLayers {
                 extrudeMaxHeight: spec.extrude_max_height,
                 scale: chooseHexScale(spec.scale, meta.valueStats),
             });
-            if (res?.success) e.added = true;
+            if (res?.success) {
+                e.added = true;
+                this._applyWhen(id);   // its `when` may have stopped holding while it was built
+            }
         }
         if (!res?.success) return fail(res?.error || 'Could not draw the hex layer.');
         this.map.setLayerStatus?.(id, {});

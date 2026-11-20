@@ -1363,6 +1363,12 @@ export class MapManager {
         return { success: true, layer_id: layerId, value_column: valueColumn, scale };
     }
 
+    /** Hide or show a layer's row in the layer panel, as a live hex layer's `when` does. */
+    setLayerRowHidden(layerId, hidden) {
+        const row = this._layerRow(layerId);
+        if (row) row.hidden = !!hidden;
+    }
+
     /**
      * Mark a layer's row as updating, or show why its last update failed.
      * @param {string} layerId

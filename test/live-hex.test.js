@@ -14,9 +14,14 @@ function fakeMap() {
         added: [],
         updated: [],
         status: [],
-        addHexTileLayer: vi.fn(function (o) { layers.set(o.layerId, o); this.added.push(o); return { success: true, layer_id: o.layerId }; }),
+        addHexTileLayer: vi.fn(function (o) { layers.set(o.layerId, { ...o, visible: true }); this.added.push(o); return { success: true, layer_id: o.layerId }; }),
         updateHexTileLayer: vi.fn(function (id, o) { this.updated.push({ id, ...o }); return { success: true, layer_id: id }; }),
         setLayerStatus(id, s) { this.status.push({ id, ...s }); },
+        rowHidden: new Map(),
+        hideLayer(id) { layers.get(id).visible = false; },
+        showLayer(id) { layers.get(id).visible = true; },
+        setLayerRowHidden(id, h) { this.rowHidden.set(id, h); },
+        syncCheckbox() {},
     };
 }
 
@@ -104,6 +109,68 @@ describe('live hex layers (SchmidtDSE/glen#426)', () => {
         expect(res.success).toBe(true);
         expect(res.live).toBeUndefined();
         expect(register).toHaveBeenCalledWith('SELECT h8 FROM t', 'COUNT');
+    });
+});
+
+describe('a live hex layer with `when`', () => {
+    let bus, map, register, live;
+    beforeEach(() => {
+        vi.useFakeTimers();
+        bus = new ParamBus([
+            { id: 'compare', token: 'COMPARE', options: ['one', 'all'] },
+            { id: 'years', token: 'YEAR', options: [2001, 2020] },
+        ]);
+        map = fakeMap();
+        register = fakeRegister();
+        live = new LiveHexLayers({ map, register, resolve, params: () => bus, debounceMs: 50 });
+    });
+    afterEach(() => vi.useRealTimers());
+    const spec = { layer_id: 'loss', sql: 'SELECT h8 FROM t WHERE year = {{YEAR}}', when: { compare: 'one' } };
+
+    it('hides its row and hexes where it does not apply, and builds what it missed when shown', async () => {
+        await live.add(spec);
+        bus.set('compare', 'all');
+        expect(map.layers.get('hex-loss').visible).toBe(false);
+        expect(map.rowHidden.get('hex-loss')).toBe(true);
+        bus.set('years', 2020);                       // missed while hidden
+        await vi.advanceTimersByTimeAsync(60);
+        expect(register).toHaveBeenCalledTimes(1);
+        bus.set('compare', 'one');
+        expect(map.layers.get('hex-loss').visible).toBe(true);
+        expect(map.rowHidden.get('hex-loss')).toBe(false);
+        await vi.advanceTimersByTimeAsync(60);
+        expect(register).toHaveBeenLastCalledWith('SELECT h8 FROM t WHERE year = 2020', 'COUNT');
+    });
+
+    it('leaves a layer the reader turned off turned off', async () => {
+        await live.add(spec);
+        map.layers.get('hex-loss').visible = false;
+        bus.set('compare', 'all');
+        bus.set('compare', 'one');
+        expect(map.layers.get('hex-loss').visible).toBe(false);
+    });
+
+    it('is not built until it applies', async () => {
+        bus.set('compare', 'all');
+        const res = await live.add(spec);
+        expect(res).toMatchObject({ success: true, deferred: true });
+        expect(register).not.toHaveBeenCalled();
+        bus.set('compare', 'one');
+        await vi.advanceTimersByTimeAsync(60);
+        expect(register).toHaveBeenCalledTimes(1);
+        expect(map.added[0].layerId).toBe('hex-loss');
+    });
+
+    it('is hidden once built if its `when` stopped holding meanwhile', async () => {
+        let release;
+        register.mockImplementationOnce(async () => { await new Promise(r => { release = r; }); return { status: 'done', tile_url_template: 'https://x/tiles/hex/a/{z}/{x}/{y}.pbf' }; });
+        const done = live.add(spec);
+        await vi.advanceTimersByTimeAsync(0);
+        bus.set('compare', 'all');
+        release();
+        await done;
+        expect(map.layers.get('hex-loss').visible).toBe(false);
+        expect(map.rowHidden.get('hex-loss')).toBe(true);
     });
 });
 
