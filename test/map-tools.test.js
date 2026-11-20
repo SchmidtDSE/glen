@@ -692,8 +692,8 @@ describe('add_hex_tile_layer — fetch color-scale metadata by hash (#276)', () 
 
     it('does not force the model to transcribe value_stats in its description', () => {
         const { tool } = getTool();
-        expect(tool.description).toMatch(/fetched automatically/i);
-        expect(tool.description).toMatch(/do NOT copy/i);
+        expect(tool.description).toMatch(/value_stats, bounds and layer_name are fetched/);
+        expect(tool.description).toMatch(/leave them out rather than copying them/);
     });
 });
 
