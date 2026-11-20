@@ -1,6 +1,6 @@
 {
   "welcome": {
-    "message": "Tree cover loss from Hansen Global Forest Change, queried in your browser. The Settings panel above the layers sets the years, the region and the unit; the charts re-run when you change them."
+    "message": "Tree cover loss from Hansen Global Forest Change, queried in your browser. The Settings panel above the layers sets the years, the region and the unit; the charts and the hex layer re-run when you change them."
   },
   "plugins": [
     {
@@ -13,7 +13,9 @@
               "discovery": false
             },
             "include": [
-              "query"
+              "query",
+              "register_hex_tiles",
+              "get_hex_tile_status"
             ]
           }
         ]
@@ -138,6 +140,24 @@
                 }
               }
             ]
+          }
+        ]
+      }
+    },
+    {
+      "url": "core/plugins/hex.js",
+      "options": {
+        "layers": [
+          {
+            "layer_id": "loss",
+            "display_name": "Tree cover loss",
+            "when": {
+              "compare": "one"
+            },
+            "agg": "SUM",
+            "value_column": "loss",
+            "palette": "ylorrd",
+            "sql": "SELECT h3_cell_to_parent(h8::UBIGINT, 6) AS h6, SUM(frac * h3_cell_area(h8::UBIGINT, 'km^2')) * {{SCALE}} AS loss FROM read_parquet('s3://public-forest-change/tree-cover-loss/loss-year/hex/h0=*/data_0.parquet', hive_partitioning = true) WHERE h0 = {{H0}} AND loss_year BETWEEN {{YEAR_MIN}} - 2000 AND {{YEAR_MAX}} - 2000 GROUP BY 1"
           }
         ]
       }

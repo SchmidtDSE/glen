@@ -161,3 +161,30 @@ describe('the scale add_hex_tile_layer draws (SchmidtDSE/glen#481)', () => {
         expect(layers.get('hex-e5b145bc976682a5').paint['fill-color'][3][3][2]).toEqual(['ln', ['+', 1, ['get', 'count']]]);
     });
 });
+
+describe('live hex layers in the hex plugin (SchmidtDSE/glen#426)', () => {
+    it('with the controls plugin, draws the configured layers at start through register_hex_tiles', async () => {
+        const register = vi.fn(async () => ({ success: true, result: JSON.stringify({ status: 'done', tile_url_template: 'https://m/tiles/hex/h1/{z}/{x}/{y}.pbf', bounds: [0, 0, 1, 1], value_stats: { v: { by_res: { 8: { min: 0, max: 3 } } } } }) }));
+        const tools = registry({ register_hex_tiles: { inputSchema: { properties: { sql: {}, sql_query: {} } } } });
+        tools.execute = register;
+        const ready = [];
+        const map = { ...mapWith(), layers: new Map(), addStateSection: vi.fn() };
+        const ctx = {
+            config: { plugins: [{ url: 'mcp.js' }, { url: 'https://cdn/core/plugins/controls.js' }] },
+            map, tools, onReady: (fn) => ready.push(fn),
+            params: { tokens: () => ({ YEAR: '2020' }), subscribe: () => () => {} },
+        };
+        await plugin.setup(ctx, { layers: [{ layer_id: 'loss', agg: 'SUM', value_column: 'v', sql: 'SELECT h8, v FROM t WHERE year = {{YEAR}}' }] });
+        expect(tools.tools.get('add_hex_tile_layer').inputSchema.properties.sql).toBeDefined();
+        await ready[0]();
+        expect(register).toHaveBeenCalledWith('register_hex_tiles', { sql_query: 'SELECT h8, v FROM t WHERE year = 2020', agg: 'SUM' });
+        expect(map.addHexTileLayer.mock.calls[0][0]).toMatchObject({ layerId: 'hex-loss', tileUrl: 'https://m/tiles/hex/h1/{z}/{x}/{y}.pbf' });
+        expect(map.addStateSection).toHaveBeenCalledWith('live_hex_layers', expect.any(Function));
+    });
+
+    it('without the controls plugin, add_hex_tile_layer is unchanged', async () => {
+        const ctx = { config: { plugins: [{ url: 'mcp.js' }] }, map: mapWith(), tools: registry() };
+        await plugin.setup(ctx, {});
+        expect(ctx.tools.tools.get('add_hex_tile_layer').inputSchema.properties.sql).toBeUndefined();
+    });
+});
