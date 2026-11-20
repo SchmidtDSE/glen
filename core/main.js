@@ -31,7 +31,7 @@ import { PortolanCatalog, exportCatalogView } from './portolan-catalog.js';
 import { createCoreMapTools } from './map-tools.js';
 import { loadPrompts } from './prompt.js';
 import { ensurePanelActions } from '../app/panel-actions.js';
-import { initialView, loadHighlighter } from './boot.js';
+import { initialView, loadHighlighter, loadStylesheets } from './boot.js';
 
 // glen-harness, from jsDelivr at the release tag in harness.js, as apps load
 // glen itself. Its src/core.js entry is the agent loop and tool registry
@@ -40,7 +40,7 @@ import { initialView, loadHighlighter } from './boot.js';
 const [
     { Agent, ToolRegistry, applyProxyModelList, buildUserModels, loadUserSettings },
     { ChatUI },
-    { CHAT_SCRIPTS },
+    { CHAT_SCRIPTS, chatStylesheets },
 ] = await Promise.all(['src/core.js', 'ui/chat-ui.js', 'ui/deps.js'].map(p => import(harnessUrl(p))));
 
 /**
@@ -78,9 +78,12 @@ export const CORE_VERSION = import.meta.url.match(/glen@([^/]+)/)?.[1] || 'dev';
  */
 export async function start({ plugins: extraPlugins = [] } = {}) {
     /* ── 1. Config ─────────────────────────────────────────────────────── */
+    // The chat's stylesheet comes from the harness, beside the config, so the
+    // chat is styled before the layout builds it (SchmidtDSE/glen#510).
     const [appConfig, runtimeConfig] = await Promise.all([
         fetchJson('layers-input.json'),
         fetchJson('config.json').catch(() => null),
+        loadStylesheets(chatStylesheets({ docked: false })),
     ]);
     mergeRuntimeConfig(appConfig, runtimeConfig);
     // A user-provided key builds the model list from what this browser saved
