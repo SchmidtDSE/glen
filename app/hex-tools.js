@@ -93,7 +93,7 @@ async function fetchMetadata(fetchFn, url, delays = METADATA_RETRY_DELAYS_MS, fi
     return resp;
 }
 
-async function resolveHexMetadata(args, fetchFn = globalThis.fetch, retryDelays = METADATA_RETRY_DELAYS_MS, waitForBuild = null) {
+export async function resolveHexMetadata(args, fetchFn = globalThis.fetch, retryDelays = METADATA_RETRY_DELAYS_MS, waitForBuild = null) {
     let valueColumn = args.value_column;
     let valueStats = args.value_stats;
     let bounds = (Array.isArray(args.bounds) && args.bounds.length === 4) ? args.bounds : undefined;
@@ -163,10 +163,13 @@ async function resolveHexMetadata(args, fetchFn = globalThis.fetch, retryDelays 
  * @param {number[]} [options.retryDelays] - waits, in ms, before retrying a 404 or 5xx
  * @param {Function} [options.waitForBuild] - from {@link hexBuildWaiter}: waits for
  *   a build still running when metadata.json is missing
+ * @param {import('./live-hex.js').LiveHexLayers} [options.live] - with the controls
+ *   plugin: add_hex_tile_layer also takes `sql`, and rebuilds the layer when a
+ *   control its SQL uses changes (SchmidtDSE/glen#426)
  * @returns {Array<Object>} tool definitions
  */
-export function createHexTileTools(mapManager, { fetchFn = (...a) => globalThis.fetch(...a), retryDelays = METADATA_RETRY_DELAYS_MS, waitForBuild = null } = {}) {
-    return [
+export function createHexTileTools(mapManager, { fetchFn = (...a) => globalThis.fetch(...a), retryDelays = METADATA_RETRY_DELAYS_MS, waitForBuild = null, live = null } = {}) {
+    const tools = [
         {
             name: 'add_hex_tile_layer',
             description: `Add a dynamic H3 hex tile layer to the map as an ADDITIVE overlay. Hex layers do not replace existing layers — they sit on top, and existing polygon/raster layers stay visible beneath. Use after calling the MCP \`register_hex_tiles\` tool, which returns a tile URL template + bounds + value columns + per-resolution value stats, or with a ready argument object that another tool's result supplies for this tool (e.g. a species distribution model's \`artifacts.map_layers\`).
@@ -279,7 +282,35 @@ Use when the agent is iterating — e.g. user asks to replace one hex analysis w
                 },
                 required: ['layer_id'],
             },
-            execute: (args) => JSON.stringify(mapManager.removeHexTileLayer(args.layer_id)),
+            execute: (args) => {
+                const res = mapManager.removeHexTileLayer(args.layer_id);
+                if (res.success) live?.untrack(args.layer_id);
+                return JSON.stringify(res);
+            },
         },
     ];
+    if (live) addLiveHex(tools[0], live);
+    return tools;
+}
+
+/**
+ * Let add_hex_tile_layer take the SQL instead of a tile URL: glen registers
+ * the tiles itself, and rebuilds them when a control the SQL uses changes.
+ */
+function addLiveHex(tool, live) {
+    tool.description += `
+
+Live hex layers: instead of tile_url, pass \`sql\` (the SELECT you would give register_hex_tiles; it may use the controls' {{TOKEN}}s), \`agg\` and a \`layer_id\`. This tool registers the tiles itself and builds them again whenever the reader changes a control the SQL uses, so the map follows the settings as a chart does. Call again with the same layer_id to replace its SQL or styling.`;
+    const props = tool.inputSchema.properties;
+    props.tile_url.description += ' Omit it when you pass sql.';
+    props.sql = { type: 'string', description: 'Live layer: the register_hex_tiles SELECT (first column an H3 index), which may use {{TOKEN}}s. Replaces tile_url.' };
+    props.agg = { type: 'string', enum: ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'COUNT_DISTINCT'], description: 'Live layer: register_hex_tiles\' aggregation (default COUNT).' };
+    props.layer_id = { type: 'string', description: 'Live layer: its id (letters, digits, "_" and "-"); the layer is drawn as hex-<layer_id>.' };
+    tool.inputSchema.required = [];
+    const execute = tool.execute;
+    tool.execute = async (args = {}) => {
+        if (args.sql) return JSON.stringify(await live.add(args));
+        if (!args.tile_url) return JSON.stringify({ success: false, error: 'Pass tile_url from register_hex_tiles, or sql and layer_id for a live layer.' });
+        return execute(args);
+    };
 }

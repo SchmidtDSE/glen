@@ -21,7 +21,20 @@
  *
  * `geo_query_wasm` is the geo-query-wasm release whose hex protocol module
  * to load, when a worker server is configured; match the worker's.
+ *
+ * With the controls plugin (plugins/controls.js), a hex layer can be live
+ * (SchmidtDSE/glen#426): its SQL uses the controls' {{TOKEN}}s, and glen
+ * builds the tiles again when the reader changes one, so the map follows the
+ * settings as the charts do. The agent makes one by passing `sql` to
+ * `add_hex_tile_layer`; an app lists the ones to draw at start, each an
+ * add_hex_tile_layer call with `layer_id`, `sql` and `agg`:
+ *
+ *   { "url": "…/core/plugins/hex.js", "options": { "layers": [
+ *       { "layer_id": "loss", "display_name": "Tree cover loss", "agg": "SUM",
+ *         "sql": "SELECT h8, sum(loss_ha) AS loss_ha FROM … WHERE year BETWEEN {{YEAR_MIN}} AND {{YEAR_MAX}} GROUP BY h8" } ] } }
  */
+
+import { hasControlsPlugin } from './charts.js';
 
 export const DEFAULT_GEO_QUERY_WASM = 'v0.6.0';
 
@@ -71,7 +84,38 @@ const plugin = {
             if (maplibre) addHexTileProtocol(maplibre, live);
             fetchFn = hexFetch(live, (...a) => globalThis.fetch(...a));
         }
-        for (const t of createHexTileTools(ctx.map, { ...(fetchFn ? { fetchFn } : {}), waitForBuild })) ctx.tools.registerLocal(t);
+        const live = hasControlsPlugin(ctx.config) ? await this.liveLayers(ctx, { fetchFn, waitForBuild }) : null;
+        for (const t of createHexTileTools(ctx.map, { ...(fetchFn ? { fetchFn } : {}), waitForBuild, live })) ctx.tools.registerLocal(t);
+        if (!live) return;
+        ctx.map?.addStateSection?.('live_hex_layers', () => (live.layers.size ? live.describe() : null));
+        const layers = Array.isArray(options.layers) ? options.layers : [];
+        if (layers.length) {
+            ctx.onReady?.(async () => {
+                const results = await Promise.all(layers.map((spec) => live.add(spec || {}).catch((err) => ({ success: false, error: err.message }))));
+                results.forEach((res, i) => {
+                    if (!res.success) console.warn(`[hex] Layer ${layers[i]?.layer_id ?? i} not drawn:`, res.error);
+                });
+            });
+        }
+    },
+
+    /** Live hex layers, built through the registered register_hex_tiles tool. */
+    async liveLayers(ctx, { fetchFn, waitForBuild }) {
+        const [{ LiveHexLayers, parseToolObject }, { resolveHexMetadata }] = await Promise.all([
+            import('../../app/live-hex.js'),
+            import('../../app/hex-tools.js'),
+        ]);
+        const register = async (sql, agg) => {
+            const tool = ctx.tools.tools?.get?.('register_hex_tiles');
+            if (!tool) throw new Error('no register_hex_tiles tool is registered');
+            const props = tool.inputSchema?.properties || {};
+            const key = 'sql_query' in props || !('sql' in props) ? 'sql_query' : 'sql';
+            const r = await ctx.tools.execute('register_hex_tiles', { [key]: sql, agg });
+            if (!r?.success) throw new Error(String(r?.result ?? 'register_hex_tiles failed'));
+            return parseToolObject(r.result);
+        };
+        const resolve = (args) => resolveHexMetadata(args, fetchFn || ((...a) => globalThis.fetch(...a)), undefined, waitForBuild);
+        return new LiveHexLayers({ map: ctx.map, register, resolve, params: () => ctx.params || null });
     },
 };
 

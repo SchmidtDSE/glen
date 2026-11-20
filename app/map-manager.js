@@ -1134,7 +1134,11 @@ export class MapManager {
         if (isGeoJson && !geojsonUrl) {
             return { success: false, error: 'format "geojson" requires geojson_url from the producing tool\'s result' };
         }
-        const layerId = `hex-${hash}`;
+        // A live hex layer (app/live-hex.js) keeps one id across rebuilds.
+        if (opts.layerId != null && !/^hex-[A-Za-z0-9_-]+$/.test(String(opts.layerId))) {
+            return { success: false, error: `layer id '${opts.layerId}' must start with 'hex-' and use letters, digits, '_' and '-'` };
+        }
+        const layerId = opts.layerId != null ? String(opts.layerId) : `hex-${hash}`;
 
         // Idempotency: same URL → same layer → no re-add
         if (this.layers.has(layerId)) {
@@ -1254,6 +1258,9 @@ export class MapManager {
             hexPalette: palette,
             hexFlat: isGeoJson,   // one flat ramp (buildFlatFillColorExpression)
             hexScale: scale,      // 'linear' | 'log' (#481); the legend notes a log scale
+            hexRequestedScale: requestedScale,
+            hexMaxHeight: maxHeight,
+            hexTileUrl: tileUrl,
             hexCurrentRes: null,
             extruded: is3D,
         });
@@ -1304,6 +1311,79 @@ export class MapManager {
                 : {}),
             already_exists: false,
         };
+    }
+
+    /**
+     * Point a vector hex layer at a rebuilt tileset, keeping its id, its row in
+     * the layer panel, its visibility and its palette: the colour scale, the
+     * legend and the tooltip follow the new tileset's values. Used by live hex
+     * layers (app/live-hex.js), whose SQL is rebuilt when a control changes.
+     *
+     * @param {string} layerId
+     * @param {Object} opts
+     * @param {string} opts.tileUrl
+     * @param {string} opts.valueColumn
+     * @param {{by_res: Object}} opts.valueStats
+     * @param {'linear'|'log'} [opts.scale] - default: the scale the layer was added with
+     * @returns {{success: boolean, layer_id?: string, scale?: string, error?: string}}
+     */
+    updateHexTileLayer(layerId, { tileUrl, valueColumn, valueStats, scale: wantScale } = {}) {
+        const state = this.layers.get(layerId);
+        if (!state || state.legendType !== 'hex') return { success: false, error: `Unknown hex layer '${layerId}'` };
+        if (state.hexFlat) return { success: false, error: `Hex layer '${layerId}' reads one GeoJSON file and cannot be rebuilt in place` };
+        if (!extractHashFromUrl(tileUrl)) return { success: false, error: 'Invalid tile_url — expected /tiles/hex/<hash>/{z}/{x}/{y}.pbf' };
+        if (!Object.keys(valueStats?.by_res || {}).length) return { success: false, error: 'value_stats.by_res must contain at least one resolution' };
+        const requested = wantScale === 'log' || wantScale === 'linear' ? wantScale : (state.hexRequestedScale || 'linear');
+        const scale = applicableScale(requested, valueStats);
+        let fillColor;
+        let heightExpr;
+        try {
+            fillColor = buildFillColorExpression(valueColumn, valueStats, state.hexPalette, scale);
+            if (state.extruded) heightExpr = buildHeightExpression(valueColumn, valueStats, state.hexMaxHeight, scale);
+        } catch (err) {
+            return { success: false, error: err.message };
+        }
+        const source = this.map.getSource(state.sourceId);
+        if (typeof source?.setTiles !== 'function') return { success: false, error: `Hex layer '${layerId}' has no tile source to update` };
+        source.setTiles([tileUrl]);
+        const paint = state.extruded
+            ? { 'fill-extrusion-color': fillColor, 'fill-extrusion-height': heightExpr }
+            : { 'fill-color': fillColor };
+        for (const [k, v] of Object.entries(paint)) this.map.setPaintProperty(state.mapLayerId, k, v);
+        Object.assign(state, {
+            valueColumn,
+            hexValueStats: valueStats,
+            hexScale: scale,
+            hexRequestedScale: requested,
+            hexTileUrl: tileUrl,
+            defaultPaint: { ...state.defaultPaint, ...paint },
+        });
+        if (state.currentPaint) state.currentPaint = null;
+        this._refreshLegend(layerId);
+        return { success: true, layer_id: layerId, value_column: valueColumn, scale };
+    }
+
+    /**
+     * Mark a layer's row as updating, or show why its last update failed.
+     * @param {string} layerId
+     * @param {{busy?: boolean, error?: string|null}} status
+     */
+    setLayerStatus(layerId, { busy = false, error = null } = {}) {
+        const row = this._layerRow(layerId);
+        if (!row) return;
+        row.classList.toggle('layer-item--busy', !!busy);
+        row.setAttribute('aria-busy', busy ? 'true' : 'false');
+        let note = row.querySelector(':scope > .layer-status');
+        const text = busy ? 'Updating…' : (error || '');
+        if (!text) { note?.remove(); return; }
+        if (!note) {
+            note = row.ownerDocument.createElement('div');
+            note.className = 'layer-status';
+            note.setAttribute('role', 'status');
+            row.appendChild(note);
+        }
+        note.textContent = text;
+        note.classList.toggle('layer-status--error', !busy && !!error);
     }
 
     /**
