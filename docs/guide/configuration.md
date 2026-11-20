@@ -1101,7 +1101,7 @@ The plugin's `charts` option lists charts to draw when the app opens. Each is a 
 
 ### Controls
 
-`plugins/controls.js` adds a Settings section at the top of the side panel, with controls whose values enter SQL as `{{TOKEN}}`s ([#426](https://github.com/SchmidtDSE/glen/issues/426)). The controls are glen-charts' settings controls: pill buttons, a menu, a slider over clickable stops, and a two-handle range. A slider or range sets its value when the handle is released. A chart whose SQL uses a token re-runs when the reader changes that control, after the controls have been still for a moment. While it re-runs the chart is dimmed and says it is updating, and a failed run is reported on the chart. A change re-runs only the charts that use a token it changed, and a chart hidden by its `when` runs only once it is shown.
+`plugins/controls.js` adds a Settings section at the top of the side panel, with controls whose values enter SQL as `{{TOKEN}}`s ([#426](https://github.com/SchmidtDSE/glen/issues/426)). The controls are glen-charts' settings controls: pill buttons, a menu, a slider over clickable stops, and a two-handle range. A slider or range sets its value when the handle is released. A chart whose SQL uses a token re-runs when the reader changes that control, as does a [live hex layer](#hex-tile-layers), after the controls have been still for a moment. While it re-runs the chart is dimmed and says it is updating, and a failed run is reported on the chart. A change re-runs only the charts that use a token it changed, and a chart hidden by its `when` runs only once it is shown.
 
 A control is the same object glen-charts takes in its `params`, so a control written for one library works in the other:
 
@@ -1206,6 +1206,21 @@ The browser writes the file directly, so the bucket needs anonymous `PUT` **and*
 ### Hex tile layers
 
 `plugins/hex.js` adds `add_hex_tile_layer` and `remove_hex_tile_layer`, which draw the H3 tile pyramid an SQL server builds with `register_hex_tiles`. duckdb-mcp serves those tiles over https. geo-query-wasm, run in a worker by `plugins/mcp.js`, keeps them in the browser; the plugin then registers geo-query-wasm's MapLibre protocol for them. Its `geo_query_wasm` option names the geo-query-wasm release whose protocol module to load (default `v0.6.0`); match the worker's.
+
+**Live hex layers.** With the [controls plugin](#controls), a hex layer can follow the settings as a chart does ([#426](https://github.com/SchmidtDSE/glen/issues/426)). Its SQL uses the controls' `{{TOKEN}}`s; glen runs `register_hex_tiles` itself at the current settings and, when the reader changes a control the SQL uses, builds the tiles again and points the same layer at them. The layer keeps its id (`hex-<layer_id>`), its row in the layer panel and whether it is shown, and its colour scale and legend follow the new values. While the tiles build, its row says it is updating, and a failed build is reported there. A layer the reader removes stops updating.
+
+The plugin's `layers` option lists live hex layers to draw when the app opens. Each is an `add_hex_tile_layer` call with `layer_id`, `sql` (the `register_hex_tiles` SELECT, its first column an H3 index) and `agg` (`register_hex_tiles`' aggregation: `COUNT`, the default, `SUM`, `AVG`, `MIN`, `MAX` or `COUNT_DISTINCT`), and the tool's styling arguments (`value_column`, `display_name`, `palette`, `scale`, `opacity`, `extrude`). An optional `when` hides the layer, its row and its legend at other settings, as it hides a chart. A hidden layer's tiles are not built until it is shown again, and a layer the reader turned off stays off.
+
+```json
+{ "url": "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/core/plugins/hex.js",
+  "options": { "layers": [
+    { "layer_id": "loss", "display_name": "Tree cover loss", "agg": "SUM",
+      "value_column": "loss", "palette": "ylorrd", "when": { "compare": "one" },
+      "sql": "SELECT h3_cell_to_parent(h8::UBIGINT, 6) AS h6, SUM(frac * h3_cell_area(h8::UBIGINT, 'km^2')) * {{SCALE}} AS loss FROM read_parquet('s3://…/loss-year/hex/h0=*/data_0.parquet', hive_partitioning = true) WHERE h0 = {{H0}} AND loss_year BETWEEN {{YEAR_MIN}} - 2000 AND {{YEAR_MAX}} - 2000 GROUP BY 1" }
+  ] } }
+```
+
+With the controls plugin, the agent makes a live layer by passing `sql`, `agg` and `layer_id` to `add_hex_tile_layer` in place of `tile_url`. Apps without the controls plugin keep the tool as it was. `get_map_state` lists the live layers and the tokens each uses.
 
 ### Geolocation
 
