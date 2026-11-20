@@ -887,19 +887,37 @@ export function topLevelColumns(schema) {
     return names;
 }
 
-async function defaultFetchJson(url) {
-    let lastErr;
-    for (let i = 0; i < 3; i++) {
+/** Waits, in ms, before the second and third tries of a catalog read. */
+export const FETCH_RETRY_DELAYS_MS = [500, 1000];
+
+/**
+ * Read a catalog document, trying again after a network error or a server
+ * error (5xx, 408, 429). A missing file (404) or another refusal fails at
+ * once, as does a document that is not JSON: another try gets the same
+ * answer, and the map waits on every catalog read (SchmidtDSE/glen#512).
+ * @param {string} url
+ * @param {Object} [opts]
+ * @param {Function} [opts.fetchFn]
+ * @param {number[]} [opts.delays] - waits between tries; one more try than waits
+ * @param {(ms: number) => Promise<void>} [opts.wait]
+ * @returns {Promise<Object>}
+ */
+export async function defaultFetchJson(url, { fetchFn = (...a) => globalThis.fetch(...a), delays = FETCH_RETRY_DELAYS_MS, wait = ms => new Promise(r => setTimeout(r, ms)) } = {}) {
+    for (let i = 0; ; i++) {
+        let res;
         try {
-            const res = await fetch(url);
-            if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${url}`);
-            return await res.json();
+            res = await fetchFn(url);
         } catch (e) {
-            lastErr = e;
-            await new Promise(r => setTimeout(r, 500 * (i + 1)));
+            if (i >= delays.length) throw e;
+            await wait(delays[i]);
+            continue;
         }
+        if (res.ok) return res.json();
+        const err = new Error(`${res.status} ${res.statusText} for ${url}`);
+        const transient = res.status >= 500 || res.status === 408 || res.status === 429;
+        if (!transient || i >= delays.length) throw err;
+        await wait(delays[i]);
     }
-    throw lastErr;
 }
 
 /**
