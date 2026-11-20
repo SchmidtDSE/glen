@@ -172,56 +172,30 @@ export function createHexTileTools(mapManager, { fetchFn = (...a) => globalThis.
     const tools = [
         {
             name: 'add_hex_tile_layer',
-            description: `Add a dynamic H3 hex tile layer to the map as an ADDITIVE overlay. Hex layers do not replace existing layers — they sit on top, and existing polygon/raster layers stay visible beneath. Use after calling the MCP \`register_hex_tiles\` tool, which returns a tile URL template + bounds + value columns + per-resolution value stats, or with a ready argument object that another tool's result supplies for this tool (e.g. a species distribution model's \`artifacts.map_layers\`).
+            description: `Add an H3 hex tile layer to the map, on top of the layers already shown. Pass the tile_url that the MCP tool \`register_hex_tiles\` returned. When another tool's result supplies a ready argument object for this tool (such as a species distribution model's \`artifacts.map_layers\`), pass that object unchanged.
 
-Common use cases:
-  - Dense point data aggregated per hex (e.g. GBIF occurrence counts per h8 cell).
-  - Polygon datasets summarized per hex (e.g. feature count or average attribute).
-  - Pre-computed per-cell values (density rasters, model outputs).
+tile_url is the only required argument. value_stats, bounds and layer_name are fetched from the tile host by the tileset's content hash, so leave them out rather than copying them from register_hex_tiles' result.
 
-Flow (register_hex_tiles):
-  1. Call \`register_hex_tiles\` (MCP) with SQL that returns (h3_index [, value1, ...]).
-  2. Pass the returned \`tile_url\` to this tool. That is the ONLY required field.
-     The color-scale metadata (value_stats, bounds, value_column, layer_name) is
-     fetched automatically from the tile host by content hash — do NOT copy the
-     \`value_stats\` blob or \`bounds\` array into this call. Transcribing that large
-     nested object is error-prone and unnecessary; the server already has it.
+register_hex_tiles layers use the default format="vector". format="geojson" and geojson_url come only from a producing tool that supplies a geojson_url. They are not in the fetched metadata, so without them that layer renders blank.
 
-Optional inputs:
-  - value_column          which value_columns entry to color by (default: first; "count" for agg=COUNT)
-  - palette / opacity / display_name / fit_bounds    styling (see below)
-  - extrude               true → 3D extruded hexes (value → height + color) and a tilted camera (default false)
-  - scale                 "linear" or "log" — how color and height spread over the values. Omit it to use the
-                          tileset's suggested_scale (log for right-skewed counts and sums). Pass the same scale you
-                          gave register_hex_tiles' color_scale: that argument only restyles the server's recipe,
-                          and this tool does not see it. The result's \`scale\` is the scale actually drawn — report
-                          that one to the user.
-  - value_stats / bounds / layer_name    accepted as explicit overrides, but normally OMIT — they are fetched
-  - format                ← format ("geojson" or "vector"; defaults to "vector")
-  - geojson_url           ← geojson_url (REQUIRED when format="geojson"; ignored otherwise)
+The result's \`scale\` is the scale actually drawn; report that one to the user.
 
-register_hex_tiles always builds a vector tile pyramid, so its layers use the default format="vector". format="geojson" is for layers whose producing tool supplies a geojson_url (a single FeatureCollection) — currently the species distribution model's \`artifacts.map_layers\`. When a tool result hands you a ready argument object for add_hex_tile_layer, pass it unchanged: format and geojson_url are NOT in the fetched sidecar, and without them the \`.pbf\` tile_url 404s and the layer renders blank.
-
-Hexes get finer as the user zooms in: the tile server's pyramid serves the appropriate H3 resolution for each zoom level automatically (vector format only). If the user wants a coarser overall view, re-run \`register_hex_tiles\` with the SQL projected to a coarser resolution by wrapping the first column in \`h3_cell_to_parent(<h3_col>, <target_res>)\` — the server auto-detects the H3 resolution from that column.
-
-IMPORTANT: tile_url must be the exact tile URL template the producing tool returned (\`.../tiles/hex/<key>/{z}/{x}/{y}.pbf\`) — the tool rejects other URLs. It supplies the layer's content hash for both formats (the GeoJSON layer still keys off it).
-
-The returned layer_id can be used with show_layer / hide_layer / set_style / set_filter / get_map_state like any other vector layer, and with remove_hex_tile_layer to free the source.`,
+The returned layer_id works with show_layer, hide_layer, set_style, set_filter, get_map_state and remove_hex_tile_layer.`,
             inputSchema: {
                 type: 'object',
                 properties: {
-                    tile_url: { type: 'string', description: 'tile URL template from register_hex_tiles (tile_url_template) or from the producing tool\'s ready argument object — the ONLY required field' },
+                    tile_url: { type: 'string', description: 'The exact tile URL template (.../tiles/hex/<key>/{z}/{x}/{y}.pbf) from register_hex_tiles or from the producing tool\'s ready argument object. Other URLs are rejected.' },
                     value_column: { type: 'string', description: 'Optional: which column from value_columns to style by (default: first; "count" for agg=COUNT)' },
                     value_stats: {
                         type: 'object',
-                        description: 'Optional override — normally OMIT. Fetched automatically by content hash. Shape if passed: { by_res: { "<res>": { min, max } } }.'
+                        description: 'Leave out: fetched by content hash.'
                     },
                     bounds: {
                         type: 'array',
                         items: { type: 'number' },
-                        description: 'Optional override — normally OMIT. Fetched automatically. [w, s, e, n].'
+                        description: 'Leave out: fetched by content hash.'
                     },
-                    layer_name: { type: 'string', description: 'Optional override — normally OMIT. Fetched automatically (defaults to "layer"; ignored for format="geojson").' },
+                    layer_name: { type: 'string', description: 'Leave out: fetched by content hash.' },
                     format: {
                         type: 'string',
                         enum: ['vector', 'geojson'],
@@ -241,7 +215,7 @@ The returned layer_id can be used with show_layer / hide_layer / set_style / set
                     scale: {
                         type: 'string',
                         enum: HEX_SCALES,
-                        description: 'Optional: "linear" or "log" spread of color (and height when extruded). Omit to use the tileset\'s suggested_scale. The result\'s `scale` says which was drawn.'
+                        description: 'How color (and height when extruded) spreads over the values. Omit to use the tileset\'s suggested_scale, or pass the color_scale you gave register_hex_tiles, which this tool does not see.'
                     },
                 },
                 required: ['tile_url'],
