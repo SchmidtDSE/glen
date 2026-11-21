@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { extractJsonArray, createRenderChartTool } from '../app/chart-tool.js';
 import { createMapControlTools, createProjectionTool, PICK_LAYER_NUDGE } from '../app/map-control-tools.js';
-import { createHexTileTools, hexBuildWaiter } from '../app/hex-tools.js';
+import { createHexTileTools, hexBuildWaiter, statsFromGeoJson } from '../app/hex-tools.js';
 import { createFilterByQueryTool } from '../app/query-filter-tool.js';
 import { createCoreMapTools } from '../core/map-tools.js';
 
@@ -694,6 +694,99 @@ describe('add_hex_tile_layer — fetch color-scale metadata by hash (#276)', () 
         const { tool } = getTool();
         expect(tool.description).toMatch(/value_stats, bounds and layer_name are fetched/);
         expect(tool.description).toMatch(/leave them out rather than copying them/);
+    });
+});
+
+describe('add_hex_tile_layer — a GeoJSON layer the page cannot read (SchmidtDSE/glen#522)', () => {
+    const BASE = 'https://s3.example.org/public-output/sdm/tiles/hex/run1';
+    const ARGS = { tile_url: `${BASE}/{z}/{x}/{y}.pbf`, format: 'geojson', geojson_url: `${BASE}/data.geojson`, value_column: 'suitability' };
+    const hex = (lng, lat, v) => ({ type: 'Feature', properties: { suitability: v }, geometry: { type: 'Polygon', coordinates: [[[lng, lat], [lng + 1, lat], [lng + 1, lat + 1], [lng, lat]]] } });
+    const FC = { type: 'FeatureCollection', features: [hex(-9, 35, 0.1), hex(-3, 40, 0.9)] };
+    const META = { value_columns: ['suitability'], value_stats: { suitability: { by_res: { 6: { min: 0, max: 1 } } } }, bounds: [-9.2, 35.1, -2.4, 40.6] };
+    const ok = (body) => ({ ok: true, status: 200, json: async () => body });
+    const corsError = () => { throw new TypeError('Failed to fetch'); };
+
+    /** A fetch answering metadata.json and data.geojson separately. */
+    const tool = ({ meta, geojson, waitForBuild = null }) => {
+        const fetchFn = vi.fn(async (url) => (url.endsWith('metadata.json') ? meta() : geojson()));
+        const mapManager = { addHexTileLayer: vi.fn(() => ({ success: true, layer_id: 'hex-run1' })) };
+        const t = createHexTileTools(mapManager, { fetchFn, retryDelays: [], waitForBuild }).find(x => x.name === 'add_hex_tile_layer');
+        return { run: async (args = ARGS) => JSON.parse(await t.execute(args)), mapManager, fetchFn };
+    };
+
+    it('reports a GeoJSON file blocked by CORS instead of drawing a blank layer', async () => {
+        const { run, mapManager } = tool({ meta: () => ok(META), geojson: corsError });
+        const out = await run();
+        expect(out.success).toBe(false);
+        expect(out.error).toContain(`${BASE}/data.geojson`);
+        expect(out.error).toMatch(/CORS/);
+        expect(mapManager.addHexTileLayer).not.toHaveBeenCalled();
+    });
+
+    it('reports a status, a body that is not a FeatureCollection, and an empty one', async () => {
+        for (const [answer, pattern] of [
+            [() => ({ ok: false, status: 403, json: async () => ({}) }), /returned 403/],
+            [() => ok({ type: 'Feature' }), /not a GeoJSON FeatureCollection/],
+            [() => ok({ type: 'FeatureCollection', features: [] }), /no features/],
+        ]) {
+            const out = await tool({ meta: () => ok(META), geojson: answer }).run();
+            expect(out.success).toBe(false);
+            expect(out.error).toMatch(pattern);
+        }
+    });
+
+    it('hands the features it read to the map, with the metadata\'s range', async () => {
+        const { run, mapManager } = tool({ meta: () => ok(META), geojson: () => ok(FC) });
+        expect((await run()).success).toBe(true);
+        expect(mapManager.addHexTileLayer).toHaveBeenCalledWith(expect.objectContaining({
+            geojsonData: FC, valueStats: META.value_stats.suitability, bounds: META.bounds,
+        }));
+    });
+
+    it('takes the range and bounds from the features when metadata.json cannot be read', async () => {
+        const { run, mapManager } = tool({ meta: corsError, geojson: () => ok(FC) });
+        expect((await run({ ...ARGS, value_column: undefined })).success).toBe(true);
+        expect(mapManager.addHexTileLayer).toHaveBeenCalledWith(expect.objectContaining({
+            valueColumn: 'suitability',
+            valueStats: { by_res: { 0: { min: 0.1, max: 0.9, mean: 0.5 } } },
+            bounds: [-9, 35, -2, 41],
+            geojsonData: FC,
+        }));
+    });
+
+    it('does not wait on register_hex_tiles\' build for a missing metadata.json', async () => {
+        const waitForBuild = vi.fn();
+        const { run } = tool({ meta: () => ({ ok: false, status: 404, json: async () => ({}) }), geojson: () => ok(FC), waitForBuild });
+        expect((await run()).success).toBe(true);
+        expect(waitForBuild).not.toHaveBeenCalled();
+    });
+
+    it('says a vector layer\'s metadata fetch failed, and asks the model not to make values up', async () => {
+        const { run } = tool({ meta: corsError, geojson: corsError });
+        const out = await run({ tile_url: ARGS.tile_url });
+        expect(out.success).toBe(false);
+        expect(out.error).toContain(`${BASE}/metadata.json failed (Failed to fetch)`);
+        expect(out.error).toMatch(/CORS/);
+        expect(out.error).toMatch(/do not make these values up/);
+        expect(out.error).not.toMatch(/mcp-data-server/);
+    });
+});
+
+describe('statsFromGeoJson (SchmidtDSE/glen#522)', () => {
+    it('picks the first numeric property and spans MultiPolygons', () => {
+        const fc = { type: 'FeatureCollection', features: [
+            { type: 'Feature', properties: { name: 'a', in_range: 1 }, geometry: { type: 'MultiPolygon', coordinates: [[[[10, -5], [12, -5], [12, -3], [10, -5]]], [[[20, 1], [21, 1], [21, 2], [20, 1]]]] } },
+            { type: 'Feature', properties: { name: 'b', in_range: 0 }, geometry: null },
+        ] };
+        expect(statsFromGeoJson(fc)).toEqual({
+            valueColumn: 'in_range',
+            valueStats: { by_res: { 0: { min: 0, max: 1, mean: 0.5 } } },
+            bounds: [10, -5, 21, 2],
+        });
+    });
+
+    it('gives no range for a column with no numbers', () => {
+        expect(statsFromGeoJson({ features: [{ properties: { x: 'a' }, geometry: null }] }, 'x').valueStats).toBeUndefined();
     });
 });
 

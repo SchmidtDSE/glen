@@ -422,6 +422,12 @@ describe('MapManager.addHexTileLayer (format: geojson)', () => {
         expect(src).toEqual({ type: 'geojson', data: 'https://s3.example.com/hex/gj123/data.geojson' });
     });
 
+    it('draws the features the tool already read, when it passes them (SchmidtDSE/glen#522)', () => {
+        const fc = { type: 'FeatureCollection', features: [] };
+        mm.addHexTileLayer(geojsonOpts({ geojsonData: fc }));
+        expect(mm.map._sources.get('hex-gj123')).toEqual({ type: 'geojson', data: fc });
+    });
+
     it('builds a fill layer with NO source-layer and a flat (non-res-match) paint', () => {
         mm.addHexTileLayer(geojsonOpts());
         const layer = mm.map._layers.get('hex-gj123');

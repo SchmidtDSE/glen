@@ -93,7 +93,7 @@ async function fetchMetadata(fetchFn, url, delays = METADATA_RETRY_DELAYS_MS, fi
     return resp;
 }
 
-export async function resolveHexMetadata(args, fetchFn = globalThis.fetch, retryDelays = METADATA_RETRY_DELAYS_MS, waitForBuild = null) {
+export async function resolveHexMetadata(args, fetchFn = globalThis.fetch, retryDelays = METADATA_RETRY_DELAYS_MS, waitForBuild = null, { geojson = null } = {}) {
     let valueColumn = args.value_column;
     let valueStats = args.value_stats;
     let bounds = (Array.isArray(args.bounds) && args.bounds.length === 4) ? args.bounds : undefined;
@@ -106,26 +106,36 @@ export async function resolveHexMetadata(args, fetchFn = globalThis.fetch, retry
     }
 
     const metaUrl = metadataUrlFromTileUrl(args.tile_url);
+    // Why the metadata could not be read, for the error below.
+    let failure = null;
     if (metaUrl && typeof fetchFn === 'function') {
         try {
             let resp = await fetchFn(metaUrl);
-            const hash = tilesetHash(args.tile_url);
-            // 404 today; 202 {"status":"running"} once geo-query answers that way
-            // during a build (SchmidtDSE/geo-query#500).
-            const building = resp?.status === 202 || resp?.status === 404;
-            if (building && waitForBuild && hash) {
-                // Still building: wait for it, then read the metadata it writes.
-                const build = await waitForBuild(hash);
-                if (build?.status === 'running') {
-                    return { error: `add_hex_tile_layer: the hex tiles for ${hash} are still being built after ${BUILD_WAIT_ROUNDS * BUILD_WAIT_SECONDS / 60} minutes. Call get_hex_tile_status with this hash, and add the layer once it reports done.` };
+            // A GeoJSON layer's file is already in hand and gives its own
+            // range and bounds, so a missing metadata.json is not waited for:
+            // its build is the producing tool's, not register_hex_tiles' (SchmidtDSE/glen#522).
+            if (geojson) {
+                if (!resp?.ok) { failure = `returned ${resp?.status ?? 'no response'}`; resp = null; }
+            } else {
+                const hash = tilesetHash(args.tile_url);
+                // 404 today; 202 {"status":"running"} once geo-query answers that way
+                // during a build (SchmidtDSE/geo-query#500).
+                const building = resp?.status === 202 || resp?.status === 404;
+                if (building && waitForBuild && hash) {
+                    // Still building: wait for it, then read the metadata it writes.
+                    const build = await waitForBuild(hash);
+                    if (build?.status === 'running') {
+                        return { error: `add_hex_tile_layer: the hex tiles for ${hash} are still being built after ${BUILD_WAIT_ROUNDS * BUILD_WAIT_SECONDS / 60} minutes. Call get_hex_tile_status with this hash, and add the layer once it reports done.` };
+                    }
+                    if (build?.status === 'failed' || build?.status === 'error') {
+                        return { error: `add_hex_tile_layer: the hex tile build for ${hash} failed${build.error ? `: ${build.error}` : ''}.` };
+                    }
+                    resp = await fetchMetadata(fetchFn, metaUrl, retryDelays.slice(0, 2));
+                } else if (!resp?.ok) {
+                    resp = await fetchMetadata(fetchFn, metaUrl, retryDelays, resp);
                 }
-                if (build?.status === 'failed' || build?.status === 'error') {
-                    return { error: `add_hex_tile_layer: the hex tile build for ${hash} failed${build.error ? `: ${build.error}` : ''}.` };
-                }
-                resp = await fetchMetadata(fetchFn, metaUrl, retryDelays.slice(0, 2));
-            } else if (!resp?.ok) {
-                resp = await fetchMetadata(fetchFn, metaUrl, retryDelays, resp);
             }
+            if (resp && !resp.ok) failure = `returned ${resp.status}`;
             if (resp?.ok && resp.status !== 202) {
                 const meta = await resp.json();
                 valueColumn = valueColumn || meta.value_columns?.[0];
@@ -135,7 +145,19 @@ export async function resolveHexMetadata(args, fetchFn = globalThis.fetch, retry
                 }
                 layerName = layerName || meta.layer_name;
             }
-        } catch { /* fall through to whatever the caller supplied */ }
+        } catch (err) {
+            // fetch() throws on a network error and on a response the page
+            // may not read (CORS); fall through to what the caller supplied.
+            failure = `failed (${err?.message || err}): the host is unreachable, or does not let this page read it (CORS)`;
+        }
+    }
+
+    // A GeoJSON layer fills what is still missing from its own features.
+    if (geojson && (!valueColumn || !isUsableStats(valueStats) || !bounds)) {
+        const derived = statsFromGeoJson(geojson, valueColumn);
+        valueColumn = valueColumn || derived.valueColumn;
+        if (!isUsableStats(valueStats)) valueStats = derived.valueStats;
+        bounds = bounds || derived.bounds;
     }
 
     // One clear error covering any remaining gap — never a silent blank layer.
@@ -147,12 +169,72 @@ export async function resolveHexMetadata(args, fetchFn = globalThis.fetch, retry
             !isUsableStats(valueStats) && 'value_stats',
             !bounds && 'bounds',
         ].filter(Boolean).join(', ');
-        return { error: `add_hex_tile_layer: could not resolve color-scale metadata (${missing}). `
-            + `These are normally fetched from ${metaUrl || 'the tile host'} by content hash; that fetch `
-            + `returned nothing usable (ensure the tile host serves metadata.json — mcp-data-server >= v0.8.6), `
-            + `and no usable values were passed explicitly.` };
+        const read = metaUrl
+            ? `Reading ${metaUrl} ${failure || 'gave no usable values'}.`
+            : 'The tile_url names no tileset to read them from.';
+        return { error: `add_hex_tile_layer: could not resolve color-scale metadata (${missing}). ${read} `
+            + `Check that the producing tool's tiles are reachable; do not make these values up.` };
     }
     return { valueColumn, valueStats, bounds, layerName };
+}
+
+/**
+ * The value column, its range and the bounds of a GeoJSON hex layer, read
+ * from its features when metadata.json cannot be (SchmidtDSE/glen#522). The
+ * column is the one asked for, else the first numeric property. The features
+ * carry one resolution and no `res`, so the range sits under a single key,
+ * which is all the GeoJSON layer's flat ramp reads.
+ * @param {Object} fc - a FeatureCollection
+ * @param {string} [column]
+ * @returns {{valueColumn?: string, valueStats?: Object, bounds?: number[]}}
+ */
+export function statsFromGeoJson(fc, column) {
+    const features = fc?.features || [];
+    const valueColumn = column || Object.entries(features.find(f => f?.properties)?.properties || {})
+        .find(([, v]) => typeof v === 'number')?.[0];
+    let min = Infinity, max = -Infinity, sum = 0, n = 0;
+    const box = [Infinity, Infinity, -Infinity, -Infinity];
+    const walk = (c) => {
+        if (!Array.isArray(c)) return;
+        if (typeof c[0] === 'number') {
+            box[0] = Math.min(box[0], c[0]); box[1] = Math.min(box[1], c[1]);
+            box[2] = Math.max(box[2], c[0]); box[3] = Math.max(box[3], c[1]);
+        } else c.forEach(walk);
+    };
+    for (const f of features) {
+        walk(f?.geometry?.coordinates);
+        const v = f?.properties?.[valueColumn];
+        if (typeof v === 'number' && Number.isFinite(v)) { min = Math.min(min, v); max = Math.max(max, v); sum += v; n++; }
+    }
+    return {
+        valueColumn,
+        valueStats: n ? { by_res: { 0: { min, max, mean: sum / n } } } : undefined,
+        bounds: Number.isFinite(box[0]) ? box : undefined,
+    };
+}
+
+/**
+ * Read a GeoJSON hex layer's FeatureCollection, so a file the page cannot
+ * read is reported rather than drawn blank after the tool says it succeeded
+ * (SchmidtDSE/glen#522).
+ * @returns {Promise<{geojson?: Object, error?: string}>}
+ */
+export async function readGeoJson(url, fetchFn) {
+    const prefix = `add_hex_tile_layer: could not read geojson_url ${url}`;
+    let resp;
+    try {
+        resp = await fetchFn(url);
+    } catch (err) {
+        return { error: `${prefix}: the request failed (${err?.message || err}). The host is unreachable, or does not let this page read it (CORS).` };
+    }
+    if (!resp?.ok) return { error: `${prefix}: it returned ${resp?.status ?? 'no response'}.` };
+    let geojson;
+    try { geojson = await resp.json(); } catch { return { error: `${prefix}: it is not JSON.` }; }
+    if (geojson?.type !== 'FeatureCollection' || !Array.isArray(geojson.features)) {
+        return { error: `${prefix}: it is not a GeoJSON FeatureCollection.` };
+    }
+    if (!geojson.features.length) return { error: `${prefix}: it has no features.` };
+    return { geojson };
 }
 
 /**
@@ -221,7 +303,14 @@ The returned layer_id works with show_layer, hide_layer, set_style, set_filter, 
                 required: ['tile_url'],
             },
             execute: async (args) => {
-                const meta = await resolveHexMetadata(args, fetchFn, retryDelays, waitForBuild);
+                let geojson = null;
+                if (args.format === 'geojson') {
+                    if (!args.geojson_url) return JSON.stringify({ success: false, error: 'format "geojson" requires geojson_url from the producing tool\'s result' });
+                    const read = await readGeoJson(args.geojson_url, fetchFn);
+                    if (read.error) return JSON.stringify({ success: false, error: read.error });
+                    geojson = read.geojson;
+                }
+                const meta = await resolveHexMetadata(args, fetchFn, retryDelays, waitForBuild, { geojson });
                 if (meta.error) return JSON.stringify({ success: false, error: meta.error });
                 const displayName = args.display_name || `Hex: ${meta.valueColumn}`;
                 const result = mapManager.addHexTileLayer({
@@ -236,6 +325,7 @@ The returned layer_id works with show_layer, hide_layer, set_style, set_filter, 
                     layerName: meta.layerName,
                     format: args.format,
                     geojsonUrl: args.geojson_url,
+                    geojsonData: geojson,
                     extrude: args.extrude === true,
                     extrudeMaxHeight: args.extrude_max_height,
                     scale: chooseHexScale(args.scale, meta.valueStats),
