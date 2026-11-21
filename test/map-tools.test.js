@@ -761,6 +761,15 @@ describe('add_hex_tile_layer — a GeoJSON layer the page cannot read (SchmidtDS
         expect(waitForBuild).not.toHaveBeenCalled();
     });
 
+    it('refuses a vector layer of a tileset whose metadata says it is GeoJSON only', async () => {
+        const { run, mapManager } = tool({ meta: () => ok({ ...META, format: 'geojson' }), geojson: () => ok(FC) });
+        const out = await run({ tile_url: ARGS.tile_url, value_column: 'suitability' });
+        expect(out.success).toBe(false);
+        expect(out.error).toMatch(/format "geojson"/);
+        expect(mapManager.addHexTileLayer).not.toHaveBeenCalled();
+        expect((await run()).success).toBe(true);
+    });
+
     it('says a vector layer\'s metadata fetch failed, and asks the model not to make values up', async () => {
         const { run } = tool({ meta: corsError, geojson: corsError });
         const out = await run({ tile_url: ARGS.tile_url });

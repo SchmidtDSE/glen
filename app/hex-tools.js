@@ -98,6 +98,7 @@ export async function resolveHexMetadata(args, fetchFn = globalThis.fetch, retry
     let valueStats = args.value_stats;
     let bounds = (Array.isArray(args.bounds) && args.bounds.length === 4) ? args.bounds : undefined;
     let layerName = args.layer_name;
+    let format;
 
     // Fast path: the caller already supplied everything the renderer needs — no
     // network round-trip, and back-compat for manual/programmatic callers.
@@ -144,6 +145,7 @@ export async function resolveHexMetadata(args, fetchFn = globalThis.fetch, retry
                     bounds = (Array.isArray(meta.bounds) && meta.bounds.length === 4) ? meta.bounds : undefined;
                 }
                 layerName = layerName || meta.layer_name;
+                format = meta.format;
             }
         } catch (err) {
             // fetch() throws on a network error and on a response the page
@@ -175,7 +177,7 @@ export async function resolveHexMetadata(args, fetchFn = globalThis.fetch, retry
         return { error: `add_hex_tile_layer: could not resolve color-scale metadata (${missing}). ${read} `
             + `Check that the producing tool's tiles are reachable; do not make these values up.` };
     }
-    return { valueColumn, valueStats, bounds, layerName };
+    return { valueColumn, valueStats, bounds, layerName, format };
 }
 
 /**
@@ -258,7 +260,7 @@ export function createHexTileTools(mapManager, { fetchFn = (...a) => globalThis.
 
 tile_url is the only required argument. value_stats, bounds and layer_name are fetched from the tile host by the tileset's content hash, so leave them out rather than copying them from register_hex_tiles' result.
 
-register_hex_tiles layers use the default format="vector". format="geojson" and geojson_url come only from a producing tool that supplies a geojson_url. They are not in the fetched metadata, so without them that layer renders blank.
+register_hex_tiles layers use the default format="vector". format="geojson" and geojson_url come only from a producing tool that supplies a geojson_url. Pass both from its result; geojson_url is not in the fetched metadata.
 
 The result's \`scale\` is the scale actually drawn; report that one to the user.
 
@@ -312,6 +314,11 @@ The returned layer_id works with show_layer, hide_layer, set_style, set_filter, 
                 }
                 const meta = await resolveHexMetadata(args, fetchFn, retryDelays, waitForBuild, { geojson });
                 if (meta.error) return JSON.stringify({ success: false, error: meta.error });
+                // A tileset published only as GeoJSON has no .pbf tiles, so a
+                // vector layer of it would draw nothing (SchmidtDSE/glen#522).
+                if (meta.format === 'geojson' && args.format !== 'geojson') {
+                    return JSON.stringify({ success: false, error: 'add_hex_tile_layer: this tileset is published as GeoJSON only, so its .pbf tiles do not exist. Pass format "geojson" and the geojson_url from the producing tool\'s result.' });
+                }
                 const displayName = args.display_name || `Hex: ${meta.valueColumn}`;
                 const result = mapManager.addHexTileLayer({
                     tileUrl: args.tile_url,
