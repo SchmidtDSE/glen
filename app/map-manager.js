@@ -1106,6 +1106,8 @@ export class MapManager {
      * @param {boolean} opts.fitBounds - call map.fitBounds after adding
      * @param {string} [opts.layerName] - MVT source-layer name from register_hex_tiles.
      *   Defaults to 'layer' (current mcp-data-server default).
+     * @param {Object} [opts.geojsonData] - for format "geojson", the FeatureCollection
+     *   already read from geojsonUrl; drawn in its place
      * @param {number} [opts.resolution] - H3 resolution to render. Must be a key in
      *   valueStats.by_res. Defaults to the finest (highest) resolution present.
      *   Currently informational only — the server pyramid chooses one resolution
@@ -1118,7 +1120,7 @@ export class MapManager {
      * @returns {{success: boolean, layer_id?: string, scale?: string, error?: string}}
      */
     addHexTileLayer(opts) {
-        const { tileUrl, valueColumn, valueStats, bounds, palette, opacity, displayName, fitBounds, layerName, resolution, format, geojsonUrl, extrude, extrudeMaxHeight } = opts;
+        const { tileUrl, valueColumn, valueStats, bounds, palette, opacity, displayName, fitBounds, layerName, resolution, format, geojsonUrl, geojsonData, extrude, extrudeMaxHeight } = opts;
         const requestedScale = opts.scale === 'log' ? 'log' : 'linear';
         const isGeoJson = format === 'geojson';
         const is3D = extrude === true;
@@ -1212,7 +1214,9 @@ export class MapManager {
         // contains; buildFillColorExpression's per-res `match` picks the
         // right branch for each tile's resolution.
         if (isGeoJson) {
-            this.map.addSource(layerId, { type: 'geojson', data: geojsonUrl });
+            // The tool hands over the features it already read (SchmidtDSE/glen#522),
+            // so a file this page cannot read never becomes a blank layer.
+            this.map.addSource(layerId, { type: 'geojson', data: geojsonData || geojsonUrl });
         } else {
             this.map.addSource(layerId, { type: 'vector', tiles: [tileUrl], minzoom: 0, maxzoom: 14 });
         }
