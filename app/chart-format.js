@@ -1,7 +1,6 @@
 /**
  * chart-format.js — Number formatting by named format, ported from glen-charts'
- * core/format.js so a chart spec reads the same in both libraries
- * (SchmidtDSE/glen#426).
+ * core/format.js (SchmidtDSE/glen#426). The two now change separately.
  *
  * Options, set with setFormatOptions():
  *   nodata        text for a missing value (NULL, NaN, '')        default "—"

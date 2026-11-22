@@ -1,8 +1,8 @@
 /**
  * params.js — Params: settings a reader chooses that enter SQL as {{TOKEN}}s
  * (SchmidtDSE/glen#426). The rules for a param's value, its tokens and `when`
- * are ported from glen-charts' core/engine.js, so a param written for one
- * library works in the other.
+ * were ported from glen-charts' core/engine.js. The two libraries now change
+ * separately, and compatibility with glen-charts is not kept.
  *
  *   { "id": "years", "label": "Loss years", "token": "YEAR", "control": "range",
  *     "options": [2001, 2005, 2010, 2015, 2020, 2024], "default": [2010, 2024] }

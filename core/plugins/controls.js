@@ -3,8 +3,8 @@
  * {{TOKEN}}s (SchmidtDSE/glen#426), with the tools the agent uses to make and
  * change them.
  *
- * A control is a param (app/params.js), the same object glen-charts takes in
- * its `params`: an id, a label, a token, its options and how it is drawn.
+ * A control is a param (app/params.js), in the form ported from glen-charts'
+ * `params`: an id, a label, a token, its options and how it is drawn.
  * Charts whose `sql` uses a token re-run when the reader changes it (with the
  * charts plugin). The app's config lists the controls it starts with; the
  * agent adds, changes and removes them with `create_control` and

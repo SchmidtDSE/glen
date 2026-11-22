@@ -1103,7 +1103,7 @@ The plugin's `charts` option lists charts to draw when the app opens. Each is a 
 
 `plugins/controls.js` adds a Settings section at the top of the side panel, with controls whose values enter SQL as `{{TOKEN}}`s ([#426](https://github.com/SchmidtDSE/glen/issues/426)). The controls are glen-charts' settings controls: pill buttons, a menu, a slider over clickable stops, and a two-handle range. A slider or range sets its value when the handle is released. A chart whose SQL uses a token re-runs when the reader changes that control, as does a [live hex layer](#hex-tile-layers), after the controls have been still for a moment. While it re-runs the chart is dimmed and says it is updating, and a failed run is reported on the chart. A change re-runs only the charts that use a token it changed, and a chart hidden by its `when` runs only once it is shown.
 
-A control is the same object glen-charts takes in its `params`, so a control written for one library works in the other:
+A control is written in the form of a glen-charts param: an id, a label, a token, its options and how it is drawn. glen's controls were ported from glen-charts and now change on their own, so a param from glen-charts may need changes here (multi-select params, for one, are not supported):
 
 ```json
 { "url": "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/core/plugins/controls.js",
