@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { coerceFilter, fieldKind } from '../app/filter-types.js';
+import { coerceFilter, fieldKind, filterFields } from '../app/filter-types.js';
 import { MapManager } from '../app/map-manager.js';
 
 const kinds = { Asthma_Pctl: 'number', YEAR_: 'string', COUNTY: 'string', GAP: 'number' };
@@ -67,5 +67,16 @@ describe('set_filter with the tile types', () => {
         expect(r.adjusted[0]).toMatch(/number/);
         // Nothing to change, nothing reported.
         expect(mm.setFilter('tracts', ['>=', ['get', 'Asthma_Pctl'], 90])).not.toHaveProperty('adjusted');
+    });
+});
+
+describe('filterFields', () => {
+    it('lists each property a filter reads, once, skipping literals', () => {
+        expect(filterFields(['all',
+            ['in', ['get', 'a'], ['literal', [['get', 'not-a-read']]]],
+            ['==', ['get', 'b'], 1],
+            ['>', ['to-number', ['get', 'a']], 2],
+        ])).toEqual(['a', 'b']);
+        expect(filterFields(null)).toEqual([]);
     });
 });

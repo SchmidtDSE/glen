@@ -93,3 +93,23 @@ export function coerceFilter(filter, kindOf) {
 
     return { filter: walk(filter), notes };
 }
+
+/**
+ * The feature properties a filter reads with `["get", name]`, in order, once
+ * each. Values inside `literal` are data, not reads.
+ * @param {*} filter - a MapLibre filter expression
+ * @returns {string[]}
+ */
+export function filterFields(filter) {
+    const out = [];
+    const walk = (x) => {
+        if (!Array.isArray(x) || x[0] === 'literal') return;
+        if (isGet(x)) {
+            if (!out.includes(x[1])) out.push(x[1]);
+            return;
+        }
+        x.forEach(walk);
+    };
+    walk(filter);
+    return out;
+}

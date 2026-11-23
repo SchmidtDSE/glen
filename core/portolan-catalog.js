@@ -307,6 +307,9 @@ export class PortolanCatalog {
         const defaultStyleDoc = ownStyles.find(st => st.isDefault)?.doc;
         const styleSourceLayer = defaultStyleDoc?.layers?.find(l => l['source-layer'])?.['source-layer'];
         const info = pmtilesLayerInfo(meta, v.layers[0] || styleSourceLayer || null);
+        // Only the archive's own list is the truth about what features carry;
+        // set_filter refuses a field missing from it (SchmidtDSE/glen#527).
+        const fieldsFromTiles = Object.keys(info.fields).length > 0;
         // Without the archive's own field list, the asset's table:columns
         // name the feature properties (our current STAC carries them).
         if (!Object.keys(info.fields).length && v.columns.length) {
@@ -343,6 +346,7 @@ export class PortolanCatalog {
             sourceId: `src-${v.url}`,
             geometryType: info.geometryType,
             fields: info.fields,
+            fieldsFromTiles,
             renderType,
             paint,
             outlinePaint: s.outline_paint || chosen?.outlinePaint || null,
@@ -622,6 +626,7 @@ export class PortolanCatalog {
                         outlinePaint: l.outlinePaint,
                         defaultFilter: l.filter,
                         columns: Object.entries(l.fields).map(([name, type]) => ({ name, type })),
+                        columnsFromTiles: l.fieldsFromTiles === true,
                         tooltipFields: l.tooltip,
                     });
                 } else {
