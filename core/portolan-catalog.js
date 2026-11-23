@@ -635,7 +635,7 @@ export class PortolanCatalog {
                         legendLabel: l.legendLabel || l.band?.unit || null,
                         legendType: l.legendType || (l.band?.classes ? 'categorical' : null),
                         legendClasses: l.band?.classes
-                            ? l.band.classes.map(c => ({ value: c.value, name: c.description || c.name || String(c.value), 'color-hint': c.color_hint || c['color-hint'] }))
+                            ? l.band.classes.map(c => ({ value: c.value, name: c.title || c.description || c.name || String(c.value), 'color-hint': c.color_hint || c['color-hint'] }))
                             : null,
                         // The full app's time series, from a frame list or a listing.
                         ...(l.frames && {

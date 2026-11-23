@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { resolveRasterBand, cogTileUrl, publishedRender, renderClasses } from '../app/cog-tiles.js';
+import { resolveRasterBand, cogTileUrl, publishedRender, renderClasses, normalizeLegendClasses } from '../app/cog-tiles.js';
 
 // How a COG is drawn: band settings, the TiTiler tile URL and the catalog's
 // raster renders. Shared by both apps; glen core's use of them is covered in
@@ -123,5 +123,11 @@ describe('raster renders from the catalog (#440)', () => {
             { value: 21, name: 'Class 21', 'color-hint': 'DEC5C5' },
         ]);
         expect(renderClasses(null)).toBeNull();
+    });
+
+    it("names a category by the class's title before its name (SchmidtDSE/glen#528)", () => {
+        const classes = [{ value: 11, name: 'open-water', title: 'Open Water' }, { value: 21, name: 'Developed' }];
+        expect(renderClasses({ 11: '#466B9F', 21: '#DEC5C5' }, classes).map(c => c.name)).toEqual(['Open Water', 'Developed']);
+        expect(normalizeLegendClasses(classes).map(c => c.name)).toEqual(['Open Water', 'Developed']);
     });
 });
