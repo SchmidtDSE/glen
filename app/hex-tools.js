@@ -301,6 +301,8 @@ register_hex_tiles layers use the default format="vector". format="geojson" and 
 
 The result's \`scale\`, \`palette\` and \`range\` (or \`range_by_res\`) are what is actually drawn; report those to the user.
 
+To recolour a layer already drawn, call this again with the same tile_url and the new range, scale, palette or value_column; it is restyled in place.
+
 The returned layer_id works with show_layer, hide_layer, set_style, set_filter, get_map_state and remove_hex_tile_layer.`,
             inputSchema: {
                 type: 'object',

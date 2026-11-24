@@ -59,6 +59,7 @@ function createManager() {
     // Stub legend helpers the mutators might call.
     mm._showLegend = () => {};
     mm._hideLegend = () => {};
+    mm._refreshLegend = () => {};
     return mm;
 }
 
@@ -335,6 +336,8 @@ describe('MapManager.addHexTileLayer', () => {
         expect(r2.success).toBe(true);
         expect(r2.already_exists).toBe(true);
         expect(r2.layer_id).toBe(r1.layer_id);
+        // The same colours: nothing to restyle.
+        expect(r2.restyled).toBe(false);
         // The idempotent return uses the originally-registered displayName, not the new one.
         // (This locks down the current contract — registry is not mutated on re-add.)
         expect(r2.display_name).toBe('First');
@@ -510,5 +513,52 @@ describe('MapManager.removeHexTileLayer', () => {
         expect(r.success).toBe(false);
         expect(r.error).toMatch(/Unknown hex layer/);
         expect(r.error).toContain('hex-known');
+    });
+});
+
+describe('MapManager.addHexTileLayer on a layer already drawn', () => {
+    const tileUrl = 'https://example.com/tiles/hex/samehash/{z}/{x}/{y}.pbf';
+    const base = {
+        tileUrl, valueColumn: 'v', valueStats: { by_res: { '5': { min: 0, max: 40 }, '6': { min: 0, max: 40 } } },
+        bounds: [0, 0, 1, 1], palette: 'viridis', opacity: 0.7, displayName: 'Dist', fitBounds: false, scale: 'linear',
+    };
+    const stops = (mm) => JSON.stringify(mm.layers.get('hex-samehash').defaultPaint['fill-color']);
+
+    it('takes a new range in place, without reloading the tiles', () => {
+        const mm = createManager();
+        const setPaint = [];
+        mm.map.setPaintProperty = (id, k, v) => setPaint.push([id, k, v]);
+        mm.addHexTileLayer(base);
+        mm.map._sources.get('hex-samehash').setTiles = () => { throw new Error('reloaded'); };
+        const before = stops(mm);
+        const r = mm.addHexTileLayer({ ...base, valueStats: { by_res: { '5': { min: 10, max: 30 }, '6': { min: 10, max: 30 } } } });
+        expect(r).toMatchObject({ success: true, already_exists: true, restyled: true, range: [10, 30], palette: 'viridis', scale: 'linear' });
+        expect(r.message).toMatch(/takes this call's colours/);
+        expect(stops(mm)).not.toBe(before);
+        expect(stops(mm)).toContain('10');
+        expect(setPaint.some(([id, k]) => id === 'hex-samehash' && k === 'fill-color')).toBe(true);
+        expect(mm.layers.get('hex-samehash').hexValueStats.by_res['5']).toEqual({ min: 10, max: 30 });
+        expect(mm.map._layers.size).toBe(1);
+    });
+
+    it('takes a new palette and scale', () => {
+        const mm = createManager();
+        mm.addHexTileLayer(base);
+        const r = mm.addHexTileLayer({ ...base, palette: 'ylorrd', scale: 'log' });
+        expect(r).toMatchObject({ restyled: true, palette: 'ylorrd', scale: 'log' });
+        expect(mm.layers.get('hex-samehash').hexPalette).toBe('ylorrd');
+        expect(mm.layers.get('hex-samehash').hexScale).toBe('log');
+    });
+
+    it('keeps a GeoJSON layer as it was, with the old advice', () => {
+        const mm = createManager();
+        mm.addHexTileLayer(base);
+        mm.layers.get('hex-samehash').hexFlat = true;
+        const before = stops(mm);
+        const r = mm.addHexTileLayer({ ...base, valueStats: { by_res: { '5': { min: 10, max: 30 } } } });
+        expect(r.already_exists).toBe(true);
+        expect(r.restyled).toBeUndefined();
+        expect(r.message).toMatch(/remove_hex_tile_layer first/);
+        expect(stops(mm)).toBe(before);
     });
 });
