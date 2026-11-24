@@ -311,6 +311,21 @@ describe('PortolanCatalog', () => {
         expect(c.getAll()[0]._rawStac.id).toBe('roads');
     });
 
+    it('marks the columns as the tiles\' own only when the archive lists its fields (SchmidtDSE/glen#527)', async () => {
+        const fromTiles = new PortolanCatalog(deps);
+        await fromTiles.load({ collections: [BASE] });
+        expect(fromTiles.getMapLayerConfigs()[0]).toMatchObject({
+            columnsFromTiles: true,
+            columns: [{ name: 'Damage', type: 'String' }, { name: 'country', type: 'String' }],
+        });
+
+        // No archive field list: the STAC record's columns stand in, unchecked.
+        const fromStac = new PortolanCatalog({ ...deps, pmtilesMetadata: async () => ({}) });
+        await fromStac.load({ collections: [BASE] });
+        const [cfg] = fromStac.getMapLayerConfigs();
+        expect(cfg.columnsFromTiles).toBe(false);
+    });
+
     it('resolves collection ids by walking sub-catalogs', async () => {
         const c = new PortolanCatalog(deps);
         await c.load({ catalog: 'https://example.org/cat/catalog.json', collections: ['roads'] });

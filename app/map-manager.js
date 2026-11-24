@@ -12,7 +12,7 @@
  * No knowledge of LLMs, tools, or chat — pure map operations.
  */
 
-import { coerceFilter, fieldKind } from './filter-types.js';
+import { coerceFilter, fieldKind, filterFields } from './filter-types.js';
 import { numericStyleValue, numericStyleNote } from './style-numbers.js';
 import { extractHashFromUrl, buildFillColorExpression, buildFlatFillColorExpression, rewriteValueColumn, PALETTES, buildHeightExpression, buildFlatHeightExpression, defaultExtrusionMaxHeight, applicableScale } from './hex-layer-helpers.js';
 import { deriveCategoricalLegend, deriveContinuousLegend, primaryColorValue } from './legend-helpers.js';
@@ -349,6 +349,7 @@ export class MapManager {
                 styleFilter: config.styleFilter || null,
                 defaultOutlinePaint: outlinePaint || DEFAULT_OUTLINE,
                 columns: columns || [],
+                columnsFromTiles: config.columnsFromTiles === true,
                 defaultPaint: { ...(paint || {}) },
                 tooltipFields: tooltipFields ? [...tooltipFields] : null,
                 defaultTooltipFields: tooltipFields ? [...tooltipFields] : null,
@@ -447,6 +448,7 @@ export class MapManager {
             styleFilter: config.styleFilter || null,
             defaultOutlinePaint: outlinePaint || DEFAULT_OUTLINE,
             columns: columns || [],
+            columnsFromTiles: config.columnsFromTiles === true,
             defaultPaint: { ...(paint || {}) },
             tooltipFields: tooltipFields ? [...tooltipFields] : null,
             defaultTooltipFields: tooltipFields ? [...tooltipFields] : null,
@@ -1466,6 +1468,24 @@ export class MapManager {
         }
         if (state.type !== 'vector') return { success: false, error: `Layer '${layerId}' is raster — filtering only works on vector layers` };
 
+        // A field the tiles do not carry makes every comparison false, so the
+        // layer would go blank while the call reported success (SchmidtDSE/glen#527).
+        // Only checked when the field list came from the tiles themselves: the
+        // STAC record's columns can name fields the tiles lack.
+        if (filter && state.columnsFromTiles && state.columns?.length) {
+            const known = new Set(state.columns.map(c => c.name));
+            const missing = filterFields(filter).filter(f => !known.has(f));
+            if (missing.length) {
+                const names = [...known];
+                const list = names.slice(0, 100).join(', ') + (names.length > 100 ? `, … (${names.length - 100} more)` : '');
+                return {
+                    success: false,
+                    layer: layerId,
+                    error: `The features of '${layerId}' have no ${missing.map(f => `"${f}"`).join(' or ')} property, so this filter would hide every feature. The layer is unchanged. Its features carry: ${list}.`,
+                };
+            }
+        }
+
         // Match literals to the field types in the tiles: MapLibre compares
         // strictly, so "90" against a number matches nothing.
         const kinds = new Map((state.columns || []).map(c => [c.name, fieldKind(c.type)]));
@@ -1485,22 +1505,44 @@ export class MapManager {
         if (state.outlineLayerId) this.map.setFilter(state.outlineLayerId, filter);
         state.filter = filter;
 
-        // featuresInView is a viewport metric, NOT a global match count:
-        // queryRenderedFeatures only sees currently-rendered tiles in the visible
-        // area. A valid filter whose matches are off-screen legitimately returns 0,
-        // so we deliberately do NOT flag 0 as a failure — that wrongly told users a
-        // correct filter had matched nothing (the human just needs to zoom out, and
-        // the filtered tiles redraw automatically as the view changes).
-        const features = this.map.queryRenderedFeatures({ layers: [state.mapLayerId] });
+        // featuresInView counts the features in the tiles loaded for this view
+        // that pass the new filter. queryRenderedFeatures cannot: right after
+        // setFilter it still returns what was drawn before (SchmidtDSE/glen#527).
+        // It is not a global match count, so 0 is not a failure: the matches
+        // may be off-screen, and the tiles redraw as the view changes.
+        const inView = this._countLoadedMatches(state, filter);
         return {
             success: true,
             layer: layerId,
             displayName: state.displayName,
             filter,
             filterDescription: filter ? this.describeFilter(filter) : 'No filter (showing all)',
-            featuresInView: features.length,
+            ...(inView === null ? {} : { featuresInView: inView }),
             ...(coerced.notes.length ? { adjusted: coerced.notes } : {}),
         };
+    }
+
+    /**
+     * Features in the loaded tiles of a layer's source that pass `filter`,
+     * counted once each when they have an id. Null when the source cannot be read.
+     */
+    _countLoadedMatches(state, filter) {
+        if (!state.sourceId || typeof this.map.querySourceFeatures !== 'function') return null;
+        try {
+            const opts = {};
+            if (state.sourceLayer) opts.sourceLayer = state.sourceLayer;
+            if (filter) opts.filter = filter;
+            const features = this.map.querySourceFeatures(state.sourceId, opts);
+            const ids = new Set();
+            let anonymous = 0;
+            for (const f of features) {
+                if (f.id === undefined || f.id === null) anonymous++;
+                else ids.add(f.id);
+            }
+            return ids.size + anonymous;
+        } catch {
+            return null;
+        }
     }
 
     /**
