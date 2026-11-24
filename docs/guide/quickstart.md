@@ -27,10 +27,10 @@ No JavaScript to write. glen core (the map and its tools) and its plugins load f
 
 ## index.html
 
-The HTML shell loads two kinds of code: a set of **pinned third-party libraries** (MapLibre, PMTiles, marked, DOMPurify) as page-global `<script>` tags, and **glen core** (JS + CSS) from the CDN. There is no import map. glen core loads highlight.js and its theme at start (from the list glen-harness pins), unless the page already has it, so SQL in the chat is highlighted; the MCP plugin loads a pre-bundled MCP SDK, so the only hosts your page contacts are the CDNs. The `<body>` only needs two placeholder `<div>`s — the layout manager builds the rest (chat panel, controls, etc.) dynamically.
+The HTML shell needs only glen core's `main.js` from the CDN, and two placeholder `<div>`s in the `<body>`; the layout manager builds the rest (chat panel, controls, etc.) dynamically. From v4.5.0, glen core adds the libraries it needs as page-global `<script>` tags itself (MapLibre, PMTiles, marked, DOMPurify and highlight.js), each with its pinned version and integrity hash, and glen's stylesheets before the page's own (`docs/design/page-dependencies.md`). There is no import map, and the MCP plugin loads a pre-bundled MCP SDK, so the only hosts your page contacts are the CDNs.
 
 ::: warning Copy this file from the template — don't hand-author it
-The canonical `index.html` is `core/index.html` in this repository, as glen-template uses it. **Copy it verbatim** rather than retyping the script tags below. In particular, never hand-edit the `integrity="sha384-…"` hashes — see [Subresource Integrity](#about-the-integrity-hashes) for why. The block below is reproduced for reference and matches the template at the pinned release.
+The canonical `index.html` is `core/index.html` in this repository, as glen-template uses it. Copy it rather than retyping it. The block below matches the template at the pinned release.
 :::
 
 ```html
@@ -42,34 +42,9 @@ The canonical `index.html` is `core/index.html` in this repository, as glen-temp
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Map App</title>
 
-    <!-- MapLibre GL JS -->
-    <script src="https://unpkg.com/maplibre-gl@5.22.0/dist/maplibre-gl.js"
-        integrity="sha384-U054LTKiMIJKEecR8PKFiUZdvkGWHjfPBnen5hSmR9TwfOfgZmKbskC8Rs9dCm/1"
-        crossorigin="anonymous"></script>
-    <link href="https://unpkg.com/maplibre-gl@5.22.0/dist/maplibre-gl.css" rel="stylesheet"
-        integrity="sha384-MGCxhspF/+ufueUgol3FDkiAYQbpSNRhBT0VWHJt64U8qIy9qlnXWx8LAbj6niPH"
-        crossorigin="anonymous" />
-
-    <!-- PMTiles protocol -->
-    <script src="https://unpkg.com/pmtiles@3.0.7/dist/pmtiles.js"
-        integrity="sha384-MjejsnWXHmuz93aE35YWLh5AbS/6ceRB3Vb+ukOwqFzJRTpQ8vvbkLbNV7I0QK4f"
-        crossorigin="anonymous"></script>
-
-    <!-- Markdown rendering (lib/marked.umd.js is the package-shipped artifact;
-         marked.min.js is a CDN-generated file and unsafe to hash) -->
-    <script src="https://cdn.jsdelivr.net/npm/marked@18.0.5/lib/marked.umd.js"
-        integrity="sha384-ZD0fTOwPMHi7zM6WTVIWJR21I07lq0ccnqz3J6WMvQKG9thh4y7TA1QE6PJu0Af8"
-        crossorigin="anonymous"></script>
-
-    <!-- HTML sanitizer — chat-ui.js refuses to render markdown without it -->
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.8/dist/purify.min.js"
-        integrity="sha384-jrsBdrv4eDpEYIq32u13DPbvB6tRmqIDnA6UlgFBoexpetaiWi7g/VbfMEL1WVen"
-        crossorigin="anonymous"></script>
-
-    <!-- GLEN styles (pinned, at the same ref as core/main.js) -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.0.0/app/style.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.0.0/app/chat.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.0.0/app/sidebar.css">
+    <!-- glen core adds MapLibre, PMTiles, the chat's libraries and glen's
+         stylesheets itself, with their integrity hashes. An app's own
+         stylesheet goes here, after them. -->
     <style>
         /* Boot placeholder — see #boot-status in the body. */
         #boot-status {
@@ -98,30 +73,28 @@ The canonical `index.html` is `core/index.html` in this repository, as glen-temp
     <div id="menu"></div>
 
     <!-- GLEN bootstrap (pinned) -->
-    <script type="module" src="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.0.0/core/main.js"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.5.0/core/main.js"></script>
 </body>
 
 </html>
 ```
 
-::: tip Sidebar CSS is safe to always include
-`sidebar.css` is scoped to `body.sidebar-mode` and sidebar-only IDs, so it has zero effect on floating-mode apps. Include it unconditionally to keep all apps on the same scaffold.
-:::
+A page made for an earlier release lists the libraries and glen's three stylesheets itself. It keeps working unchanged: glen core leaves alone any library or stylesheet the page already has.
 
 ### About the `integrity` hashes
 
-Each third-party `<script>`/`<link>` carries an `integrity="sha384-…"` attribute — that's [Subresource Integrity (SRI)](https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity). The browser downloads the file, hashes it, and **refuses to run it unless the hash matches**. If a CDN were ever compromised and served a tampered library, the mismatch blocks the swapped-in code instead of executing it. This matters here specifically because the agent renders model output (which can be steered by attacker-controllable data) into the page — DOMPurify sanitizes it, and SRI guarantees the *real* DOMPurify is the thing that loaded. `crossorigin="anonymous"` is required for SRI to work on cross-origin files.
+Each third-party script and stylesheet glen core adds carries an `integrity="sha384-…"` attribute — that's [Subresource Integrity (SRI)](https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity). The browser downloads the file, hashes it, and **refuses to run it unless the hash matches**. If a CDN were ever compromised and served a tampered library, the mismatch blocks the swapped-in code instead of executing it. This matters here specifically because the agent renders model output (which can be steered by attacker-controllable data) into the page — DOMPurify sanitizes it, and SRI guarantees the *real* DOMPurify is the thing that loaded. `crossorigin="anonymous"` is required for SRI to work on cross-origin files.
 
-**You normally never touch these values.** They're maintained in this repo's `core/index.html` and the template, kept in lockstep with the release the app pins. Copy them; don't retype them.
+**You never touch these values.** They live in glen: MapLibre and PMTiles in `core/boot.js` (`PAGE_SCRIPTS`, `PAGE_STYLESHEETS`), and marked, DOMPurify and highlight.js in glen-harness's `ui/deps.js` (`CHAT_SCRIPTS`). Bumping glen's pin brings the versions that release was tested with.
 
-A hash needs updating in exactly one situation: **you bump a pinned library to a new version** (e.g. `marked@18.0.5` → a later release). A new version is different bytes, so the old hash will no longer match and the browser will block the file — chat text then renders as escaped plain markdown (a deliberate fail-closed, with a console warning), which is your signal that a hash and its URL have drifted apart. Recompute with:
+To use another version of a library, list it in the page yourself, with its own `integrity` and `crossorigin="anonymous"`; glen core then leaves it alone. A new version is different bytes, so it needs its own hash:
 
 ```bash
 curl -sL "<the pinned URL>" | openssl dgst -sha384 -binary | openssl base64 -A
 # prefix the result with "sha384-"
 ```
 
-Update the URL and its `integrity` value together in the same commit. Because every URL pins an *exact* version (never a floating range like `@18` or bare `marked`), the served bytes are immutable and the hash is stable indefinitely — so this is rare and only done by maintainers bumping a dependency.
+Pin an *exact* version (never a floating range like `@18` or bare `marked`), so the served bytes and the hash stay the same.
 
 | CDN reference | When to use |
 |---|---|
