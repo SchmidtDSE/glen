@@ -23,7 +23,8 @@
         "button": true,
         "agent_tool": true
       }
-    }
+    },
+    "core/plugins/downloads.js"
   ],
   "export": true,
   "llm": {

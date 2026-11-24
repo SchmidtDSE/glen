@@ -192,6 +192,7 @@
           }
         ]
       }
-    }
+    },
+    "core/plugins/downloads.js"
   ]
 }

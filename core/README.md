@@ -205,6 +205,7 @@ The agent loop, tool registry and chat come from [glen-harness](https://github.c
 | `plugins/hex.js` | Plugin that adds `add_hex_tile_layer` and `remove_hex_tile_layer`, and geo-query-wasm's tile protocol with a worker server |
 | `plugins/uploads.js` | Plugin that adds the GeoJSON upload and `get_uploaded_dataset` |
 | `plugins/geolocate.js` | Plugin that adds the locate-me button and, as a separate opt-in, `get_user_location` |
+| `plugins/downloads.js` | Plugin that adds CSV and GeoJSON buttons under each `query` result in the chat, which run its SQL again for every row |
 
 The core reuses these modules from `app/` unchanged: `map-control-tools.js` (the map-control tools), `catalog-tree.js` (finding collections by id at any depth, in our current STAC and the Portolan layout), `cog-tiles.js` (raster band settings and tile URLs), `map-manager.js` (layers, filters, styles, legend, tooltips), `layout-manager.js` with the header, theme and mobile sheet, `geocoder.js` and `data-page.js`.
 

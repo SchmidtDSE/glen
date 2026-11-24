@@ -590,6 +590,20 @@ body.sidebar-mode .tool-result-item strong {
     color: var(--chat-accent-fg);
 }
 
+body.sidebar-mode .tool-result-actions button {
+    color: var(--chat-accent-fg);
+    border-color: currentColor;
+}
+
+body.sidebar-mode .tool-result-actions button:hover:not(:disabled) {
+    background: var(--chrome-hover);
+}
+
+body.sidebar-mode .tool-result-actions .download-note {
+    color: var(--chat-fg);
+    opacity: 0.75;
+}
+
 body.sidebar-mode .query-summary-btn::before {
     border-left-color: var(--chat-accent-fg);
 }

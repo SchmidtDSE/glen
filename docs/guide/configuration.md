@@ -1022,7 +1022,7 @@ working.
 
 ## Plugins
 
-A plugin adds tools, controls or prompt text to glen core: SQL through MCP servers, charts, settings that charts re-run on, drawing, uploads, hex tile layers and geolocation. List the plugins an app uses in `plugins`, each as a URL or as an object with `url` and `options`. Load them from jsDelivr at the same ref as `core/main.js`:
+A plugin adds tools, controls or prompt text to glen core: SQL through MCP servers, charts, settings that charts re-run on, drawing, uploads, hex tile layers, geolocation and downloads of query results. List the plugins an app uses in `plugins`, each as a URL or as an object with `url` and `options`. Load them from jsDelivr at the same ref as `core/main.js`:
 
 ```json
 "plugins": [
@@ -1253,6 +1253,21 @@ With the controls plugin, the agent makes a live layer by passing `sql`, `agg` a
 Listed without options, the plugin reads the app's `geolocate` setting, so a deploy-time `config.json` can set it; `"geolocate": true` there is the button alone, and with no setting at all the plugin adds the button.
 
 The [`geocode` tool](#geocoding-optional) is on by default, but `get_user_location` reaches the user's actual location, so it is off unless an app opts in. Both need a secure context (HTTPS) and the browser's permission. The tool returns `{ latitude, longitude, accuracy_m }` only and does not move the map.
+
+### Query result downloads
+
+`plugins/downloads.js` puts CSV and GeoJSON buttons under each `query` result in the chat, so a visitor can take away every row behind an answer, not only the 50 the model saw. A button runs the same SQL again through the app's `query` tool, with the call's S3 endpoint, and the file is written in the browser; the rows never go through the model. It works with a server (geo-query) and with SQL in the browser (geo-query-wasm), and needs an MCP plugin that registers `query`.
+
+```json
+{ "url": "https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@<ref>/core/plugins/downloads.js",
+  "options": { "max_rows": 100000 } }
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `max_rows` | `100000` | The most rows a file holds. A larger result keeps its first rows, and the note beside the buttons says so. |
+
+The CSV has every column, with geometry as WKT and lists or structs as JSON. GeoJSON takes the result's first GEOMETRY column as each feature's geometry and the other columns as its properties; a result with no GEOMETRY column has no GeoJSON, and the button says so. 64-bit integers such as H3 cell ids are written in full.
 
 ### Writing a plugin
 
