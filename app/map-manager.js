@@ -14,7 +14,7 @@
 
 import { coerceFilter, fieldKind, filterFields } from './filter-types.js';
 import { numericStyleValue, numericStyleNote } from './style-numbers.js';
-import { extractHashFromUrl, buildFillColorExpression, buildFlatFillColorExpression, rewriteValueColumn, PALETTES, buildHeightExpression, buildFlatHeightExpression, defaultExtrusionMaxHeight, applicableScale } from './hex-layer-helpers.js';
+import { extractHashFromUrl, buildFillColorExpression, buildFlatFillColorExpression, rewriteValueColumn, PALETTES, buildHeightExpression, buildFlatHeightExpression, defaultExtrusionMaxHeight, applicableScale, describeHexRange } from './hex-layer-helpers.js';
 import { deriveCategoricalLegend, deriveContinuousLegend, primaryColorValue } from './legend-helpers.js';
 import { mountOverlay, SLOT } from './overlay-rail.js';
 import { ensurePanelActions } from './panel-actions.js';
@@ -1315,6 +1315,9 @@ export class MapManager {
             ...(scale !== requestedScale
                 ? { scale_note: 'A log scale needs every value above -1; this layer has lower values, so it is drawn on a linear scale.' }
                 : {}),
+            // The palette and range drawn (SchmidtDSE/glen#520).
+            palette: PALETTES[palette] ? palette : 'viridis',
+            ...describeHexRange(valueStats),
             already_exists: false,
         };
     }
@@ -1366,7 +1369,7 @@ export class MapManager {
         });
         if (state.currentPaint) state.currentPaint = null;
         this._refreshLegend(layerId);
-        return { success: true, layer_id: layerId, value_column: valueColumn, scale };
+        return { success: true, layer_id: layerId, value_column: valueColumn, scale, ...describeHexRange(valueStats) };
     }
 
     /** Hide or show a layer's row in the layer panel, as a live hex layer's `when` does. */

@@ -110,6 +110,22 @@ describe('live hex layers (SchmidtDSE/glen#426)', () => {
         expect(res.live).toBeUndefined();
         expect(register).toHaveBeenCalledWith('SELECT h8 FROM t', 'COUNT');
     });
+
+    it('colours an AVG layer over its finest level, and takes a range across rebuilds (SchmidtDSE/glen#520, #521)', async () => {
+        const levels = { by_res: { 6: { min: 0.4, max: 0.6 }, 8: { min: 0.2, max: 0.9 } } };
+        const avg = new LiveHexLayers({ map, register, resolve: async (a) => ({ ...(await resolve(a)), valueStats: levels }), params: () => bus, debounceMs: 50 });
+        await avg.add({ ...spec, layer_id: 'mean', agg: 'AVG' });
+        expect(map.added[0].valueStats.by_res).toEqual({ 6: { min: 0.2, max: 0.9 }, 8: { min: 0.2, max: 0.9 } });
+
+        await avg.add({ ...spec, layer_id: 'fixed', range: [0, 0.65] });
+        bus.set('years', 2020);
+        await vi.advanceTimersByTimeAsync(60);
+        const rebuilt = map.updated.find(u => u.id === 'hex-fixed');
+        expect(rebuilt.valueStats.by_res).toEqual({ 6: { min: 0, max: 0.65 }, 8: { min: 0, max: 0.65 } });
+
+        const bad = await avg.add({ ...spec, layer_id: 'bad', range: [1, 0] });
+        expect(bad.success).toBe(false);
+    });
 });
 
 describe('a live hex layer with `when`', () => {

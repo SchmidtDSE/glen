@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractHashFromUrl, rewriteValueColumn, metadataUrlFromTileUrl, buildHeightExpression, buildFlatHeightExpression, defaultExtrusionMaxHeight, buildFillColorExpression, buildFlatFillColorExpression, applicableScale, PALETTES } from '../app/hex-layer-helpers.js';
+import { extractHashFromUrl, rewriteValueColumn, metadataUrlFromTileUrl, buildHeightExpression, buildFlatHeightExpression, defaultExtrusionMaxHeight, buildFillColorExpression, buildFlatFillColorExpression, applicableScale, describeHexRange, PALETTES } from '../app/hex-layer-helpers.js';
 
 describe('extractHashFromUrl', () => {
   it('extracts hash from a valid MCP tile URL template', () => {
@@ -329,5 +329,13 @@ describe('log scale ramps (SchmidtDSE/glen#481)', () => {
     expect(applicableScale('linear', stats)).toBe('linear');
     expect(applicableScale(undefined, stats)).toBe('linear');
     expect(applicableScale('log', { by_res: {} })).toBe('linear');
+  });
+});
+
+describe('describeHexRange (SchmidtDSE/glen#520)', () => {
+  it('gives one range when every level shares it, else one per level', () => {
+    expect(describeHexRange({ by_res: { '5': { min: 0, max: 1 }, '6': { min: 0, max: 1 } } })).toEqual({ range: [0, 1] });
+    expect(describeHexRange({ by_res: { '5': { min: 0, max: 7 }, '6': { min: 0, max: 1 } } }))
+      .toEqual({ range_by_res: { '5': [0, 7], '6': [0, 1] } });
   });
 });

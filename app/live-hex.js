@@ -19,7 +19,7 @@
  */
 
 import { tokensIn, expand, matchesWhen } from './params.js';
-import { chooseHexScale } from './hex-tools.js';
+import { chooseHexScale, hexColourStats } from './hex-tools.js';
 
 export const DEBOUNCE_MS = 800;
 
@@ -203,9 +203,12 @@ export class LiveHexLayers {
         });
         if (stale()) return { success: true, superseded: true };
         if (meta.error) return fail(meta.error);
+        const colour = hexColourStats(meta.valueStats, { range: spec.range, agg: spec.agg || meta.agg || 'COUNT' });
+        if (colour.error) return fail(colour.error);
+        const valueStats = colour.valueStats;
         let res;
         if (e.added && this.map.layers?.has(id)) {
-            res = this.map.updateHexTileLayer(id, { tileUrl, valueColumn: meta.valueColumn, valueStats: meta.valueStats, scale: chooseHexScale(spec.scale, meta.valueStats) });
+            res = this.map.updateHexTileLayer(id, { tileUrl, valueColumn: meta.valueColumn, valueStats, scale: chooseHexScale(spec.scale, meta.valueStats) });
         } else if (e.added) {
             // removed by the reader while it was being built
             this.untrack(id);
@@ -215,7 +218,7 @@ export class LiveHexLayers {
                 layerId: id,
                 tileUrl,
                 valueColumn: meta.valueColumn,
-                valueStats: meta.valueStats,
+                valueStats,
                 bounds: meta.bounds,
                 layerName: meta.layerName,
                 palette: spec.palette || 'viridis',

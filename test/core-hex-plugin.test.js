@@ -144,7 +144,7 @@ describe('the scale add_hex_tile_layer draws (SchmidtDSE/glen#481)', () => {
         const { createHexTileTools } = await import('../app/hex-tools.js');
         const [add] = createHexTileTools(mapWith());
         expect(add.inputSchema.properties.scale.enum).toEqual(['linear', 'log']);
-        expect(add.description).toMatch(/result's `scale` is the scale actually drawn/);
+        expect(add.description).toMatch(/result's `scale`, `palette` and `range` .* are what is actually drawn/);
     });
 
     it('returns the scale the map drew, end to end through a real MapManager', async () => {

@@ -638,11 +638,43 @@ describe('add_hex_tile_layer — fetch color-scale metadata by hash (#276)', () 
         expect(mapManager.addHexTileLayer).toHaveBeenCalledWith(expect.objectContaining({
             tileUrl: TILE_URL,
             valueColumn: 'conserved_hw_frac',
-            valueStats: META.value_stats.conserved_hw_frac,
+            // An AVG tileset: every level over the finest level's range (SchmidtDSE/glen#521).
+            valueStats: { by_res: { '2': { min: 0, max: 49 }, '8': { min: 0, max: 49 } }, suggested_scale: 'linear' },
             bounds: META.bounds,
             layerName: 'layer',
         }));
         expect(out.success).toBe(true);
+    });
+
+    it('colours a COUNT or SUM tileset per level, and an AVG, MIN or MAX one over its finest level (SchmidtDSE/glen#521)', async () => {
+        for (const [agg, perLevel] of [['COUNT', true], ['SUM', true], ['AVG', false], ['min', false], ['MAX', false]]) {
+            global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ...META, agg }) });
+            const { tool, mapManager } = getTool();
+            await tool.execute({ tile_url: TILE_URL });
+            const drawn = mapManager.addHexTileLayer.mock.calls[0][0].valueStats.by_res;
+            expect(drawn['2']).toEqual(perLevel ? { min: 0.46, max: 9.45 } : { min: 0, max: 49 });
+            expect(drawn['8']).toEqual({ min: 0, max: 49 });
+        }
+    });
+
+    it('draws every level over a range the call gives (SchmidtDSE/glen#520)', async () => {
+        global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ...META, agg: 'COUNT' }) });
+        const { tool, mapManager } = getTool();
+        await tool.execute({ tile_url: TILE_URL, range: [0, 0.65] });
+        expect(mapManager.addHexTileLayer.mock.calls[0][0].valueStats).toEqual({
+            by_res: { '2': { min: 0, max: 0.65 }, '8': { min: 0, max: 0.65 } }, suggested_scale: 'linear',
+        });
+    });
+
+    it('refuses a range that is not [min, max] rather than ignoring it (SchmidtDSE/glen#520)', async () => {
+        for (const range of [[1], [2, 1], [0, 'x'], 'big']) {
+            global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => META });
+            const { tool, mapManager } = getTool();
+            const out = JSON.parse(await tool.execute({ tile_url: TILE_URL, range }));
+            expect(out.success).toBe(false);
+            expect(out.error).toMatch(/range must be \[min, max\]/);
+            expect(mapManager.addHexTileLayer).not.toHaveBeenCalled();
+        }
     });
 
     it('honors a value_column override while still fetching stats for it', async () => {
