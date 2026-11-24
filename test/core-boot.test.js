@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from 'vitest';
-import { initialView, loadHighlighter, HIGHLIGHT_THEME } from '../core/boot.js';
+import { initialView, loadHighlighter, HIGHLIGHT_THEME, addScripts, addStylesheets, glenStylesheets, PAGE_SCRIPTS, PAGE_STYLESHEETS } from '../core/boot.js';
 
 describe('initialView', () => {
     it('opens on the whole world without a view', () => {
@@ -99,5 +99,78 @@ describe('loadStylesheets: the harness chat.css in glen\'s place in the cascade 
         document.head.insertAdjacentHTML('beforeend', `<link rel="stylesheet" href="${H}">`);
         await loadStylesheets([H]);
         expect(document.head.querySelectorAll(`link[href="${H}"]`)).toHaveLength(1);
+    });
+});
+
+describe('the page\'s libraries and stylesheets (SchmidtDSE/glen#511)', () => {
+    const fresh = (head = '') => {
+        const doc = document.implementation.createHTMLDocument('t');
+        doc.head.innerHTML = head;
+        return doc;
+    };
+    // jsdom does not fetch; fire each added tag's load event by hand.
+    const settle = (doc) => doc.querySelectorAll('script, link').forEach((el) => el.onload?.());
+
+    it('pins each library with a version and an integrity hash', () => {
+        for (const s of [...PAGE_SCRIPTS, ...PAGE_STYLESHEETS]) {
+            expect(s.src || s.href).toMatch(/@\d+\.\d+\.\d+\//);
+            expect(s.integrity).toMatch(/^sha384-/);
+        }
+        expect(PAGE_SCRIPTS.map((s) => s.global)).toEqual(['maplibregl', 'pmtiles']);
+    });
+
+    it('adds a script per missing library, with its hash, and skips what the page has', async () => {
+        const doc = fresh('<script src="https://unpkg.com/pmtiles@3.0.7/dist/pmtiles.js"></script>');
+        const done = addScripts([...PAGE_SCRIPTS, { global: 'marked', src: 'https://x/marked.js', integrity: 'sha384-m' }], { doc, win: { marked: {} } });
+        const added = [...doc.querySelectorAll('script')].slice(1);
+        expect(added.map((s) => s.src)).toEqual([PAGE_SCRIPTS[0].src]);
+        expect(added[0].integrity).toBe(PAGE_SCRIPTS[0].integrity);
+        expect(added[0].crossOrigin).toBe('anonymous');
+        settle(doc);
+        await done;
+    });
+
+    it('loads a script with no global after the one before it', async () => {
+        const doc = fresh();
+        const done = addScripts([
+            { global: 'hljs', src: 'https://x/hl.js', integrity: 'sha384-a' },
+            { src: 'https://x/sql.js', integrity: 'sha384-b' },
+        ], { doc, win: {} });
+        expect(doc.querySelectorAll('script')).toHaveLength(1);
+        doc.querySelector('script').onload();
+        await new Promise((r) => setTimeout(r, 0));
+        expect([...doc.querySelectorAll('script')].map((s) => s.src)).toEqual(['https://x/hl.js', 'https://x/sql.js']);
+        settle(doc);
+        await done;
+    });
+
+    it('resolves when a script fails, with a warning', async () => {
+        const doc = fresh();
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const done = addScripts([PAGE_SCRIPTS[0]], { doc, win: {} });
+        doc.querySelector('script').onerror();
+        await done;
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('maplibre-gl'));
+        warn.mockRestore();
+    });
+
+    it('puts glen\'s stylesheets before the page\'s own, and skips one the page links by a relative path', async () => {
+        const base = 'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.5.0/core/boot.js';
+        const sheets = [...PAGE_STYLESHEETS, ...glenStylesheets(base)];
+        expect(sheets.map((s) => s.href).slice(1)).toEqual(['style.css', 'chat.css', 'sidebar.css']
+            .map((f) => `https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.5.0/app/${f}`));
+        const doc = fresh('<base href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.5.0/core/"><link rel="stylesheet" href="../app/chat.css"><link rel="stylesheet" href="https://example.org/mine.css">');
+        const done = addStylesheets(sheets, { doc });
+        const hrefs = [...doc.querySelectorAll('link[rel="stylesheet"]')].map((l) => l.getAttribute('href'));
+        expect(hrefs).toEqual([
+            PAGE_STYLESHEETS[0].href,
+            'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.5.0/app/style.css',
+            'https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.5.0/app/sidebar.css',
+            '../app/chat.css',
+            'https://example.org/mine.css',
+        ]);
+        expect(doc.querySelector('link').integrity).toBe(PAGE_STYLESHEETS[0].integrity);
+        settle(doc);
+        await done;
     });
 });
