@@ -1099,7 +1099,9 @@ export class MapManager {
      *
      * See docs/superpowers/specs/2026-04-16-add-hex-tile-layer-design.md for the
      * full contract. Idempotent by hash: re-adding a URL whose hash is already
-     * registered returns {already_exists: true} without mutating the map.
+     * registered returns {already_exists: true} and adds nothing. A vector
+     * layer is restyled in place when the call's colours differ (value column,
+     * range, scale, palette), and says so with `restyled`.
      *
      * @param {Object} opts
      * @param {string} opts.tileUrl - from register_hex_tiles.tile_url_template, or
@@ -1153,6 +1155,29 @@ export class MapManager {
         // Idempotency: same URL → same layer → no re-add
         if (this.layers.has(layerId)) {
             const state = this.layers.get(layerId);
+            // A vector layer takes the call's colours in place, so a second
+            // call with a new range or scale is not a silent no-op.
+            if (state.legendType === 'hex' && !state.hexFlat) {
+                const before = JSON.stringify([state.defaultPaint, state.hexPalette, state.valueColumn]);
+                const res = this.updateHexTileLayer(layerId, { tileUrl, valueColumn, valueStats, scale: opts.scale, palette });
+                if (!res.success) return res;
+                const restyled = before !== JSON.stringify([state.defaultPaint, state.hexPalette, state.valueColumn]);
+                return {
+                    success: true,
+                    layer_id: layerId,
+                    display_name: state.displayName,
+                    value_column: valueColumn,
+                    bounds,
+                    scale: res.scale,
+                    palette: res.palette,
+                    ...describeHexRange(valueStats),
+                    already_exists: true,
+                    restyled,
+                    message: restyled
+                        ? 'The layer was already drawn; it now takes this call\'s colours (value column, range, scale and palette). Opacity and 3D stay as first drawn; use remove_hex_tile_layer first to change those.'
+                        : 'The layer is already drawn with these colours.',
+                };
+            }
             return {
                 success: true,
                 layer_id: layerId,
@@ -1340,9 +1365,10 @@ export class MapManager {
      * @param {string} opts.valueColumn
      * @param {{by_res: Object}} opts.valueStats
      * @param {'linear'|'log'} [opts.scale] - default: the scale the layer was added with
-     * @returns {{success: boolean, layer_id?: string, scale?: string, error?: string}}
+     * @param {string} [opts.palette] - one of PALETTES; default: the layer's
+     * @returns {{success: boolean, layer_id?: string, scale?: string, palette?: string, error?: string}}
      */
-    updateHexTileLayer(layerId, { tileUrl, valueColumn, valueStats, scale: wantScale } = {}) {
+    updateHexTileLayer(layerId, { tileUrl, valueColumn, valueStats, scale: wantScale, palette: wantPalette } = {}) {
         const state = this.layers.get(layerId);
         if (!state || state.legendType !== 'hex') return { success: false, error: `Unknown hex layer '${layerId}'` };
         if (state.hexFlat) return { success: false, error: `Hex layer '${layerId}' reads one GeoJSON file and cannot be rebuilt in place` };
@@ -1350,17 +1376,21 @@ export class MapManager {
         if (!Object.keys(valueStats?.by_res || {}).length) return { success: false, error: 'value_stats.by_res must contain at least one resolution' };
         const requested = wantScale === 'log' || wantScale === 'linear' ? wantScale : (state.hexRequestedScale || 'linear');
         const scale = applicableScale(requested, valueStats);
+        const palette = PALETTES[wantPalette] ? wantPalette : (state.hexPalette || 'viridis');
         let fillColor;
         let heightExpr;
         try {
-            fillColor = buildFillColorExpression(valueColumn, valueStats, state.hexPalette, scale);
+            fillColor = buildFillColorExpression(valueColumn, valueStats, palette, scale);
             if (state.extruded) heightExpr = buildHeightExpression(valueColumn, valueStats, state.hexMaxHeight, scale);
         } catch (err) {
             return { success: false, error: err.message };
         }
-        const source = this.map.getSource(state.sourceId);
-        if (typeof source?.setTiles !== 'function') return { success: false, error: `Hex layer '${layerId}' has no tile source to update` };
-        source.setTiles([tileUrl]);
+        // The same tileset (a restyle) needs no reload.
+        if (tileUrl !== state.hexTileUrl) {
+            const source = this.map.getSource(state.sourceId);
+            if (typeof source?.setTiles !== 'function') return { success: false, error: `Hex layer '${layerId}' has no tile source to update` };
+            source.setTiles([tileUrl]);
+        }
         const paint = state.extruded
             ? { 'fill-extrusion-color': fillColor, 'fill-extrusion-height': heightExpr }
             : { 'fill-color': fillColor };
@@ -1370,12 +1400,13 @@ export class MapManager {
             hexValueStats: valueStats,
             hexScale: scale,
             hexRequestedScale: requested,
+            hexPalette: palette,
             hexTileUrl: tileUrl,
             defaultPaint: { ...state.defaultPaint, ...paint },
         });
         if (state.currentPaint) state.currentPaint = null;
         this._refreshLegend(layerId);
-        return { success: true, layer_id: layerId, value_column: valueColumn, scale, ...describeHexRange(valueStats) };
+        return { success: true, layer_id: layerId, value_column: valueColumn, scale, palette, ...describeHexRange(valueStats) };
     }
 
     /** Hide or show a layer's row in the layer panel, as a live hex layer's `when` does. */
