@@ -48,9 +48,21 @@ Only maplibre (script and CSS), pmtiles, and glen's own three stylesheets have n
 
 ## Costs
 
-- **Start-up time.** A script tag in the page starts downloading when the HTML is parsed, alongside `main.js`. A tag added by `main.js` starts only after glen's module graph has loaded, which costs one round trip before maplibre arrives. maplibre is the largest file, so this needs measuring on the preview against today's page before deciding.
-  - If the cost matters, the template can keep one optional `<link rel="preload">` for maplibre. That line is an optimisation, not a requirement, and skipping it only costs time.
-  - Alternatively, `main.js` can start these loads at the top of its first module, before its CDN imports resolve.
+- **Start-up time: measured, no cost.** A script tag in the page starts downloading when the HTML is parsed. A tag added by `main.js` starts only once glen's own modules have loaded. To narrow that gap, `main.js` starts these loads at the top of its first module, beside the harness import.
+
+  A prototype (branch `page-deps`) was timed against main's preview with the same fixture: cold cache, headless Chrome, alternating runs, medians.
+
+  | Connection | Map drawn, main | Map drawn, prototype | Chat ready, main | Chat ready, prototype |
+  |---|---|---|---|---|
+  | Unthrottled (5 runs) | 1.52 s | 1.27 s | 2.35 s | 1.76 s |
+  | 150 ms round trip, 12 Mbps (9 runs) | 4.46 s | 4.33 s | 7.89 s | 7.77 s |
+  | 300 ms round trip, 4 Mbps (5 runs) | 8.67 s | 7.25 s | 15.8 s | 14.4 s |
+
+  At 150 ms, maplibre does start about 0.9 s later. The map still waits on the config and catalog, which take longer, so the later start costs nothing.
+
+  The prototype comes out slightly ahead because of the page's four classic scripts. Without them in `<head>`, the browser starts glen's module, and with it the config and catalog requests, sooner.
+
+  These were a few runs from one machine over simulated connections, so the gain is small. There is no regression, and no preload line is needed.
 - **Stylesheet order.** glen's sheets must come before the app's own, so the app's rules still win ties. `loadStylesheets` in `core/boot.js` already places harness sheets this way (SchmidtDSE/glen#510). glen's three sheets would follow the same rule, inserted before the page's first stylesheet.
 - **A page without JavaScript modules** shows nothing either way, so nothing changes there.
 - **One list to keep current.** The marked, DOMPurify and highlight.js entries come from the harness (`CHAT_SCRIPTS`), so glen lists only maplibre and pmtiles. A test checks that each entry has a hash and a pinned version.
