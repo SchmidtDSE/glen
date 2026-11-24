@@ -19,7 +19,7 @@
 export function normalizeLegendClasses(raw) {
     if (!Array.isArray(raw) || raw.length === 0) return null;
     return raw.map(c => ({
-        name: c.name ?? c.label ?? (c.value != null ? `Class ${c.value}` : ''),
+        name: c.title ?? c.name ?? c.label ?? (c.value != null ? `Class ${c.value}` : ''),
         'color-hint': c['color-hint'] ?? c.color_hint ?? c.color ?? null,
         ...(c.value != null ? { value: c.value } : {}),
     }));
@@ -67,11 +67,12 @@ function hexColour(c) {
 /**
  * Legend classes from a render's categorical colormap, in its order and
  * colours, named from the band's classes where they share a value. A value
- * the render leaves out is not drawn.
+ * the render leaves out is not drawn. A class's `title` is its label; in the
+ * classification extension `name` is an identifier (SchmidtDSE/glen#528).
  */
 export function renderClasses(classColours, bandClasses = null) {
     if (!classColours) return null;
-    const names = new Map((bandClasses || []).map(c => [String(c.value), c.name]));
+    const names = new Map((bandClasses || []).map(c => [String(c.value), c.title ?? c.name]));
     const out = [];
     for (const [v, colour] of Object.entries(classColours)) {
         const hex = hexColour(colour);

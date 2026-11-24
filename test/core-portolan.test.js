@@ -805,6 +805,17 @@ describe('the full app\'s legend, control and GeoJSON settings in glen core', ()
         expect(m['c/tracks'].sourceLayer).toBeUndefined();
     });
 
+    it('labels a raster\'s classes by title, since name is an identifier (SchmidtDSE/glen#528)', async () => {
+        const titled = structuredClone(col);
+        titled.assets.lc.bands[0]['classification:classes'] = [
+            { value: 1, name: 'forest-savanna', title: 'Forest, Savanna', description: 'Closed and open canopy', color_hint: '00aa00' },
+            { value: 2, name: 'Water', color_hint: '0000ff' },
+        ];
+        const c = new PortolanCatalog({ fetchJson: async (u) => structuredClone(u === U ? titled : docs[u]), pmtilesMetadata: async () => null });
+        await c.load({ collections: [{ url: U, assets: ['lc'] }] });
+        expect(byId(c)['c/lc'].legendClasses.map(x => x.name)).toEqual(['Forest, Savanna', 'Water']);
+    });
+
     it('lets config replace a raster\'s classes, nodata and legend label, and the tiles follow', async () => {
         const c = make();
         await c.load({ collections: [{ url: U, assets: [{ id: 'lc', legend_label: 'Land cover',
