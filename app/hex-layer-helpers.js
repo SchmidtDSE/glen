@@ -76,6 +76,18 @@ export function applicableScale(scale, valueStats) {
     return mins.length > 0 && mins.every(m => typeof m === 'number' && m > -1) ? 'log' : 'linear';
 }
 
+/**
+ * The colour range a hex layer draws, for its tool result: one `[min, max]`
+ * when every resolution shares it, else `[min, max]` per resolution.
+ * @param {{by_res: Object<string, {min: number, max: number}>}} valueStats
+ * @returns {{range: number[]} | {range_by_res: Object<string, number[]>}}
+ */
+export function describeHexRange(valueStats) {
+    const entries = Object.entries(valueStats?.by_res || {}).map(([r, st]) => [r, [st?.min, st?.max]]);
+    const same = entries.length > 0 && entries.every(([, v]) => v[0] === entries[0][1][0] && v[1] === entries[0][1][1]);
+    return same ? { range: entries[0][1] } : { range_by_res: Object.fromEntries(entries) };
+}
+
 /** The ramp's input: the value, or ln(1 + value) on a log scale. */
 function rampInput(valueColumn, scale) {
     return scale === 'log'

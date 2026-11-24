@@ -28,6 +28,41 @@ export function chooseHexScale(requested, valueStats) {
 }
 
 /**
+ * Aggregations whose value means the same thing at every H3 level: a parent
+ * cell's average, minimum or maximum is on the scale of its children's, where
+ * a COUNT or SUM grows about seven times per level (SchmidtDSE/glen#521).
+ */
+const LEVEL_INVARIANT_AGGS = new Set(['AVG', 'MEAN', 'MIN', 'MAX']);
+
+/**
+ * The value_stats a hex layer is coloured by. By default each resolution
+ * spans its own min and max, which suits COUNT and SUM. An explicit `range`
+ * (SchmidtDSE/glen#520) or a level-invariant `agg` (SchmidtDSE/glen#521)
+ * puts one range on every resolution instead, so a colour means one value at
+ * every zoom: the given range, or the finest resolution's.
+ * @param {Object} valueStats - `{ by_res: { <res>: {min, max, …} }, suggested_scale? }`
+ * @param {{range?: number[], agg?: string}} [opts]
+ * @returns {{valueStats?: Object, error?: string}}
+ */
+export function hexColourStats(valueStats, { range, agg } = {}) {
+    if (range != null) {
+        const ok = Array.isArray(range) && range.length === 2 && range.every(Number.isFinite) && range[0] < range[1];
+        if (!ok) return { error: `add_hex_tile_layer: range must be [min, max] with min below max; got ${JSON.stringify(range)}.` };
+        return { valueStats: oneRange(valueStats, range[0], range[1]) };
+    }
+    if (!LEVEL_INVARIANT_AGGS.has(String(agg || '').toUpperCase())) return { valueStats };
+    const finest = Object.entries(valueStats?.by_res || {})
+        .filter(([, st]) => Number.isFinite(st?.min) && Number.isFinite(st?.max))
+        .sort((a, b) => Number(b[0]) - Number(a[0]))[0];
+    return { valueStats: finest ? oneRange(valueStats, finest[1].min, finest[1].max) : valueStats };
+}
+
+const oneRange = (valueStats, min, max) => ({
+    ...valueStats,
+    by_res: Object.fromEntries(Object.entries(valueStats.by_res).map(([r, st]) => [r, { ...st, min, max }])),
+});
+
+/**
  * Whether a value_stats object is usable for building a hex color ramp (#276):
  * an object with a non-empty `by_res` map.
  */
@@ -99,6 +134,7 @@ export async function resolveHexMetadata(args, fetchFn = globalThis.fetch, retry
     let bounds = (Array.isArray(args.bounds) && args.bounds.length === 4) ? args.bounds : undefined;
     let layerName = args.layer_name;
     let format;
+    let agg;
 
     // Fast path: the caller already supplied everything the renderer needs — no
     // network round-trip, and back-compat for manual/programmatic callers.
@@ -146,6 +182,7 @@ export async function resolveHexMetadata(args, fetchFn = globalThis.fetch, retry
                 }
                 layerName = layerName || meta.layer_name;
                 format = meta.format;
+                agg = meta.agg;
             }
         } catch (err) {
             // fetch() throws on a network error and on a response the page
@@ -177,7 +214,7 @@ export async function resolveHexMetadata(args, fetchFn = globalThis.fetch, retry
         return { error: `add_hex_tile_layer: could not resolve color-scale metadata (${missing}). ${read} `
             + `Check that the producing tool's tiles are reachable; do not make these values up.` };
     }
-    return { valueColumn, valueStats, bounds, layerName, format };
+    return { valueColumn, valueStats, bounds, layerName, format, agg };
 }
 
 /**
@@ -262,7 +299,7 @@ tile_url is the only required argument. value_stats, bounds and layer_name are f
 
 register_hex_tiles layers use the default format="vector". format="geojson" and geojson_url come only from a producing tool that supplies a geojson_url. Pass both from its result; geojson_url is not in the fetched metadata.
 
-The result's \`scale\` is the scale actually drawn; report that one to the user.
+The result's \`scale\`, \`palette\` and \`range\` (or \`range_by_res\`) are what is actually drawn; report those to the user.
 
 The returned layer_id works with show_layer, hide_layer, set_style, set_filter, get_map_state and remove_hex_tile_layer.`,
             inputSchema: {
@@ -292,6 +329,11 @@ The returned layer_id works with show_layer, hide_layer, set_style, set_filter, 
                         enum: ['viridis', 'ylorrd', 'bluered'],
                         description: 'Color ramp: viridis (sequential default), ylorrd (warm sequential), bluered (diverging)'
                     },
+                    range: {
+                        type: 'array',
+                        items: { type: 'number' },
+                        description: 'Optional [min, max]: one colour range for every H3 level, as when matching another layer\'s legend. Omit to colour COUNT and SUM tilesets per level and AVG, MIN and MAX tilesets over their finest level\'s range.'
+                    },
                     opacity: { type: 'number', description: 'Fill opacity 0..1 (default 0.7)' },
                     fit_bounds: { type: 'boolean', description: 'Fly the camera to fit bounds (default true)' },
                     extrude: { type: 'boolean', description: 'Render as 3D extruded hexes — value encoded as height as well as color — and tilt the camera. Default false (flat 2D fill). Use when the user asks for a 3D / extruded / "height" view.' },
@@ -319,11 +361,13 @@ The returned layer_id works with show_layer, hide_layer, set_style, set_filter, 
                 if (meta.format === 'geojson' && args.format !== 'geojson') {
                     return JSON.stringify({ success: false, error: 'add_hex_tile_layer: this tileset is published as GeoJSON only, so its .pbf tiles do not exist. Pass format "geojson" and the geojson_url from the producing tool\'s result.' });
                 }
+                const colour = hexColourStats(meta.valueStats, { range: args.range, agg: meta.agg });
+                if (colour.error) return JSON.stringify({ success: false, error: colour.error });
                 const displayName = args.display_name || `Hex: ${meta.valueColumn}`;
                 const result = mapManager.addHexTileLayer({
                     tileUrl: args.tile_url,
                     valueColumn: meta.valueColumn,
-                    valueStats: meta.valueStats,
+                    valueStats: colour.valueStats,
                     bounds: meta.bounds,
                     palette: args.palette || 'viridis',
                     opacity: args.opacity ?? 0.7,
