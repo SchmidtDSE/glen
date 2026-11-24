@@ -75,6 +75,16 @@ To start in globe projection:
 "view": { "center": [0, 20], "zoom": 2, "globe": true }
 ```
 
+### Links to the current view
+
+The page's address keeps what the reader has set, so a copied link opens on the same map ([#506](https://github.com/SchmidtDSE/glen/issues/506)). It needs no configuration. Once the reader moves the map the address gains `map=zoom/latitude/longitude`, with bearing and pitch after them when they are not 0. Turning the app's layers on and off adds `layers=` with the ids of the layers shown, and the key is dropped when they are back to the app's defaults. The [controls](#controls) add one key each. A link's view takes the place of `view` and of the opening fit to the data:
+
+```
+https://my-app.example.org/?map=9/18.1/-77.3&layers=parishes,road-blockages&years=2010,2020
+```
+
+The address is rewritten in place, so moving the map adds nothing to the browser's history. Layers the agent drew (hex layers, uploads) and charts it made are not in the link. A value in a link is checked before it is used: a view must be on the globe, a layer must be one of the app's, and a control's value must be one of its options.
+
 ## Collections
 
 Each entry in `collections` is a collection's URL, its id (found under `catalog`), or an object:
@@ -1121,7 +1131,7 @@ A control is written in the form of a glen-charts param: an id, a label, a token
 
 | Field | Description |
 |---|---|
-| `id` | **Required.** Letters, digits, `_` and `-`. |
+| `id` | **Required.** Letters, digits, `_` and `-`. It is the control's key in the [page's link](#links-to-the-current-view); a control called `map`, `layers` or `harness` is left out of the link. |
 | `label` | Text shown on the control. |
 | `token` | The token's name, used as `{{TOKEN}}` in SQL. Defaults to the id in capitals. |
 | `options` | **Required.** The choices: values, or objects with `value`, `label` and `tokens`. The value is always one of these, so it is safe in SQL. |
@@ -1131,6 +1141,8 @@ A control is written in the form of a glen-charts param: an id, a label, a token
 | `when` | `{ "<control id>": value or [values] }`: show the control only at those settings of the controls before it. Elsewhere it is hidden and held at its default. |
 | `tokens` | On a range, the two token names, low then high. Defaults to `{{TOKEN_MIN}}` and `{{TOKEN_MAX}}`. |
 | `all_label` | On a range, what to show when the full span is chosen, such as "All years". |
+
+**In the link.** A control away from its default is in the page's address under its id, `?years=2010,2020&land=soy`, and a link with those keys opens with the controls set, before any chart is drawn. A value that is not one of the control's options is ignored, so a hand-edited link cannot reach the SQL. A control the agent made is written too, but a link opened in a new session has no such control, so its key is ignored.
 
 **An option's `tokens`** are bound while it is chosen, so one choice can set a dataset's path, its value column and a unit label together. They are config text, not reader input, so they are safe in SQL.
 

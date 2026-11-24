@@ -246,6 +246,36 @@ export function fillText(text, tokens) {
     return text.replace(TOKEN_IN_TEXT, (m, k) => (Object.prototype.hasOwnProperty.call(tokens, k) ? tokens[k] : m));
 }
 
+/**
+ * A link's values for these params (SchmidtDSE/glen#506): { id: "value" },
+ * read by id from the query string, skipping the ids in `reserved`. They are
+ * only candidates: resolveParams keeps a value only when it is an option.
+ * @param {Object[]} params
+ * @param {URLSearchParams} query
+ * @param {Set<string>} [reserved]
+ */
+export function paramsFromLink(params, query, reserved = new Set()) {
+    const out = {};
+    for (const p of params) if (!reserved.has(p.id) && query.has(p.id)) out[p.id] = query.get(p.id);
+    return out;
+}
+
+/**
+ * The link's keys for these params: a param away from its default gets
+ * its value ("2005,2020" for a range), one at its default is removed (null).
+ */
+export function paramsToLink(params, values, reserved = new Set()) {
+    const out = {};
+    for (const p of params) {
+        if (reserved.has(p.id)) continue;
+        const v = values[p.id];
+        const text = Array.isArray(v) ? v.join(',') : String(v);
+        const def = paramDefault(p);
+        out[p.id] = v === undefined || text === (Array.isArray(def) ? def.join(',') : String(def)) ? null : text;
+    }
+    return out;
+}
+
 /* ── The bus ──────────────────────────────────────────────────────────── */
 
 export class ParamBus {

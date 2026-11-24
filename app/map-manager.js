@@ -901,7 +901,7 @@ export class MapManager {
         state.visible = true;
         if (state.type === 'animation') {
             if (state.animation) state.animation.setVisible(true);
-            return { success: true, layer: layerId, displayName: state.displayName, visible: true };
+            return this._visibilityChanged(layerId, true);
         }
         if (state.framePlayer) {
             // Its frames draw in place of the base layer, which shows only
@@ -915,7 +915,7 @@ export class MapManager {
         if (state.control) state.control.setVisible(true);
         if (this._hasLegend(state)) this._showLegend(layerId);
         this._syncToggleGroupLegends(layerId);
-        return { success: true, layer: layerId, displayName: state.displayName, visible: true };
+        return this._visibilityChanged(layerId, true);
     }
 
     /**
@@ -930,7 +930,7 @@ export class MapManager {
         state.visible = false;
         if (state.type === 'animation') {
             if (state.animation) state.animation.setVisible(false);
-            return { success: true, layer: layerId, displayName: state.displayName, visible: false };
+            return this._visibilityChanged(layerId, false);
         }
         this.map.setLayoutProperty(state.mapLayerId, 'visibility', 'none');
         if (state.outlineLayerId) this.map.setLayoutProperty(state.outlineLayerId, 'visibility', 'none');
@@ -938,7 +938,13 @@ export class MapManager {
         if (state.framePlayer) state.framePlayer.setVisible(false);
         if (this._hasLegend(state)) this._hideLegend(layerId);
         this._syncToggleGroupLegends(layerId);
-        return { success: true, layer: layerId, displayName: state.displayName, visible: false };
+        return this._visibilityChanged(layerId, false);
+    }
+
+    /** The result of showLayer or hideLayer, after telling onVisibilityChange (the app's link, app/link-state.js). */
+    _visibilityChanged(layerId, visible) {
+        try { this.onVisibilityChange?.(layerId, visible); } catch (err) { console.error('[Map] onVisibilityChange failed:', err); }
+        return { success: true, layer: layerId, displayName: this.layers.get(layerId)?.displayName, visible };
     }
 
     // ---- Uploaded Layers (client-side GeoJSON, opt-in — see upload-manager.js) ----

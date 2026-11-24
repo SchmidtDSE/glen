@@ -134,9 +134,10 @@ const plugin = {
     name: 'controls',
 
     async setup(ctx, options = {}) {
-        const [{ ParamBus }, { ControlPanel }] = await Promise.all([
+        const [{ ParamBus, paramsFromLink, paramsToLink, resolveParams }, { ControlPanel }, link] = await Promise.all([
             import('../../app/params.js'),
             import('../../app/control-panel.js'),
+            import('../../app/link-state.js'),
         ]);
         const bus = new ParamBus();
         const filters = [];
@@ -149,6 +150,19 @@ const plugin = {
                 console.warn('[controls] Control skipped:', err.message);
             }
         }
+        // The link's settings (SchmidtDSE/glen#506), held to each control's
+        // options, before anything is drawn with them.
+        const win = options.window ?? (typeof window !== 'undefined' ? window : null);
+        const given = paramsFromLink(bus.params, link.linkParams(win), link.RESERVED_LINK_KEYS);
+        if (Object.keys(given).length) bus.values = resolveParams(bus.params, { ...bus.values, ...given });
+        // From here the link follows the controls; a removed control leaves it.
+        let written = new Set(Object.keys(given));
+        bus.subscribe(() => {
+            const entries = paramsToLink(bus.params, bus.values, link.RESERVED_LINK_KEYS);
+            for (const id of written) if (!(id in entries)) entries[id] = null;
+            written = new Set(Object.keys(entries).filter(id => entries[id] != null));
+            link.updateLink(entries, win);
+        });
         // Read by the charts plugin when a chart is drawn.
         ctx.params = bus;
 
