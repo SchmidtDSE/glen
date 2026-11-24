@@ -9,13 +9,13 @@ An app pinned to a v3 tag keeps working as it is, because jsDelivr serves each t
 `scripts/convert-to-core.mjs` converts an app's `layers-input.json` and `index.html`. Run it from a clone of glen, using the latest v4 tag:
 
 ```bash
-node scripts/convert-to-core.mjs layers-input.json --ref v4.0.5 > layers-input.core.json
-node scripts/convert-to-core.mjs index.html --ref v4.0.5 > index.core.html
+node scripts/convert-to-core.mjs layers-input.json --ref v4.5.0 > layers-input.core.json
+node scripts/convert-to-core.mjs index.html --ref v4.5.0 > index.core.html
 ```
 
 The script prints a note for every key it moved or dropped. Read them before you replace the old files.
 
-In `index.html`, the module script loads `core/main.js` in place of `app/main.js`, and every glen URL moves to the new tag. The stylesheets keep their paths in `app/`.
+In `index.html`, the module script loads `core/main.js` in place of `app/main.js`, and every glen URL moves to the new tag, including URLs that still name `boettiger-lab/geo-agent`. From v4.5.0, glen core adds MapLibre, PMTiles, h3-js, marked, DOMPurify, highlight.js and glen's stylesheets itself, so the converter removes their tags, with the comment just before each, and the MCP SDK's import map, which v4 does not use. A note names each one it removed. For an earlier tag it keeps them, since those releases need them. Comments elsewhere in the page that describe the old tags are left for you to edit. The same command moves a page already on glen core to a newer tag.
 
 In `layers-input.json`, collections and their layer settings carry over unchanged, because glen core reads them by the same names. The opt-in features become plugins, described in the next section.
 

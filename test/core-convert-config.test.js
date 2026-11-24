@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { convertConfig, convertIndexHtml, DEFAULT_MCP_URL } from '../core/convert-config.js';
+import { convertConfig, convertIndexHtml, loadsOwnLibraries, DEFAULT_MCP_URL } from '../core/convert-config.js';
 import { resolveServers } from '../core/plugins/mcp.js';
 
 const B = 'https://cdn/core/plugins';
@@ -87,5 +87,72 @@ describe('converting a v3 index.html to glen core', () => {
         expect(html).toContain('glen@v4.0.0/app/style.css');
         expect(html).toContain('src="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.0.0/core/main.js"');
         expect(html).toContain('maplibre-gl@5.22.0');
+    });
+
+    const V3_PAGE = `<head>
+    <!-- MapLibre GL JS -->
+    <script src="https://unpkg.com/maplibre-gl@5.20.0/dist/maplibre-gl.js"
+        integrity="sha384-a" crossorigin="anonymous"></script>
+    <link href="https://unpkg.com/maplibre-gl@5.20.0/dist/maplibre-gl.css" rel="stylesheet"
+        integrity="sha384-b" crossorigin="anonymous" />
+    <script src="https://unpkg.com/pmtiles@3.0.7/dist/pmtiles.js" integrity="sha384-c" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/h3-js@4.1.0/dist/h3-js.umd.js" integrity="sha384-d" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@18.0.5/lib/marked.umd.js" integrity="sha384-e" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.8/dist/purify.min.js" integrity="sha384-f" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/geo-agent@v3.40.0/app/style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.45.1/app/chat.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.45.1/app/sidebar.css">
+    <link rel="stylesheet" href="my-app.css">
+    <link rel="icon" href="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.45.1/app/assets/favicon.svg">
+    <script src="https://example.org/analytics.js"></script>
+</head>
+<body>
+    <div id="map"></div>
+    <script type="module" src="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v3.45.1/app/main.js"></script>
+</body>`;
+
+    it('removes the tags glen core adds itself from v4.5.0, with their comments, and keeps the rest', () => {
+        const { html, changed, removed } = convertIndexHtml(V3_PAGE, 'v4.5.0');
+        expect(removed).toHaveLength(11);
+        expect(html).not.toMatch(/maplibre-gl|pmtiles|h3-js|marked|dompurify|highlight\.js|style\.css|chat\.css|sidebar\.css|MapLibre GL JS/);
+        expect(html).toContain('<link rel="stylesheet" href="my-app.css">');
+        expect(html).toContain('https://example.org/analytics.js');
+        expect(html).toContain('glen@v4.5.0/app/assets/favicon.svg');
+        expect(html).toContain('src="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.5.0/core/main.js"');
+        expect(changed).toBe(2);
+    });
+
+    it('moves a glen core page to the release, leaving no run of blank lines', () => {
+        const page = '<head>\n    <script src="https://unpkg.com/pmtiles@3.0.7/dist/pmtiles.js"></script>\n\n    <script src="https://cdn.jsdelivr.net/npm/marked@18.0.5/lib/marked.umd.js"></script>\n\n\n    <style></style>\n</head>\n<script type="module" src="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.2.1/core/main.js"></script>';
+        const { html, changed } = convertIndexHtml(page, 'v4.5.0');
+        expect(changed).toBe(1);
+        expect(html).toContain('glen@v4.5.0/core/main.js');
+        expect(html).not.toMatch(/\n[ \t]*\n[ \t]*\n/);
+    });
+
+    it('reads a page that still loads boettiger-lab/geo-agent, and drops its MCP import map', () => {
+        const page = `<script type="importmap">
+    { "imports": { "@modelcontextprotocol/sdk/client/index.js": "https://esm.sh/@modelcontextprotocol/sdk@1.12.0/client/index" } }
+    </script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/boettiger-lab/geo-agent@v3.24.0/app/style.css">
+    <script type="module" src="https://cdn.jsdelivr.net/gh/boettiger-lab/geo-agent@v3.24.0/app/main.js"></script>`;
+        const { html, changed, removed } = convertIndexHtml(page, 'v4.5.0');
+        expect(changed).toBe(1);
+        expect(html).toContain('src="https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@v4.5.0/core/main.js"');
+        expect(html).not.toMatch(/importmap|style\.css/);
+        expect(removed).toContain('importmap (@modelcontextprotocol/sdk)');
+        const other = '<script type="importmap">{ "imports": { "lodash": "https://x/lodash.js" } }</script>';
+        expect(convertIndexHtml(other, 'v4.5.0').html).toBe(other);
+    });
+
+    it('keeps every tag for an earlier release or a commit, which need them', () => {
+        for (const ref of ['v4.4.0', 'v3.53.0', '4638c4adaf89d483d76563280e60894d8906f363']) {
+            const { html, removed } = convertIndexHtml(V3_PAGE, ref);
+            expect(removed).toEqual([]);
+            expect(html).toContain('maplibre-gl@5.20.0/dist/maplibre-gl.js');
+        }
+        expect([loadsOwnLibraries('v4.5.0'), loadsOwnLibraries('v4.10.0'), loadsOwnLibraries('v5.0.0'), loadsOwnLibraries('v4.4.9')]).toEqual([true, true, true, false]);
     });
 });

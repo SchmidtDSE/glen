@@ -93,21 +93,65 @@ export function convertConfig(v3, { pluginBase = 'https://cdn.jsdelivr.net/gh/Sc
     return { config, notes };
 }
 
+/** The libraries glen core loads itself (core/boot.js, glen-harness's CHAT_SCRIPTS, app/h3-grid.js). */
+const CORE_LIBRARIES = /\/(maplibre-gl|pmtiles|h3-js|marked|dompurify|highlight\.js)(?=[@/])/i;
+const GLEN_STYLESHEET = /\/gh\/(?:SchmidtDSE|boettiger-lab)\/(?:glen|geo-agent)@[^/"']+\/app\/(?:style|chat|sidebar)\.css\b/;
+// A <script src=…></script> or <link …>, with an HTML comment just before it.
+const TAG = /(?:[ \t]*<!--(?:(?!-->)[\s\S])*-->[ \t]*\r?\n)?[ \t]*(<script\b[^>]*>\s*<\/script>|<link\b[^>]*>)[ \t]*\r?\n?/gi;
+const urlOf = (tag) => tag.match(/\b(?:src|href)\s*=\s*["']([^"']+)["']/i)?.[1] || '';
+
+/**
+ * Whether glen at `ref` adds the libraries itself: v4.5.0 and later
+ * (SchmidtDSE/glen#537). A commit or an older tag keeps the page's tags,
+ * which work with every release.
+ */
+export function loadsOwnLibraries(ref) {
+    const m = /^v(\d+)\.(\d+)\.(\d+)$/.exec(String(ref || ''));
+    if (!m) return false;
+    const [maj, min] = [Number(m[1]), Number(m[2])];
+    return maj > 4 || (maj === 4 && min >= 5);
+}
+
 /**
  * Point a v3 app's index.html at glen core: its module script loads
- * `core/main.js` instead of `app/main.js`, and every glen URL (the script and
- * the stylesheets, which core shares) moves to the release `ref`. The page's
- * element ids and libraries stay as they are; glen core uses the same ones.
+ * `core/main.js` instead of `app/main.js`, and its other glen URLs, `core/`
+ * ones included, move to the release `ref`. A page already on glen core is
+ * upgraded the same way. The tags for the libraries glen core now adds itself
+ * (MapLibre, PMTiles, h3-js, marked, DOMPurify, highlight.js) and for glen's
+ * three stylesheets are removed, with the comment just before each, when
+ * `ref` is v4.5.0 or later (docs/design/page-dependencies.md). A page that needs another version of a
+ * library can list it again; glen core leaves it alone. The element ids stay
+ * as they are; glen core uses the same ones.
  *
  * @param {string} html
- * @param {string} ref - the glen release to pin, e.g. "v4.0.0"
- * @returns {{html: string, changed: number}} the page, and how many glen URLs changed
+ * @param {string} ref - the glen release to pin, e.g. "v4.5.0"
+ * @returns {{html: string, changed: number, removed: string[]}} the page, how
+ *   many glen URLs changed, and the URLs of the tags removed
  */
 export function convertIndexHtml(html, ref) {
-    let changed = 0;
-    const out = String(html).replace(/(https:\/\/cdn\.jsdelivr\.net\/gh\/SchmidtDSE\/(?:glen|geo-agent))@[^/"']+\/app\/(main\.js|[\w./-]+)/g, (m, repo, path) => {
-        changed++;
-        return `https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@${ref}/${path === 'main.js' ? 'core/main.js' : `app/${path}`}`;
+    const removed = [];
+    let out = !loadsOwnLibraries(ref) ? String(html) : String(html).replace(TAG, (m, tag) => {
+        const url = urlOf(tag);
+        const isScriptOrSheet = /^<script/i.test(tag) || /\brel\s*=\s*["']stylesheet["']/i.test(tag);
+        if (!isScriptOrSheet || !(CORE_LIBRARIES.test(url) || GLEN_STYLESHEET.test(url))) return m;
+        removed.push(url);
+        return '';
     });
-    return { html: out, changed };
+    // v3 pages mapped the MCP SDK for app/mcp-client.js; glen core bundles
+    // its own (glen-harness), so an import map of only that goes.
+    out = out.replace(/[ \t]*<script\s+type=["']importmap["'][^>]*>([\s\S]*?)<\/script>[ \t]*\r?\n?/gi, (m, body) => {
+        let imports;
+        try { imports = Object.keys(JSON.parse(body).imports || {}); } catch { return m; }
+        if (!imports.length || !imports.every(k => k.startsWith('@modelcontextprotocol/'))) return m;
+        removed.push('importmap (@modelcontextprotocol/sdk)');
+        return '';
+    });
+    // Where tags were removed, leave at most one blank line.
+    if (removed.length) out = out.replace(/\n(?:[ \t]*\r?\n){2,}/g, '\n\n');
+    let changed = 0;
+    out = out.replace(/(https:\/\/cdn\.jsdelivr\.net\/gh\/(?:SchmidtDSE|boettiger-lab)\/(?:glen|geo-agent))@[^/"']+\/(app|core)\/(main\.js|[\w./-]+)/g, (m, repo, dir, path) => {
+        changed++;
+        return `https://cdn.jsdelivr.net/gh/SchmidtDSE/glen@${ref}/${dir === 'app' && path === 'main.js' ? 'core/main.js' : `${dir}/${path}`}`;
+    });
+    return { html: out, changed, removed };
 }
