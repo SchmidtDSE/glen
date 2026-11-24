@@ -91,3 +91,105 @@ export function loadStylesheets(hrefs, { doc = document } = {}) {
         return done;
     })).then(() => {});
 }
+
+/**
+ * The libraries glen core needs as page globals, with the versions and
+ * integrity hashes apps used to list in their index.html (SchmidtDSE/glen#511,
+ * docs/design/page-dependencies.md). marked, DOMPurify and highlight.js come
+ * from the harness's own list (CHAT_SCRIPTS); h3-js loads with the hex grid.
+ */
+export const PAGE_SCRIPTS = [
+    {
+        global: 'maplibregl',
+        src: 'https://unpkg.com/maplibre-gl@5.22.0/dist/maplibre-gl.js',
+        integrity: 'sha384-U054LTKiMIJKEecR8PKFiUZdvkGWHjfPBnen5hSmR9TwfOfgZmKbskC8Rs9dCm/1',
+    },
+    {
+        global: 'pmtiles',
+        src: 'https://unpkg.com/pmtiles@3.0.7/dist/pmtiles.js',
+        integrity: 'sha384-MjejsnWXHmuz93aE35YWLh5AbS/6ceRB3Vb+ukOwqFzJRTpQ8vvbkLbNV7I0QK4f',
+    },
+];
+
+export const PAGE_STYLESHEETS = [
+    {
+        href: 'https://unpkg.com/maplibre-gl@5.22.0/dist/maplibre-gl.css',
+        integrity: 'sha384-MGCxhspF/+ufueUgol3FDkiAYQbpSNRhBT0VWHJt64U8qIy9qlnXWx8LAbj6niPH',
+    },
+];
+
+/** glen's own stylesheets, beside this module's release: app/style.css, chat.css and sidebar.css. */
+export function glenStylesheets(base = import.meta.url) {
+    return ['style.css', 'chat.css', 'sidebar.css'].map((f) => ({ href: new URL(`../app/${f}`, base).href }));
+}
+
+const sameUrl = (el, attr, url, doc) => {
+    const v = el.getAttribute(attr);
+    return v != null && new URL(v, doc.baseURI).href === url;
+};
+
+/**
+ * Add stylesheets the page does not already link, in order, before the
+ * page's first stylesheet or <style>, so the page's own rules still win
+ * ties. A sheet the page links, by any relative or absolute spelling, is left
+ * where it is. Resolves once the added sheets have loaded or failed.
+ *
+ * @param {Array<{href: string, integrity?: string}>} sheets
+ * @param {Object} [opts]
+ * @param {Document} [opts.doc]
+ */
+export function addStylesheets(sheets, { doc = document } = {}) {
+    const anchor = doc.head.querySelector('link[rel="stylesheet"], style');
+    const links = [...doc.querySelectorAll('link[rel="stylesheet"]')];
+    return Promise.all(sheets.map(({ href, integrity }) => {
+        const url = new URL(href, doc.baseURI).href;
+        if (links.some((l) => sameUrl(l, 'href', url, doc))) return null;
+        const link = doc.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = url;
+        if (integrity) { link.integrity = integrity; link.crossOrigin = 'anonymous'; }
+        const done = new Promise((resolve) => {
+            link.onload = resolve;
+            link.onerror = () => { console.warn(`[core] Could not load ${url}`); resolve(); };
+        });
+        if (anchor) anchor.before(link); else doc.head.append(link);
+        return done;
+    })).then(() => {});
+}
+
+/**
+ * Add script tags, with their integrity hashes, for the libraries the page
+ * does not already have (by its global, or a tag with the same src). They
+ * download in parallel; an entry with no global (such as highlight.js's SQL
+ * grammar) waits for the entry before it, which it registers with. A script
+ * that fails is logged, and the promise still resolves; the caller checks
+ * the globals it needs.
+ *
+ * @param {Array<{src: string, integrity: string, global?: string}>} scripts
+ * @param {Object} [opts]
+ * @param {Document} [opts.doc]
+ * @param {Object} [opts.win] - where the globals live
+ * @returns {Promise<void>}
+ */
+export function addScripts(scripts, { doc = document, win = globalThis } = {}) {
+    const tags = [...doc.querySelectorAll('script[src]')];
+    let prev = Promise.resolve();
+    const all = scripts.map((s) => {
+        const present = (s.global && win[s.global] !== undefined) || tags.some((t) => sameUrl(t, 'src', s.src, doc));
+        const load = () => new Promise((resolve) => {
+            const el = doc.createElement('script');
+            el.src = s.src;
+            el.integrity = s.integrity;
+            el.crossOrigin = 'anonymous';
+            // Added by script, a tag is async by default; keep the list's order.
+            el.async = false;
+            el.onload = resolve;
+            el.onerror = () => { console.warn(`[core] Could not load ${s.src}`); resolve(); };
+            doc.head.appendChild(el);
+        });
+        const p = present ? Promise.resolve() : (s.global ? load() : prev.then(load));
+        prev = p;
+        return p;
+    });
+    return Promise.all(all).then(() => {});
+}

@@ -194,9 +194,12 @@ glen core loads glen-harness from `cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@<
 esbuild so apps have no runtime dependency on a third-party ESM host (#343).
 Rebuild with `pnpm run build:vendor`; CI fails if the committed file doesn't
 match a fresh build. Never hand-edit it, and see `app/vendor/README.md` before
-bumping its version. Every other third-party library stays in the app's
-`index.html` as an SRI-hashed `<script>` tag — that split is deliberate, see
-#344.
+bumping its version. Every other third-party library loads from its CDN as
+an SRI-hashed page-global `<script>` tag, which glen core adds itself unless
+the page already has one: MapLibre and PMTiles from `PAGE_SCRIPTS` in
+`core/boot.js`, the chat's libraries from glen-harness's `CHAT_SCRIPTS`, h3-js
+from `app/h3-grid.js`. See `docs/design/page-dependencies.md` (which amends
+#344).
 
 ## Testing
 
@@ -248,7 +251,7 @@ When a PR touches a covered module, expect tests to change too. When it touches 
 | `core/harness.js` | covered | `test/core-harness.test.js` — one release tag, the page's `GLEN_HARNESS_URL`, `?harness=` taken only on localhost. `test/core-module-graph.test.js` checks no other module writes a harness URL. |
 | `app/link-state.js` | covered | `test/link-state.test.js` — the view, layers and other keys in the link, malformed values dropped, layers kept to the app's, only changes from the defaults written; `test/params.test.js` and `test/core-controls-plugin.test.js` — controls read from the link and held to their options, written when changed, removed at their defaults or when the control is removed. The wiring in `core/main.js` is browser-bound; verify at `/core/` with a link. |
 | `app/boot-progress.js` | covered | `test/boot-progress.test.js` — the overlay from the start, a bar that never moves backwards, the swap to the bottom bar once the map is up, the chat input held and given back, failures on the overlay or the bar. The look is browser-bound; verify at `/core/`. |
-| `core/boot.js` | covered | `test/core-boot.test.js` — main.js's testable pieces: the opening view (zoom 6 for a center without a zoom) and loading highlight.js with its theme from the harness's script list. |
+| `core/boot.js` | covered | `test/core-boot.test.js` — main.js's testable pieces: the opening view (zoom 6 for a center without a zoom), loading highlight.js with its theme from the harness's script list, and the page's libraries and glen's stylesheets (SchmidtDSE/glen#511): each pinned with a hash, skipped when the page has it, in order, before the page's own stylesheets. |
 | `core/plugins/mcp.js` | covered | `test/core-mcp-plugin.test.js` — server list resolution, rank and filters per server, per-server reconnect, unreachable servers, three tries with a backoff (none after a refused token), the stand-in `query` tool and chat notice for an unreachable first server, its tools returning on reconnect and its SQL sent under the server's own argument name, optional servers connecting in the background, prompt order, the MCP client from `core/harness.js`'s tag, the local catalog tools over Portolan collections (relative hrefs, the collection's column dictionary, no server catalog tools), and servers in a Web Worker (#457). Check a worker change against geo-query-wasm at `/core/`. |
 | `core/plugins/charts.js`, `app/chart-tool.js`, `app/chart-renderer.js`, `app/svg-bar-chart.js` | covered | `test/core-charts-plugin.test.js` — `render_chart` registered by the core plugin, SQL through the registered `query` tool and its argument name, the error without one; `test/map-tools.test.js` — the tool itself; `test/live-charts.test.js` — chart cards in the side panel (after Settings, newest first), updates in place by `chart_id`, charts re-run when a control changes a token they use (debounced, a stale run dropped, errors on the card, `when` hiding and deferring), tokens in labels, configured charts; `test/svg-bar-chart.test.js` — glen-charts' SVG bars and the long-to-wide rows for `series`. The look is browser-bound; verify on a preview. |
 | `core/plugins/controls.js`, `app/params.js`, `app/control-panel.js` | covered | `test/params.test.js` — params ported from glen-charts: values held to options, range tokens, option tokens, `when` drill-downs, comment-aware token expansion, the bus and which tokens a change touched; `test/core-controls-plugin.test.js` — the Settings section, `create_control` (param and filter), `remove_widget`, `get_map_state`, the prompt, and the controls' markup and events. The look is browser-bound; verify on a preview. |

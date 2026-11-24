@@ -31,7 +31,7 @@ import { PortolanCatalog, exportCatalogView } from './portolan-catalog.js';
 import { createCoreMapTools } from './map-tools.js';
 import { loadPrompts } from './prompt.js';
 import { ensurePanelActions } from '../app/panel-actions.js';
-import { initialView, loadHighlighter, loadStylesheets } from './boot.js';
+import { initialView, loadHighlighter, loadStylesheets, addScripts, addStylesheets, glenStylesheets, PAGE_SCRIPTS, PAGE_STYLESHEETS } from './boot.js';
 import { createBootProgress } from '../app/boot-progress.js';
 import { bindMapLink, linkParams, parseMapView } from '../app/link-state.js';
 
@@ -43,6 +43,11 @@ import { bindMapLink, linkParams, parseMapView } from '../app/link-state.js';
 // never blank while it loads, and says so if it cannot (SchmidtDSE/glen#512).
 const AUTO_START = typeof window !== 'undefined' && !window.GLEN_CORE_MANUAL_START;
 let earlyProgress = AUTO_START ? createBootProgress() : null;
+// MapLibre, PMTiles and glen's stylesheets, unless the page already has them
+// (SchmidtDSE/glen#511). They start downloading now, beside the harness.
+const pageDeps = typeof document !== 'undefined'
+    ? Promise.all([addStylesheets([...PAGE_STYLESHEETS, ...glenStylesheets()]), addScripts(PAGE_SCRIPTS)])
+    : Promise.resolve();
 let harness;
 try {
     harness = await Promise.all(['src/core.js', 'ui/chat-ui.js', 'ui/deps.js'].map(p => import(harnessUrl(p))));
@@ -111,7 +116,11 @@ async function boot(extraPlugins, progress) {
         fetchJson('layers-input.json'),
         fetchJson('config.json').catch(() => null),
         loadStylesheets(chatStylesheets({ docked: false })),
+        pageDeps,
     ]);
+    if (typeof maplibregl === 'undefined') throw new Error('MapLibre GL JS did not load');
+    // marked and DOMPurify, which the chat renders the model's answers with.
+    const chatScripts = addScripts(CHAT_SCRIPTS.filter((x) => !x.src.includes('/highlight.js/')));
     mergeRuntimeConfig(appConfig, runtimeConfig);
     // A user-provided key builds the model list from what this browser saved
     // (glen#443). Otherwise, behind open-llm-proxy, the picker shows the
@@ -239,6 +248,7 @@ async function boot(extraPlugins, progress) {
     // It redraws the session's charts with the charts plugin's renderer.
     appConfig.export ??= false;
     progress.done();
+    await chatScripts;
     const ui = new GlenChatUI(agent, appConfig, layoutRefs.chatMount, mapManager, ctx.charts || null);
     ui.catalog = exportCatalogView(catalog);
     ctx.agent = agent;

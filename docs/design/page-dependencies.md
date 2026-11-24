@@ -1,6 +1,6 @@
 # Who loads glen's third-party scripts
 
-**Status: proposal, for SchmidtDSE/glen#511 (deployer papercut).** If it is accepted, it amends the decision recorded in SchmidtDSE/glen#344, and this note becomes the record.
+**Status: accepted (SchmidtDSE/glen#536), built in v4.5.0, for SchmidtDSE/glen#511 (deployer papercut).** It amends the decision recorded in SchmidtDSE/glen#344.
 
 ## The problem
 
