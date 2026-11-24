@@ -34,6 +34,9 @@ async function setup(controls = [years, unit, radius]) {
     return { ctx, map, sections, prompts, call };
 }
 
+// Setting a control rewrites the page's link, which the next setup reads.
+beforeEach(() => history.replaceState(null, '', '/app/'));
+
 describe('glen core controls plugin (#426)', () => {
     it('puts the configured controls on the bus and in the layer panel', async () => {
         const { ctx } = await setup();
@@ -219,5 +222,50 @@ describe('charts plugin with controls', () => {
         expect(run.mock.calls[0][0].sql_query).toContain('WHERE y >= 2001');
         expect(ctx.tools.tools.get('render_chart').live.has('loss')).toBe(true);
         expect(ctx.tools.tools.get('render_chart').description).toMatch(/TOKEN/);
+    });
+});
+
+describe('controls in the link (SchmidtDSE/glen#506)', () => {
+    it('opens with the link\'s settings, held to the options', async () => {
+        history.replaceState(null, '', '/app/?years=2010,2020&unit=radius&radius=3');
+        const { ctx } = await setup();
+        expect(ctx.params.tokens()).toMatchObject({ YEAR_MIN: '2010', YEAR_MAX: '2020', UNIT: 'radius', K: '3' });
+        expect(document.querySelector('[data-param-id="radius"]').hidden).toBe(false);
+    });
+
+    it('ignores a value that is not an option, and a drill-down whose "when" does not hold', async () => {
+        history.replaceState(null, '', "/app/?years=1999,2020&unit=x';--&radius=3");
+        const { ctx } = await setup();
+        expect(ctx.params.tokens()).toMatchObject({ YEAR_MIN: '2001', YEAR_MAX: '2020', UNIT: 'hex', K: '1' });
+    });
+
+    it('writes a changed control to the link, and removes it at its default', async () => {
+        history.replaceState(null, '', '/app/?harness=h#data');
+        const { ctx } = await setup();
+        ctx.params.set('years', '2010,2020');
+        ctx.params.set('unit', 'radius');
+        expect(location.search).toBe('?harness=h&years=2010,2020&unit=radius');
+        expect(location.hash).toBe('#data');
+        ctx.params.set('unit', 'hex');
+        expect(location.search).toBe('?harness=h&years=2010,2020');
+    });
+
+    it('takes a removed control out of the link', async () => {
+        history.replaceState(null, '', '/app/?unit=radius');
+        const { ctx, call } = await setup();
+        await call('create_control', { id: 'scen', label: 'Scenario', options: ['low', 'high'], value: 'high' });
+        expect(location.search).toBe('?unit=radius&scen=high');
+        await call('remove_widget', { id: 'scen' });
+        expect(location.search).toBe('?unit=radius');
+        await call('remove_widget', { id: 'unit' });
+        expect(location.search).toBe('');
+    });
+
+    it('leaves a control whose id core uses out of the link', async () => {
+        history.replaceState(null, '', '/app/?map=7/18/-77');
+        const { ctx } = await setup([{ id: 'map', label: 'Map', options: ['a', 'b'] }]);
+        expect(ctx.params.values.map).toBe('a');
+        ctx.params.set('map', 'b');
+        expect(location.search).toBe('?map=7/18/-77');
     });
 });

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
+    paramsFromLink, paramsToLink,
     ParamBus, resolveParams, paramTokens, paramDefault, rangeValue, matchesWhen,
     expand, tokensIn, normalizeParam, controlKind, paramValueLabel,
 } from '../app/params.js';
@@ -164,5 +165,31 @@ describe('ParamBus', () => {
         const d = bus.describe();
         expect(d[0]).toMatchObject({ id: 'land', control: 'segmented', tokens: ['LAND', 'LAND_PATH', 'LAND_COL'], value: 'cocoa', value_label: 'Cocoa' });
         expect(d[3]).toMatchObject({ id: 'radius', control: 'slider', when: { unit: 'radius' }, applies: false });
+    });
+});
+
+describe('params in the link (SchmidtDSE/glen#506)', () => {
+    const params = [
+        { id: 'years', token: 'YEAR', control: 'range', options: [2001, 2010, 2020] },
+        { id: 'land', token: 'LAND', options: ['cocoa', 'soy'] },
+        { id: 'map', token: 'MAP', options: ['a', 'b'] },
+    ];
+    const reserved = new Set(['map']);
+
+    it('reads each param by its id, skipping reserved keys', () => {
+        const q = new URLSearchParams('years=2010,2020&land=soy&map=b&other=1');
+        expect(paramsFromLink(params, q, reserved)).toEqual({ years: '2010,2020', land: 'soy' });
+    });
+
+    it('keeps a link value only when it is an option', () => {
+        const q = new URLSearchParams("years=2010,2099&land=x');DROP TABLE t;--");
+        expect(resolveParams(params, paramsFromLink(params, q))).toEqual({ years: [2001, 2020], land: 'cocoa', map: 'a' });
+        expect(resolveParams(params, paramsFromLink(params, new URLSearchParams('years=2020,2010'))).years).toEqual([2010, 2020]);
+    });
+
+    it('writes params away from their defaults and removes those at them', () => {
+        expect(paramsToLink(params, { years: [2010, 2020], land: 'cocoa', map: 'b' }, reserved))
+            .toEqual({ years: '2010,2020', land: null });
+        expect(paramsToLink(params, { years: [2001, 2020], land: 'soy' })).toEqual({ years: null, land: 'soy', map: null });
     });
 });

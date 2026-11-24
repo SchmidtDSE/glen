@@ -33,6 +33,7 @@ import { loadPrompts } from './prompt.js';
 import { ensurePanelActions } from '../app/panel-actions.js';
 import { initialView, loadHighlighter, loadStylesheets } from './boot.js';
 import { createBootProgress } from '../app/boot-progress.js';
+import { bindMapLink, linkParams, parseMapView } from '../app/link-state.js';
 
 // glen-harness, from jsDelivr at the release tag in harness.js, as apps load
 // glen itself. Its src/core.js entry is the agent loop and tool registry
@@ -138,8 +139,10 @@ async function boot(extraPlugins, progress) {
     const catalog = new PortolanCatalog();
     // highlight.js colours the SQL in tool calls; the page need not load it.
     loadHighlighter(CHAT_SCRIPTS).catch(err => console.warn('[core] highlight.js failed:', err.message));
+    // A link's view (?map=, SchmidtDSE/glen#506) takes over from the app's.
+    const linkView = parseMapView(linkParams().get('map'));
     const mapManager = new MapManager('map', {
-        ...initialView(appConfig.view),
+        ...initialView(linkView || appConfig.view),
         titilerUrl: appConfig.titiler_url || 'https://titiler.nrp-nautilus.io',
         maptilerKey: runtimeConfig?.maptiler_key || '',
         defaultBasemap: appConfig.default_basemap || 'natgeo',
@@ -160,7 +163,12 @@ async function boot(extraPlugins, progress) {
     // The H3 grid, a reference for what size of cell a pixel or feature is.
     try { mountH3GridToggle(mapManager.map); } catch (err) { console.error('[core] Hex grid button failed:', err); }
     // With no view configured, open on the data.
-    if (!appConfig.view) fitToCatalog(mapManager, catalog);
+    if (!appConfig.view && !linkView) fitToCatalog(mapManager, catalog);
+    // The link shows the layers it names, and follows the view and layers
+    // from here on; the opening view is not written until the map moves.
+    try {
+        bindMapLink(mapManager, catalog.getMapLayerConfigs().map(c => c.layerId));
+    } catch (err) { console.error('[core] Link state failed:', err); }
     progress.step(null, 1);
     progress.mapReady();
     progress.step(null, 0.2);
