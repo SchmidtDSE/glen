@@ -127,6 +127,23 @@ describe('render_chart with controls (#426)', () => {
         expect(ranSql(query, 0)).toBe("SELECT y, v FROM 'a.parquet' WHERE y BETWEEN 2001 AND 2020");
     });
 
+    it('gives the export its query at the settings shown, and the settings it uses', async () => {
+        await tool.execute({ chart_type: 'line', x: 'y', y: 'v', sql, chart_id: 'loss', title: 'Loss from {{YEAR_MIN}}' });
+        bus.set('years', [2001, 2010]);
+        bus.set('land', 'soy');
+        await vi.advanceTimersByTimeAsync(60);
+        const q = renderer.exportQuery('loss');
+        expect(q.title).toBe('Loss from 2001');
+        expect(q.sql).toBe(ranSql(query, 1));
+        expect(q.settings).toEqual([{ label: 'Years', value: '2001 – 2010' }, { label: 'land', value: 'soy' }]);
+        expect(renderer.exportQuery('nope')).toBe(null);
+    });
+
+    it('gives no export query for a chart whose SQL uses no token', async () => {
+        await tool.execute({ chart_type: 'line', x: 'y', y: 'v', sql: 'SELECT 1 AS y, 2 AS v', chart_id: 'plain' });
+        expect(renderer.exportQuery('plain')).toBe(null);
+    });
+
     it('re-runs once the controls settle, in the same panel', async () => {
         await tool.execute({ chart_type: 'line', x: 'y', y: 'v', sql, chart_id: 'loss' });
         bus.set('years', [2001, 2010]);

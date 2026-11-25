@@ -399,6 +399,23 @@ export class ChartRenderer {
     }
 
     /**
+     * For the session export (glen-harness ChatUI): a chart's SQL at the
+     * settings its figure shows, with those settings, when the chart follows
+     * the Settings panel's controls; otherwise null. The chart tool provides
+     * it (queryForExport), since it holds the charts' SQL and the controls.
+     *
+     * @param {string} id - the `chart_id` render_chart returned
+     * @returns {{sql: string, settings: {label: string, value: string}[]}|null}
+     */
+    exportQuery(id) {
+        try {
+            return this.queryForExport?.(id) ?? null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
      * A chart as static markup for the exported report: re-drawn at report
      * width from the spec and rows it was last drawn with, so a closed chart
      * still exports. Data values are written as text nodes, so the markup is
