@@ -148,6 +148,34 @@ export class LiveCharts {
         }, this.debounceMs);
     }
 
+    /**
+     * For the session export: a chart's SQL with the current settings filled
+     * in, which is the query behind the figure on screen, those settings as
+     * { label, value } pairs, and its title as shown. Null for a chart whose
+     * SQL uses no token.
+     *
+     * @param {string} id
+     * @returns {{sql: string, settings: {label: string, value: string}[], title?: string}|null}
+     */
+    exportQuery(id) {
+        const c = this.charts.get(id);
+        const bus = this.params?.();
+        if (!c?.args?.sql || !bus) return null;
+        const used = tokensIn(c.args.sql);
+        if (!used.size) return null;
+        let sql;
+        try {
+            sql = expand(c.args.sql, bus.tokens(), `chart ${id}`);
+        } catch {
+            return null;
+        }
+        const settings = bus.describe()
+            .filter(p => p.tokens.some(t => used.has(t) || c.used.has(t)))
+            .map(p => ({ label: String(p.label), value: String(p.value_label ?? p.value ?? '') }));
+        const title = typeof c.args.title === 'string' ? fillText(c.args.title, bus.tokens()) : undefined;
+        return { sql, settings, ...(title !== undefined && { title }) };
+    }
+
     /** Re-run a chart's SQL at the current settings and redraw it in place. */
     async run(id) {
         const c = this.charts.get(id);
@@ -244,6 +272,9 @@ export function createRenderChartTool(chartRenderer, query, { endpointArgs = fal
         return runJsonArrayQuery((q) => (endpoint ? runQuery(q, endpoint) : runQuery(q)), wrappedSql);
     };
     const live = new LiveCharts({ renderer: chartRenderer, fetchRows, params, debounceMs });
+    // The session export asks the renderer for a live chart's query at the
+    // settings its figure shows (ChartRenderer#exportQuery).
+    if (chartRenderer) chartRenderer.queryForExport = (id) => live.exportQuery(id);
 
     /**
      * Draw a chart the app's config lists. Its card opens before its query
