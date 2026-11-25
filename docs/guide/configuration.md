@@ -2,6 +2,8 @@
 
 An app configures glen core with `layers-input.json`, served beside its `index.html`. Every field is optional, though an app with no `collections` and no `catalog` has an empty map.
 
+An app made with the [map builder](./map-builder) uses the same settings for its data and look; the site it runs on sets the models and plugins.
+
 glen core reads the layer settings of the v3 full app (`app/main.js`) by the same names, so a v3 app's collections carry over unchanged. What changed is the opt-in features: the MCP server, charts, drawing, uploads and hex tiles are now [plugins](#plugins). `scripts/convert-to-core.mjs` converts a v3 app's `layers-input.json` and `index.html`; see [Upgrading to v4](./upgrading-to-v4).
 
 ## Top-level fields
@@ -14,6 +16,7 @@ glen core reads the layer settings of the v3 full app (`app/main.js`) by the sam
 | `titiler_url` | TiTiler server for COG tiles. Default: `https://titiler.nrp-nautilus.io`. |
 | `plugins` | Plugin modules to load, by URL, each with its options. See [Plugins](#plugins). |
 | `system_prompt_url` | The app's prompt, added after glen core's. Default: `system-prompt.md` beside the page. See [System prompt](#system-prompt). |
+| `system_prompt` | The app's prompt as text, in place of a file. When set, no prompt file is read. |
 | `view` | Initial map view. Without it the map opens on the extent of the loaded data. See below. |
 | `llm` | LLM configuration. Omit for server-provided mode. See [LLM configuration](#llm-configuration). |
 | `welcome` | Welcome message: `{ "message": "...", "examples": ["...", "..."] }` |
@@ -1275,7 +1278,7 @@ A plugin is an ES module whose default export is `{ name, setup(ctx, options) }`
 
 ## System prompt
 
-The agent's prompt is glen core's short base prompt (`core/system-prompt.md`), then the app's own prompt, then an index of the loaded collections and layers by id and name, then any plugin's sections, such as the MCP server's `geospatial-analyst` prompt. Columns, styles and data files are not in the prompt: `describe_layer` and `get_schema` return them when the agent needs them. The app's prompt is a `system-prompt.md` served beside `index.html`, or the file `system_prompt_url` names, relative to the page. An app without one is fine.
+The agent's prompt is glen core's short base prompt (`core/system-prompt.md`), then the app's own prompt, then an index of the loaded collections and layers by id and name, then any plugin's sections, such as the MCP server's `geospatial-analyst` prompt. Columns, styles and data files are not in the prompt: `describe_layer` and `get_schema` return them when the agent needs them. The app's prompt is a `system-prompt.md` served beside `index.html`, or the file `system_prompt_url` names, relative to the page, or the text in `system_prompt`. An app without one is fine.
 
 Keep an app's prompt short: what the data is, who the app is for, and anything particular to answering about it. The tools describe themselves, so the prompt need not.
 

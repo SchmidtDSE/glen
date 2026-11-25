@@ -13,7 +13,7 @@ The same files serve two deployments. Each has its own `deployment.json`.
 | Address | `https://schmidtdse.github.io/glen/maps/` | `https://glen.nrp-nautilus.io/` |
 | Models | Each visitor's own OpenRouter key, saved in their browser | NRP models through the pod's `/api/llm`, with the key added by nginx |
 | SQL | geo-query-wasm in a Web Worker in the browser | The shared geo-query MCP server through `/api/mcp` |
-| Plugins | `mcp`, `charts`, `controls`, `draw`, `uploads`, `geolocate` | `mcp`, `hex`, `charts`, `controls`, `draw`, `geolocate` |
+| Plugins | `mcp`, `charts`, `controls`, `draw`, `geolocate` | `mcp`, `hex`, `charts`, `controls`, `draw`, `geolocate` |
 | Settings | `hosted/deployment.json` | `deployment.json` in `k8s/configmap.yaml` |
 | Staged by | `.github/workflows/gh-pages.yml` | The initContainer in `k8s/deployment.yaml` |
 

@@ -99,10 +99,6 @@
             "label": "Draw a region",
             "url": "../core/plugins/draw.js"
         },
-        "uploads": {
-            "label": "Upload GeoJSON",
-            "url": "../core/plugins/uploads.js"
-        },
         "geolocate": {
             "label": "Locate me",
             "url": "../core/plugins/geolocate.js",
