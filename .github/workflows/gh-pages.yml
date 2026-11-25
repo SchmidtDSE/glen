@@ -5,10 +5,7 @@ on:
     branches: [main]
     paths:
       - 'docs/**'
-      - 'core/**'
-      - 'app/**'
-      - 'hosted/**'
-      - 'scripts/stage-hosted.sh'
+      - 'hosted/apps/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
@@ -18,6 +15,10 @@ on:
   # that branch's app/ at /preview/ — see the "Stage app preview" step and
   # preview/README.md.
   workflow_dispatch:
+
+  # A release republishes the map builder at /maps/, which runs the latest one.
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -48,10 +49,23 @@ jobs:
         run: pnpm run docs:build
 
       # The map builder and the apps published with it (hosted/README.md), at
-      # /maps/: glen at this commit, the builder, and /maps/a/<slug>/ for each
-      # app in hosted/apps/.
+      # /maps/. glen and the builder come from the latest release, so hosted
+      # apps run released code as pinned apps do. The published apps in
+      # hosted/apps/ come from main, so a merged app goes live without a release.
       - name: Stage the map builder
-        run: sh scripts/stage-hosted.sh . docs/.vitepress/dist/maps
+        run: |
+          set -eu
+          tag=$(git ls-remote --tags --refs --sort=-v:refname origin 'v*' | head -1 | sed 's#.*refs/tags/##')
+          git fetch --no-tags --depth=1 origin "+refs/tags/$tag:refs/tags/$tag"
+          rel=$(mktemp -d)
+          git worktree add --detach "$rel" "$tag" >/dev/null
+          if [ -f "$rel/scripts/stage-hosted.sh" ]; then
+            sh "$rel/scripts/stage-hosted.sh" "$rel" docs/.vitepress/dist/maps "$PWD/hosted/apps"
+            echo "Map builder at /maps/ runs glen $tag"
+          else
+            echo "::notice::$tag has no map builder yet; /maps/ waits for the next release."
+          fi
+          git worktree remove --force "$rel"
 
       # Browser-bound modules (map, chat UI, layout) have no test harness, so
       # they are verified by eye. Every `preview/*` branch is staged into the

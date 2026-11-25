@@ -10,14 +10,16 @@ The same files serve two deployments. Each has its own `deployment.json`.
 
 | | GitHub Pages | NRP |
 |---|---|---|
-| Address | `https://schmidtdse.github.io/glen/maps/` | `https://glen-maps.nrp-nautilus.io/` |
+| Address | `https://schmidtdse.github.io/glen/maps/` | `https://glen.nrp-nautilus.io/` |
 | Models | Each visitor's own OpenRouter key, saved in their browser | NRP models through the pod's `/api/llm`, with the key added by nginx |
 | SQL | geo-query-wasm in a Web Worker in the browser | The shared geo-query MCP server through `/api/mcp` |
 | Plugins | `mcp`, `charts`, `controls`, `draw`, `uploads`, `geolocate` | `mcp`, `hex`, `charts`, `controls`, `draw`, `geolocate` |
 | Settings | `hosted/deployment.json` | `deployment.json` in `k8s/configmap.yaml` |
 | Staged by | `.github/workflows/gh-pages.yml` | The initContainer in `k8s/deployment.yaml` |
 
-Both run `scripts/stage-hosted.sh`, which lays out `core/`, `app/` and `hosted/` and writes a page at `/a/<slug>/` for each app in `hosted/apps/`.
+Both run glen and the builder from the latest release, as pinned apps do, and serve the published apps in `hosted/apps/` on `main`. A release republishes GitHub Pages; NRP picks it up on its next rollout restart, or holds a tag set in `GLEN_REF`. Both run `scripts/stage-hosted.sh`, which lays out `core/`, `app/` and `hosted/` and writes a page at `/a/<slug>/` for each published app.
+
+Both serve unlisted apps (`?c=` and `?config=` links). On NRP their chat goes through open-llm-proxy's public tier, with its rate limits.
 
 ## Addresses
 
@@ -34,7 +36,7 @@ A deployment with `"allow_unlisted": false` serves only published apps. The buil
 
 ## Publishing an app
 
-The builder's Propose on GitHub button opens GitHub's new-file form on `hosted/apps/<slug>.json` with the config filled in. Saving it opens a pull request from the author's fork, and the app is served at `/a/<slug>/` once the pull request is merged. On GitHub Pages that is the next deploy. On NRP the pod stages the registry when it starts, so it needs `kubectl -n schmidtdse rollout restart deployment/glen-maps`.
+The builder's Propose on GitHub button opens GitHub's new-file form on `hosted/apps/<slug>.json` with the config filled in. Saving it opens a pull request from the author's fork, and the app is served at `/a/<slug>/` once the pull request is merged. On GitHub Pages that is the deploy the merge starts. On NRP the pod stages the registry when it starts, so it needs `kubectl -n schmidtdse rollout restart deployment/glen-maps`.
 
 ## App config
 

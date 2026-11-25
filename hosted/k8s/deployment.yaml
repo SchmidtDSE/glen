@@ -1,11 +1,12 @@
-# The hosted app on NRP (hosted/README.md): glen and its builder at
-# GLEN_REF, one page per app in hosted/apps/ at /a/<slug>/, and the models
-# and SQL server through this pod with their keys added by nginx.
+# The hosted app on NRP (hosted/README.md): glen and its builder from the
+# latest release (or the tag in GLEN_REF), one page per app in hosted/apps/
+# on main at /a/<slug>/, and the models and SQL server through this pod with
+# their keys added by nginx. The LLM key is the proxy's public tier, with its
+# rate limits, since anyone may open an unlisted app here.
 #
-# Publishing an app is a merged pull request adding hosted/apps/<slug>.json.
-# The initContainer stages the registry at pod start, so a new app needs
+# The initContainer stages everything at pod start, so a newly merged app or
+# a new release needs
 #   kubectl -n schmidtdse rollout restart deployment/glen-maps
-# and a new glen release needs GLEN_REF bumped here.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -32,16 +33,24 @@ spec:
       - name: stage
         image: alpine/git:2.52.0
         env:
-        # A release tag. The registry of apps is read from the same checkout.
+        # "latest" for the newest release, or a tag such as v4.6.0 to hold one.
         - name: GLEN_REF
-          value: "main"
+          value: "latest"
         command:
         - sh
         - -c
         - |
           set -eu
-          git clone --depth 1 --branch "$GLEN_REF" https://github.com/SchmidtDSE/glen.git /tmp/glen
-          sh /tmp/glen/scripts/stage-hosted.sh /tmp/glen /usr/share/nginx/html
+          repo=https://github.com/SchmidtDSE/glen.git
+          ref=$GLEN_REF
+          if [ "$ref" = latest ]; then
+            ref=$(git ls-remote --tags --refs --sort=-v:refname "$repo" 'v*' | head -1 | sed 's#.*refs/tags/##')
+          fi
+          echo "Staging glen $ref"
+          git clone --depth 1 --branch "$ref" "$repo" /tmp/glen
+          # Published apps from main, so a merged app needs no release.
+          git clone --depth 1 "$repo" /tmp/glen-main
+          sh /tmp/glen/scripts/stage-hosted.sh /tmp/glen /usr/share/nginx/html /tmp/glen-main/hosted/apps
           cp /config/deployment.json /usr/share/nginx/html/hosted/deployment.json
         volumeMounts:
         - name: website-content
@@ -58,7 +67,7 @@ spec:
           value: "/tmp"
         # Absolute, because the MCP plugin does new URL(mcp_server_url).
         - name: MCP_SERVER_URL
-          value: "https://glen-maps.nrp-nautilus.io/api/mcp"
+          value: "https://glen.nrp-nautilus.io/api/mcp"
         - name: MCP_AUTH_TOKEN
           valueFrom:
             secretKeyRef:
@@ -155,9 +164,9 @@ spec:
   ingressClassName: haproxy
   tls:
     - hosts:
-        - glen-maps.nrp-nautilus.io
+        - glen.nrp-nautilus.io
   rules:
-    - host: glen-maps.nrp-nautilus.io
+    - host: glen.nrp-nautilus.io
       http:
         paths:
           - path: /
