@@ -1,0 +1,111 @@
+{
+    "name": "GLEN on GitHub Pages",
+    "about": "Each visitor brings an OpenRouter key, kept in their browser. SQL runs in the browser with geo-query-wasm.",
+    "registry": "apps/",
+    "registry_path": "hosted/apps",
+    "examples": [
+        {
+            "slug": "jamaica",
+            "title": "Jamaica after Hurricane Melissa"
+        },
+        {
+            "slug": "st-louis",
+            "title": "St. Louis open data"
+        }
+    ],
+    "allow_unlisted": true,
+    "runtime_config": null,
+    "titiler_url": "https://titiler.nrp-nautilus.io",
+    "catalog": "https://s3-west.nrp-nautilus.io/public-data/stac/catalog.json",
+    "repo": "SchmidtDSE/glen",
+    "defaults": {
+        "default_basemap": "natgeo",
+        "auto_approve": true,
+        "sidebar": {
+            "enabled": true,
+            "chat_title": "Chat"
+        },
+        "geocoder": {
+            "provider": "nominatim"
+        },
+        "links": {
+            "docs": "https://schmidtdse.github.io/glen/"
+        }
+    },
+    "llm": {
+        "user_provided": true,
+        "default_endpoint": "https://openrouter.ai/api/v1",
+        "models": [
+            {
+                "value": "~deepseek/deepseek-v4-flash-latest",
+                "label": "DeepSeek V4 Flash"
+            },
+            {
+                "value": "nvidia/nemotron-3.5-super-vl",
+                "label": "Nemotron 3.5 Super"
+            },
+            {
+                "value": "z-ai/glm-5.3-flash",
+                "label": "GLM-5.3 Flash"
+            },
+            {
+                "value": "minimax/minimax-m3.1-flash",
+                "label": "MiniMax M3.1 Flash"
+            }
+        ]
+    },
+    "default_plugins": [
+        "mcp",
+        "charts",
+        "controls"
+    ],
+    "plugins": {
+        "mcp": {
+            "label": "SQL over the data, in the browser",
+            "url": "../core/plugins/mcp.js",
+            "options": {
+                "servers": [
+                    {
+                        "worker": "geo-query-worker.js",
+                        "worker_config": {
+                            "discovery": false,
+                            "allowedDirectories": [
+                                "s3://",
+                                "https://s3-west.nrp-nautilus.io/",
+                                "https://s3.us-west-2.amazonaws.com/us-west-2.opendata.source.coop/",
+                                "https://data.source.coop/"
+                            ],
+                            "allowedEndpoints": [
+                                "s3-west.nrp-nautilus.io",
+                                "minio.carlboettiger.info"
+                            ]
+                        },
+                        "include": [
+                            "query"
+                        ]
+                    }
+                ]
+            }
+        },
+        "charts": {
+            "label": "Charts from SQL",
+            "url": "../core/plugins/charts.js"
+        },
+        "controls": {
+            "label": "Settings controls the agent can add",
+            "url": "../core/plugins/controls.js"
+        },
+        "draw": {
+            "label": "Draw a region",
+            "url": "../core/plugins/draw.js"
+        },
+        "geolocate": {
+            "label": "Locate me",
+            "url": "../core/plugins/geolocate.js",
+            "options": {
+                "button": true,
+                "agent_tool": true
+            }
+        }
+    }
+}

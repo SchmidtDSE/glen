@@ -2,6 +2,8 @@
 
 GLEN apps are **static sites** — just HTML, JSON, and Markdown files. They can be hosted anywhere. The only variable is how the LLM API key reaches the app.
 
+An app of public data need not be deployed at all: the [map builder](./map-builder) publishes it on our GitHub Pages and NRP sites, at `/maps/a/<name>/` and `glen.nrp-nautilus.io/a/<name>/`. The options below are for apps that run on their own.
+
 ## Option 1: GitHub Pages (or any static host)
 
 The simplest option. Each user supplies their own LLM API key via the in-app settings panel. No server-side secrets needed.

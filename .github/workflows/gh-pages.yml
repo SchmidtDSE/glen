@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'docs/**'
+      - 'hosted/apps/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
@@ -14,6 +15,10 @@ on:
   # that branch's app/ at /preview/ — see the "Stage app preview" step and
   # preview/README.md.
   workflow_dispatch:
+
+  # A release republishes the map builder at /maps/, which runs the latest one.
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -42,6 +47,25 @@ jobs:
 
       - name: Build VitePress docs
         run: pnpm run docs:build
+
+      # The map builder and the apps published with it (hosted/README.md), at
+      # /maps/. glen and the builder come from the latest release, so hosted
+      # apps run released code as pinned apps do. The published apps in
+      # hosted/apps/ come from main, so a merged app goes live without a release.
+      - name: Stage the map builder
+        run: |
+          set -eu
+          tag=$(git ls-remote --tags --refs --sort=-v:refname origin 'v*' | head -1 | sed 's#.*refs/tags/##')
+          git fetch --no-tags --depth=1 origin "+refs/tags/$tag:refs/tags/$tag"
+          rel=$(mktemp -d)
+          git worktree add --detach "$rel" "$tag" >/dev/null
+          if [ -f "$rel/scripts/stage-hosted.sh" ]; then
+            sh "$rel/scripts/stage-hosted.sh" "$rel" docs/.vitepress/dist/maps "$PWD/hosted/apps"
+            echo "Map builder at /maps/ runs glen $tag"
+          else
+            echo "::notice::$tag has no map builder yet; /maps/ waits for the next release."
+          fi
+          git worktree remove --force "$rel"
 
       # Browser-bound modules (map, chat UI, layout) have no test harness, so
       # they are verified by eye. Every `preview/*` branch is staged into the
@@ -162,6 +186,12 @@ jobs:
 
             if [ "$layout" = core ]; then
               core_page "$dest" ""
+            fi
+
+            # The branch's map builder, if it has one, at /preview/<branch>/maps/.
+            if [ -f "$work/scripts/stage-hosted.sh" ] && [ -d "$work/hosted" ]; then
+              sh "$work/scripts/stage-hosted.sh" "$work" "$dest/maps"
+              echo "  /preview/$slug/maps/"
             fi
 
             # Variants: preview/variants/<name>.json is a shallow patch over

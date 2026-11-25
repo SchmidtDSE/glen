@@ -9,6 +9,10 @@
 
 **To build a new map app:** use the template. You never touch the library repo.
 
+::: tip A map of public data needs no repository
+The [map builder](./map-builder) makes an app of any public STAC or Portolan catalog in a form, and our sites run it: on GitHub Pages with each visitor's own key, or on NRP with its models. Start from the template when an app needs private data, its own server-side key, custom plugins or its own domain.
+:::
+
 ## Start from the template
 
 Go to [SchmidtDSE/glen-template](https://github.com/SchmidtDSE/glen-template) and click **Use this template → Create a new repository**. You get a ready-to-deploy repo with the three files you need. Edit them for your dataset and deploy.

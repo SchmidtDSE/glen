@@ -10,6 +10,9 @@ hero:
       text: Quick Start
       link: /guide/quickstart
     - theme: alt
+      text: Map Builder
+      link: /guide/map-builder
+    - theme: alt
       text: Live Demo
       link: https://padus.nrp-nautilus.io/
     - theme: alt
@@ -17,6 +20,8 @@ hero:
       link: https://github.com/SchmidtDSE/glen-template
 
 features:
+  - title: No repository needed
+    details: The map builder makes an app of public data in a form, and our sites on GitHub Pages and NRP run it at its own address.
   - title: Zero JavaScript
     details: Your app is just three files — index.html, layers-input.json, and system-prompt.md. glen core and its plugins load from CDN.
   - title: Portolan and STAC catalogs

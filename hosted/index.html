@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GLEN map builder</title>
+    <link rel="icon" type="image/svg+xml" href="../app/assets/favicon.svg">
+    <link rel="stylesheet" href="builder.css">
+</head>
+
+<body>
+    <header class="top">
+        <h1>GLEN map builder</h1>
+        <p>Make a map of public data with a chat agent that can show, filter, colour and query it. Choose the data and how the app looks; this site runs it.</p>
+        <p class="muted" id="deployment-about"></p>
+    </header>
+
+    <main class="layout">
+        <form id="form" autocomplete="off">
+            <section>
+                <h2>Starting point</h2>
+                <div class="row wrap" id="starts">
+                    <button type="button" data-start="blank">New app</button>
+                </div>
+                <div class="row wrap">
+                    <label class="button-like">Upload a layers-input.json
+                        <input type="file" id="upload" accept=".json,application/json" hidden>
+                    </label>
+                    <input type="url" id="open-link" placeholder="Or paste an app link or config URL">
+                    <button type="button" id="open-link-go">Open</button>
+                </div>
+                <ul class="notes" id="notes"></ul>
+            </section>
+
+            <section>
+                <h2>Name and welcome</h2>
+                <label>Title <input type="text" data-bind="title" placeholder="Wetlands of the Central Valley"></label>
+                <label>Welcome message
+                    <textarea data-bind="welcome.message" rows="2" placeholder="I can show and query the layers on this map. Try asking:"></textarea>
+                </label>
+                <label>Example questions
+                    <textarea data-bind="welcome.examples" data-lines rows="3" placeholder="Put one question on each line."></textarea>
+                </label>
+                <label>Notes on the data for the agent
+                    <textarea data-bind="system_prompt" rows="3" placeholder="A sentence or two on what the data is and who the app is for. The tools describe themselves."></textarea>
+                </label>
+            </section>
+
+            <section>
+                <h2>Data</h2>
+                <p class="muted">Any public STAC or <a href="https://www.portolan-sdi.org/registry" target="_blank" rel="noopener">Portolan</a> catalog. glen draws a collection's PMTiles and Cloud-Optimized GeoTIFFs, and the agent's SQL reads its GeoParquet.</p>
+                <div class="row">
+                    <input type="url" id="catalog" data-bind="catalog" placeholder="https://…/catalog.json">
+                    <button type="button" id="browse">Browse</button>
+                </div>
+                <div id="browser" hidden>
+                    <div class="row">
+                        <input type="search" id="filter" placeholder="Filter collections">
+                        <label class="inline"><input type="checkbox" id="drawable-only" checked> Map layers only</label>
+                    </div>
+                    <p class="muted" id="browse-status"></p>
+                    <ul class="collections" id="found"></ul>
+                </div>
+                <h3>Layers in the app</h3>
+                <p class="muted" id="chosen-empty">None chosen. With a catalog and no layers chosen, the app loads the catalog's first 25 collections.</p>
+                <ol class="chosen" id="chosen"></ol>
+                <div class="row">
+                    <input type="url" id="add-url" placeholder="Add a collection by its collection.json URL">
+                    <button type="button" id="add-url-go">Add</button>
+                </div>
+            </section>
+
+            <section>
+                <h2>Map</h2>
+                <div class="row wrap">
+                    <label>Basemap
+                        <select data-bind="default_basemap">
+                            <option value="">Default (the deployment's)</option>
+                            <option value="natgeo">National Geographic</option>
+                            <option value="satellite">Satellite</option>
+                            <option value="plain">Plain</option>
+                        </select>
+                    </label>
+                    <label>Colour scheme
+                        <select data-bind="theme">
+                            <option value="">Follow the visitor's system</option>
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                        </select>
+                    </label>
+                </div>
+                <div id="view-map" class="view-map" aria-label="Map for choosing the opening view"></div>
+                <label class="inline"><input type="checkbox" id="use-view"> Open on this view</label>
+                <p class="muted">Without a view the app opens on the extent of its data.</p>
+            </section>
+
+            <section>
+                <h2>Tools</h2>
+                <div id="plugins" class="plugins"></div>
+                <details>
+                    <summary>Advanced settings</summary>
+                    <label>TiTiler server for rasters
+                        <input type="url" id="titiler" data-bind="titiler_url">
+                    </label>
+                    <label>Other hosts the SQL may read
+                        <input type="text" data-bind="data_hosts" data-list placeholder="storage.googleapis.com, data.example.org">
+                    </label>
+                </details>
+            </section>
+
+            <section>
+                <details>
+                    <summary>Config file</summary>
+                    <p class="muted">The app's whole config. Per-layer styles, filters and legends from the <a href="https://schmidtdse.github.io/glen/guide/configuration" target="_blank" rel="noopener">configuration reference</a> can be added here.</p>
+                    <textarea id="json" rows="18" spellcheck="false"></textarea>
+                    <div class="row">
+                        <button type="button" id="json-apply">Apply</button>
+                        <span class="muted" id="json-status"></span>
+                    </div>
+                </details>
+            </section>
+        </form>
+
+        <aside class="publish">
+            <h2>Your app</h2>
+            <p><a id="open-app" class="button primary" target="_blank" rel="noopener">Open the app</a></p>
+            <div class="row">
+                <button type="button" id="copy-link">Copy link</button>
+                <button type="button" id="download">Download config</button>
+            </div>
+            <p class="muted" id="link-note">The link carries the whole config, so it works without publishing anything.</p>
+
+            <h3>Publish at a path</h3>
+            <label>Name in the address
+                <input type="text" id="slug" pattern="[a-z0-9-]+" placeholder="my-map">
+            </label>
+            <p class="path" id="path-preview"></p>
+            <p><a id="propose" class="button" target="_blank" rel="noopener">Propose on GitHub</a></p>
+            <p class="muted">GitHub opens the new app's file. Saving it opens a pull request; once it is merged the app is served at this address.</p>
+        </aside>
+    </main>
+
+    <script type="module" src="builder.js"></script>
+</body>
+
+</html>
