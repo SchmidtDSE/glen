@@ -2,8 +2,10 @@
  * prompt.js — The opening of glen core's system prompt: core's own base
  * prompt, then the app's.
  *
- * An app's prompt is the file `system_prompt_url` names, or else a
- * `system-prompt.md` beside the page, as v3 apps served it. It adds to core's
+ * An app's prompt is the text in `system_prompt`, or the file
+ * `system_prompt_url` names, or else a `system-prompt.md` beside the page, as
+ * v3 apps served it. The hosted app (hosted/) gives the text, since its apps
+ * have no files of their own. It adds to core's
  * prompt rather than replacing it. An app without one is fine, so a missing
  * default file is not an error. The layers and the plugins' sections follow
  * these in main.js.
@@ -19,6 +21,7 @@ const FALLBACK_BASE = 'You help people explore geospatial data on an interactive
  * @param {string} pageUrl - the page's URL (document.baseURI)
  */
 export function appPromptUrl(config, baseUrl, pageUrl) {
+    if (typeof config?.system_prompt === 'string') return null;
     const url = new URL(config?.system_prompt_url || 'system-prompt.md', pageUrl).href;
     return url === new URL(baseUrl, pageUrl).href ? null : url;
 }
@@ -46,6 +49,7 @@ async function readPrompt(url, fetchFn) {
  */
 export async function loadPrompts(config, { baseUrl, pageUrl, fetchFn = fetch }) {
     const appUrl = appPromptUrl(config, baseUrl, pageUrl);
+    const inline = typeof config?.system_prompt === 'string' ? config.system_prompt.trim() : '';
     const [base, app] = await Promise.all([
         readPrompt(baseUrl, fetchFn).catch((err) => {
             console.warn(`[core] Base prompt ${baseUrl} unreadable (${err.message}); using a minimal one.`);
@@ -55,7 +59,7 @@ export async function loadPrompts(config, { baseUrl, pageUrl, fetchFn = fetch })
             // Only a file the app named is worth a warning.
             if (config?.system_prompt_url) console.warn(`[core] App prompt ${appUrl} unreadable (${err.message}).`);
             return '';
-        }) : '',
+        }) : inline,
     ]);
     return [base, app].filter(Boolean).join('\n\n');
 }

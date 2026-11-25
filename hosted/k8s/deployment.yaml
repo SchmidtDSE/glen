@@ -1,0 +1,169 @@
+# The hosted app on NRP (hosted/README.md): glen and its builder at
+# GLEN_REF, one page per app in hosted/apps/ at /a/<slug>/, and the models
+# and SQL server through this pod with their keys added by nginx.
+#
+# Publishing an app is a merged pull request adding hosted/apps/<slug>.json.
+# The initContainer stages the registry at pod start, so a new app needs
+#   kubectl -n schmidtdse rollout restart deployment/glen-maps
+# and a new glen release needs GLEN_REF bumped here.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: glen-maps
+  namespace: schmidtdse
+  labels:
+    app: glen-maps
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: glen-maps
+  template:
+    metadata:
+      labels:
+        app: glen-maps
+    spec:
+      initContainers:
+      - name: stage
+        image: alpine/git:2.52.0
+        env:
+        # A release tag. The registry of apps is read from the same checkout.
+        - name: GLEN_REF
+          value: "main"
+        command:
+        - sh
+        - -c
+        - |
+          set -eu
+          git clone --depth 1 --branch "$GLEN_REF" https://github.com/SchmidtDSE/glen.git /tmp/glen
+          sh /tmp/glen/scripts/stage-hosted.sh /tmp/glen /usr/share/nginx/html
+          cp /config/deployment.json /usr/share/nginx/html/hosted/deployment.json
+        volumeMounts:
+        - name: website-content
+          mountPath: /usr/share/nginx/html
+        - name: config-template
+          mountPath: /config
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        env:
+        - name: TMPDIR
+          value: "/tmp"
+        # Absolute, because the MCP plugin does new URL(mcp_server_url).
+        - name: MCP_SERVER_URL
+          value: "https://glen-maps.nrp-nautilus.io/api/mcp"
+        - name: MCP_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: duckdb-mcp-tokens
+              key: public
+        - name: PROXY_KEY
+          valueFrom:
+            secretKeyRef:
+              name: open-llm-proxy-namespace-keys
+              key: public
+        command:
+        - sh
+        - -c
+        - |
+          apk add --no-cache gettext
+          envsubst '$${MCP_SERVER_URL}' < /config/config.template.json \
+            > /usr/share/nginx/html/hosted/config.json
+          envsubst '$${PROXY_KEY} $${MCP_AUTH_TOKEN}' < /nginx-template/nginx.conf.template \
+            > /etc/nginx/conf.d/default.conf
+          # One worker per CPU OOMKills the container on large nodes (glen-ops#49).
+          sed -i 's/^worker_processes.*/worker_processes 2;/' /etc/nginx/nginx.conf
+          nginx -g 'daemon off;'
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "256Mi"
+        volumeMounts:
+        - name: website-content
+          mountPath: /usr/share/nginx/html
+        - name: nginx-template
+          mountPath: /nginx-template
+          readOnly: true
+        - name: nginx-conf-d
+          mountPath: /etc/nginx/conf.d
+        - name: config-template
+          mountPath: /config
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      volumes:
+      - name: website-content
+        emptyDir: {}
+      - name: config-template
+        configMap:
+          name: glen-maps-config
+      - name: nginx-template
+        configMap:
+          name: glen-maps-nginx
+      - name: nginx-conf-d
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: glen-maps
+  namespace: schmidtdse
+  labels:
+    app: glen-maps
+spec:
+  type: ClusterIP
+  selector:
+    app: glen-maps
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+      name: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: glen-maps-ingress
+  namespace: schmidtdse
+  annotations:
+    haproxy-ingress.github.io/cors-enable: "true"
+    haproxy-ingress.github.io/cors-allow-origin: "*"
+    haproxy-ingress.github.io/cors-allow-methods: "GET, POST, OPTIONS"
+    haproxy-ingress.github.io/cors-allow-headers: "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization,mcp-session-id"
+    haproxy-ingress.github.io/timeout-server: "600s"
+    haproxy-ingress.github.io/timeout-tunnel: "3600s"
+spec:
+  ingressClassName: haproxy
+  tls:
+    - hosts:
+        - glen-maps.nrp-nautilus.io
+  rules:
+    - host: glen-maps.nrp-nautilus.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: glen-maps
+                port:
+                  number: 80

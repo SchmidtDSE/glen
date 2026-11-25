@@ -30,6 +30,15 @@ A map of the layers in [Portolan](https://www.portolan-sdi.org/) or STAC collect
 
 **Prompts stay minimal.** A prompt says what the app and its data are. What a tool does, when to call it and what it returns belong in the tool's own description, never repeated in a prompt, where they go stale. Don't list what the agent cannot do; a plugin that adds a capability should not have to contradict the base prompt.
 
+### Hosted app (hosted/)
+
+glen as a service rather than a toolkit: a builder writes an app config (data, look, prompt, plugin names), and one deployment serves every app at `/a/<slug>/` with its own models and MCP servers. GitHub Pages (`/glen/maps/`, a visitor's own key, SQL in the browser) and NRP (`k8s/`, NRP models and the shared MCP server) differ only in `deployment.json`. An app config never names a script: all apps share an origin and, on Pages, the visitor's saved key. See `hosted/README.md`.
+
+- `hosted/hosted-config.js` — What an app may set, how it joins the deployment's settings, and the `?c=` link encoding
+- `hosted/runtime.js`, `hosted/map/index.html` — The app page: finds the config (`/a/<slug>/`, `?app=`, `?config=`, `?c=`) and calls core's `start({ config, runtimeConfig })`
+- `hosted/index.html`, `builder.js`, `catalog-browse.js` — The builder
+- `hosted/apps/` — Published apps, added by pull request; `scripts/stage-hosted.sh` writes their pages
+
 ### Shared modules (app/)
 
 `app/` is glen core's library: map, layout, layer tools and catalog code, plus the stylesheets apps load from the CDN (`style.css`, `chat.css`, `sidebar.css`). `app/` never imports from `core/` (`test/app-imports.test.js`), and every `app/` module must be reached from core or a plugin (`test/core-module-graph.test.js`).
@@ -247,6 +256,7 @@ When a PR touches a covered module, expect tests to change too. When it touches 
 | `core/portolan.js`, `core/portolan-catalog.js` | covered | `test/core-portolan.test.js` — tile, style and raster discovery, style conversion, the missing-value guard, catalog walk, prompt; `test/core-prompt-budget.test.js` — the prompt's layer index stays under a character budget on a large catalog and repeats no line (properties, styles and statistics belong to `describe_layer`, columns and data files to `get_schema`) |
 | `core/map-tools.js` | covered | `test/core-map-tools.test.js` — published styles and their filters, raster recolouring, fly_to forms, `set_time` only with a series of items. Rendering is browser-bound; verify at `/core/`. |
 | `core/prompt.js` | covered | `test/core-prompt.test.js` — the app's prompt after core's, `system_prompt_url`, no prompt, an SPA's index page, core's own page. |
+| `hosted/hosted-config.js`, `hosted/catalog-browse.js` | covered | `test/hosted-config.test.js` — the settings an app may give (no models, keys or plugin URLs, script URLs removed), joining the deployment's settings, the SQL worker's allowlist from the app's data hosts, `?c=` links, the four config addresses, slugs and the GitHub proposal link, the catalog walk. The builder and app page are browser-bound; verify on a preview at `/preview/<branch>/maps/`. |
 | `core/main.js` | 0% | Bootstrap — verify by loading `/core/` locally. `test/core-module-graph.test.js` checks that it loads no SQL or chart code at start, and that every `app/` module is reached from core or a plugin. |
 | `core/harness.js` | covered | `test/core-harness.test.js` — one release tag, the page's `GLEN_HARNESS_URL`, `?harness=` taken only on localhost. `test/core-module-graph.test.js` checks no other module writes a harness URL. |
 | `app/link-state.js` | covered | `test/link-state.test.js` — the view, layers and other keys in the link, malformed values dropped, layers kept to the app's, only changes from the defaults written; `test/params.test.js` and `test/core-controls-plugin.test.js` — controls read from the link and held to their options, written when changed, removed at their defaults or when the control is removed. The wiring in `core/main.js` is browser-bound; verify at `/core/` with a link. |

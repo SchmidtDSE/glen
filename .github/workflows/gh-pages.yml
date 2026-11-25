@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - 'docs/**'
+      - 'core/**'
+      - 'app/**'
+      - 'hosted/**'
+      - 'scripts/stage-hosted.sh'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
@@ -42,6 +46,12 @@ jobs:
 
       - name: Build VitePress docs
         run: pnpm run docs:build
+
+      # The map builder and the apps published with it (hosted/README.md), at
+      # /maps/: glen at this commit, the builder, and /maps/a/<slug>/ for each
+      # app in hosted/apps/.
+      - name: Stage the map builder
+        run: sh scripts/stage-hosted.sh . docs/.vitepress/dist/maps
 
       # Browser-bound modules (map, chat UI, layout) have no test harness, so
       # they are verified by eye. Every `preview/*` branch is staged into the
@@ -162,6 +172,12 @@ jobs:
 
             if [ "$layout" = core ]; then
               core_page "$dest" ""
+            fi
+
+            # The branch's map builder, if it has one, at /preview/<branch>/maps/.
+            if [ -f "$work/scripts/stage-hosted.sh" ] && [ -d "$work/hosted" ]; then
+              sh "$work/scripts/stage-hosted.sh" "$work" "$dest/maps"
+              echo "  /preview/$slug/maps/"
             fi
 
             # Variants: preview/variants/<name>.json is a shallow patch over

@@ -1,0 +1,153 @@
+:root {
+    --bg: #f8f9fa;
+    --surface: #ffffff;
+    --fg: #1a1a2e;
+    --muted: rgba(0, 0, 0, 0.58);
+    --line: rgba(0, 0, 0, 0.12);
+    --accent: #2f6fd0;
+    --accent-fg: #ffffff;
+    --accent-wash: rgba(47, 111, 208, 0.1);
+    color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #14161c;
+        --surface: #1d2028;
+        --fg: #e8eaf0;
+        --muted: rgba(255, 255, 255, 0.6);
+        --line: rgba(255, 255, 255, 0.14);
+        --accent: #5b93e6;
+        --accent-fg: #0b1020;
+        --accent-wash: rgba(91, 147, 230, 0.14);
+        color-scheme: dark;
+    }
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+a { color: var(--accent); }
+
+.top {
+    max-width: 72rem;
+    margin: 0 auto;
+    padding: 2rem 1rem 0.5rem;
+}
+
+.top h1 { margin: 0 0 0.25rem; font-size: 1.6rem; }
+.top p { margin: 0.25rem 0; max-width: 44rem; }
+
+.layout {
+    max-width: 72rem;
+    margin: 0 auto;
+    padding: 1rem;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 20rem;
+    gap: 1.25rem;
+    align-items: start;
+}
+
+@media (max-width: 860px) {
+    .layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+section, .publish {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1rem 1.1rem;
+    margin-bottom: 1rem;
+}
+
+.publish { position: sticky; top: 1rem; }
+
+h2 { font-size: 1.1rem; margin: 0 0 0.75rem; }
+h3 { font-size: 0.95rem; margin: 1rem 0 0.4rem; }
+
+label { display: block; margin: 0.5rem 0; font-weight: 500; }
+label.inline { display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 400; margin: 0.25rem 0.75rem 0.25rem 0; }
+
+input[type=text], input[type=url], input[type=search], select, textarea {
+    display: block;
+    width: 100%;
+    margin-top: 0.25rem;
+    padding: 0.45rem 0.6rem;
+    font: inherit;
+    font-weight: 400;
+    color: var(--fg);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+}
+
+textarea#json { font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+.row { display: flex; gap: 0.5rem; align-items: center; margin: 0.5rem 0; }
+.row > input { margin-top: 0; flex: 1 1 12rem; min-width: 0; }
+.row.wrap { flex-wrap: wrap; }
+.row label:not(.inline) { flex: 1; min-width: 12rem; margin: 0; }
+
+button, .button, .button-like {
+    display: inline-block;
+    padding: 0.45rem 0.8rem;
+    font: inherit;
+    font-weight: 500;
+    color: var(--fg);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+button:hover, .button:hover, .button-like:hover { background: var(--accent-wash); }
+.button.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+.button[aria-disabled=true] { opacity: 0.5; pointer-events: none; }
+
+.muted { color: var(--muted); }
+.small { font-size: 0.85em; }
+.notes { margin: 0.5rem 0 0; padding-left: 1.2rem; color: var(--muted); }
+.notes:empty { display: none; }
+
+.collections {
+    list-style: none;
+    margin: 0.5rem 0;
+    padding: 0;
+    max-height: 22rem;
+    overflow: auto;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+}
+
+.collections li { padding: 0.2rem 0.6rem; border-bottom: 1px solid var(--line); }
+.collections li:last-child { border-bottom: 0; }
+.collections label.inline { display: block; margin: 0.2rem 0; }
+
+.chosen { padding-left: 1.4rem; margin: 0.25rem 0 0.5rem; }
+.chosen li { margin-bottom: 0.6rem; }
+.chosen .row { margin: 0; }
+.chosen input[type=text] { margin: 0; flex: 1 1 10rem; width: auto; }
+.chosen .small { overflow-wrap: anywhere; }
+.chosen button { padding: 0.3rem 0.55rem; }
+
+.view-map {
+    height: 16rem;
+    margin: 0.75rem 0 0.25rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.plugins label.inline { display: flex; }
+
+.path { font: 12px/1.4 ui-monospace, monospace; overflow-wrap: anywhere; color: var(--muted); }
+
+details summary { cursor: pointer; font-weight: 600; }

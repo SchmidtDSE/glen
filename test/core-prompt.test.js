@@ -25,6 +25,14 @@ describe('the app prompt beside core\'s', () => {
         expect(await loadPrompts({ system_prompt_url: 'prompts/p.md' }, { baseUrl: BASE, pageUrl: PAGE, fetchFn })).toBe('# Base\n\nApp');
     });
 
+    it('takes the app prompt as text from system_prompt, and reads no file for it', async () => {
+        const fetchFn = files({ [BASE]: '# Base', [`${PAGE}system-prompt.md`]: 'Not this one' });
+        expect(await loadPrompts({ system_prompt: ' Coral reefs of Belize.\n' }, { baseUrl: BASE, pageUrl: PAGE, fetchFn })).toBe('# Base\n\nCoral reefs of Belize.');
+        expect(await loadPrompts({ system_prompt: '' }, { baseUrl: BASE, pageUrl: PAGE, fetchFn })).toBe('# Base');
+        expect(fetchFn).toHaveBeenCalledTimes(2);
+        expect(appPromptUrl({ system_prompt: '' }, BASE, PAGE)).toBeNull();
+    });
+
     it('is fine without an app prompt, and takes no index page for one', async () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
         expect(await loadPrompts({}, { baseUrl: BASE, pageUrl: PAGE, fetchFn: files({ [BASE]: '# Base' }) })).toBe('# Base');

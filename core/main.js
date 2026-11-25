@@ -92,29 +92,33 @@ export const CORE_VERSION = import.meta.url.match(/glen@([^/]+)/)?.[1] || 'dev';
  * @param {Object} [options]
  * @param {Array<Object>} [options.plugins] - plugin objects, in addition to
  *   the module URLs named in the config's `plugins`
+ * @param {Object} [options.config] - the app's config, in place of the
+ *   `layers-input.json` beside the page (the hosted app, hosted/runtime.js)
+ * @param {Object|null} [options.runtimeConfig] - the deploy-time config, in
+ *   place of the `config.json` beside the page; null for none
  * @returns {Promise<Object>} the plugin context, for scripts and tests
  */
-export async function start({ plugins: extraPlugins = [] } = {}) {
+export async function start({ plugins: extraPlugins = [], config, runtimeConfig } = {}) {
     // The overlay until the map is drawn, then a bar until the chat is ready.
     // On load it is already up, from before the harness was imported.
     const progress = earlyProgress ?? createBootProgress();
     earlyProgress = null;
     try {
-        return await boot(extraPlugins, progress);
+        return await boot(extraPlugins, progress, { config, runtimeConfig });
     } catch (err) {
         progress.fail(err.message);
         throw err;
     }
 }
 
-async function boot(extraPlugins, progress) {
+async function boot(extraPlugins, progress, given = {}) {
     /* ── 1. Config ─────────────────────────────────────────────────────── */
     progress.step('Loading settings\u2026', 0.1);
     // The chat's stylesheet comes from the harness, beside the config, so the
     // chat is styled before the layout builds it (SchmidtDSE/glen#510).
     const [appConfig, runtimeConfig] = await Promise.all([
-        fetchJson('layers-input.json'),
-        fetchJson('config.json').catch(() => null),
+        given.config ? structuredClone(given.config) : fetchJson('layers-input.json'),
+        given.runtimeConfig !== undefined ? given.runtimeConfig : fetchJson('config.json').catch(() => null),
         loadStylesheets(chatStylesheets({ docked: false })),
         pageDeps,
     ]);
