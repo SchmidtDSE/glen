@@ -52,8 +52,8 @@ The deploy-time `config.json` sits beside `layers-input.json` and is merged over
 
 | Key | Description |
 |---|---|
-| `llm_models` | Array of `{ value, label, endpoint, api_key }`, the models offered in the chat footer. The app sends `api_key` as `Authorization: Bearer …`. Leave it out when a same-origin proxy injects the real key: the app then sends no `Authorization` header, which a page behind HTTP basic auth needs, because a header the page sets replaces the browser's saved password. |
-| `llm_model` | Which of them is selected on load. Defaults to the first. |
+| `llm_endpoint` | The model service, usually `/api/llm`, which the pod's nginx forwards to the open-llm-proxy with the app's key added. Its `/models` lists the models the chat offers and the default; the app names none. A `config.json` that still has `llm_models` keeps working until you drop it: only the first entry's `endpoint` and `api_key` are read. |
+| `llm_api_key` | Optional. Sent as `Authorization: Bearer …` on `/models` and chat requests. Leave it out when the pod's nginx adds the proxy key whatever the browser sends; set it when nginx checks a per-app token (glen-template's `llm-token.conf`). Never the proxy's own key. |
 | `mcp_server_url` | URL of the first (primary) server of [`plugins/mcp.js`](./configuration#mcp-servers), in place of the one in `layers-input.json`. |
 | `mcp_auth_token` | Sent to the primary MCP server as `Authorization: Bearer …`. |
 | `transcription_model` | Enables voice input. See [Voice input](./configuration#voice-input-optional). |

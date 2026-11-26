@@ -170,7 +170,7 @@ The model is then forced to supply an explanation as a structured argument, whic
 
 There are two separate message arrays:
 
-- `this.messages` (persisted across turns) — stored in `Agent`, grows with each user/assistant exchange, trimmed to last 12 for context
-- `turnMessages` (ephemeral per turn) — built fresh each turn from `[system] + this.messages.slice(-12)`, extended with tool call/result pairs during the loop
+- `this.messages` (persisted across turns) — stored in `Agent`. Since glen-harness v0.8.0 each finished turn stays in it in a shorter form: its tool calls with their arguments, the first 1,000 characters of each result, and the text the model wrote. Assistant messages that only call tools have `content: null`, so code reading it checks `role` first. Once it passes 60,000 characters (`history_budget_chars`, per model or globally), the oldest turns are dropped a few at a time, never splitting a tool call from its result.
+- `turnMessages` (ephemeral per turn) — built each turn from `[system] + this.messages`, extended with tool call/result pairs during the loop.
 
-Only the final assistant text response is pushed into `this.messages`. Tool call/result pairs live only in `turnMessages` and are not re-used in future turns (the LLM sees a summary of previous turns via the assistant message, not raw tool results).
+See the [glen-harness README](https://github.com/SchmidtDSE/glen-harness#readme) for the details.

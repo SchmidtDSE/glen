@@ -19,7 +19,7 @@ In `index.html`, the module script loads `core/main.js` in place of `app/main.js
 
 In `layers-input.json`, collections and their layer settings carry over unchanged, because glen core reads them by the same names. The opt-in features become plugins, described in the next section.
 
-The deploy-time `config.json` needs no change. glen core reads `llm_models`, `llm_model`, `transcription_model`, `export`, `geolocate` and the tool-call limits from it, as v3 did. The MCP plugin takes `mcp_server_url` and `mcp_auth_token` from it for the first server.
+The deploy-time `config.json` needs no change. glen core reads `transcription_model`, `export`, `geolocate` and the tool-call limits from it, as v3 did. It takes the model list from the model service rather than from `llm_models`, whose first entry gives only the endpoint and key; replace `llm_models` and `llm_model` with `"llm_endpoint": "/api/llm"` (and `"llm_api_key"` if the first entry's `api_key` is a token your nginx checks) when convenient (SchmidtDSE/glen#542). The MCP plugin takes `mcp_server_url` and `mcp_auth_token` from it for the first server.
 
 ## Plugins
 

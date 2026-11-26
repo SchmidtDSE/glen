@@ -193,3 +193,56 @@ export function addScripts(scripts, { doc = document, win = globalThis } = {}) {
     });
     return Promise.all(all).then(() => {});
 }
+
+/** Copy the deploy-time settings over the static config. */
+export function mergeRuntimeConfig(appConfig, runtimeConfig) {
+    if (!runtimeConfig) return appConfig;
+    // The MCP server's URL and token reach plugins/mcp.js through
+    // ctx.runtimeConfig instead. `llm_models` is read only for its endpoint,
+    // until every deployment gives `llm_endpoint` (SchmidtDSE/glen#542).
+    for (const k of ['llm_endpoint', 'llm_api_key', 'llm_models', 'transcription_model', 'max_tool_calls', 'max_tool_calls_manual', 'geolocate', 'export']) {
+        if (runtimeConfig[k] != null) appConfig[k] = runtimeConfig[k];
+    }
+    return appConfig;
+}
+
+export const NO_MODEL_SERVICE = 'This app names no model service, so the chat has no model.';
+export const MODEL_SERVICE_UNAVAILABLE = 'The model service did not answer, so the chat has no model. Reload the page to try again.';
+
+/**
+ * Which models the chat offers (SchmidtDSE/glen#542). The model service owns
+ * the list: behind open-llm-proxy, its `/models` gives the models, the default
+ * and each model's settings, and glen names none. The endpoint is
+ * `llm_endpoint` from the deployment's config.json (or, until deployments drop
+ * it, the first `llm_models` entry's endpoint), with an optional
+ * `llm_api_key` sent as the bearer on /models and chat. An app with `llm.user_provided`
+ * takes the visitor's own key and model instead, when it has no model service
+ * or the service does not answer.
+ *
+ * The harness functions are passed in, since tests cannot import the harness.
+ * Resolves to `{ source: 'proxy', tier }`, `{ source: 'user' }`, or
+ * `{ source: 'none', notice }` with a message for the chat.
+ */
+export async function resolveModels(config, { applyProxyModelList, buildUserModels, loadUserSettings }) {
+    const userProvided = () => {
+        delete config.llm_models;
+        delete config.llm_model;
+        const saved = buildUserModels(config.llm, loadUserSettings());
+        if (saved) Object.assign(config, saved);
+        config._userProvidedMode = true;
+        return { source: 'user' };
+    };
+    if (!config.llm_endpoint && !config.llm_models?.[0]?.endpoint) {
+        if (config.llm?.user_provided) return userProvided();
+        return { source: 'none', notice: NO_MODEL_SERVICE };
+    }
+    try {
+        return { source: 'proxy', tier: await applyProxyModelList(config) };
+    } catch (err) {
+        console.warn('[core] Model list unavailable:', err.message);
+        if (config.llm?.user_provided) return userProvided();
+        delete config.llm_models;
+        delete config.llm_model;
+        return { source: 'none', notice: MODEL_SERVICE_UNAVAILABLE };
+    }
+}

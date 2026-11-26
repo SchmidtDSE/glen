@@ -68,13 +68,13 @@ system message is byte-identical across turns and equals the frozen `systemPromp
 
 ## Known limitation (accepted, not a bug)
 
-The context window is `this.messages.slice(-12)` (`agent.js`), a sliding window.
-Once a conversation exceeds 12 messages, the tokens *immediately after* the system
-prompt shift each turn, so the conversation body never accrues incremental
-cross-turn cache hits — only the **system prefix** caches turn-to-turn. That is
-acceptable: the system prefix is by far the largest chunk, so we already capture
-the dominant win, and the window exists for context-budget reasons. Restructuring
-to an append-only history for marginal conversation-tail caching isn't worth it.
+Until glen-harness v0.8.0 the context window was `this.messages.slice(-12)`, a
+sliding window that shifted the tokens after the system prompt every turn, so only
+the **system prefix** cached turn-to-turn. Since v0.8.0 the history is
+append-only within a 60,000-character budget (`history_budget_chars`): a finished
+turn is shortened once and not changed again, and the oldest turns are dropped a
+few at a time once the budget is passed. Between drops the conversation body also
+caches; a drop shifts it once.
 
 ## Relationship to the explicit `cache_control` breakpoint (#273)
 
