@@ -56,7 +56,6 @@ The deploy-time `config.json` sits beside `layers-input.json` and is merged over
 | `llm_api_key` | Optional. Sent as `Authorization: Bearer …` on `/models` and chat requests. Leave it out when the pod's nginx adds the proxy key whatever the browser sends; set it when nginx checks a per-app token (glen-template's `llm-token.conf`). Never the proxy's own key. |
 | `mcp_server_url` | URL of the first (primary) server of [`plugins/mcp.js`](./configuration#mcp-servers), in place of the one in `layers-input.json`. |
 | `mcp_auth_token` | Sent to the primary MCP server as `Authorization: Bearer …`. |
-| `transcription_model` | Enables voice input. See [Voice input](./configuration#voice-input-optional). |
 | `geolocate` | The geolocate plugin's settings, when the plugin is listed without options. See [Geolocation](./configuration#geolocation). (v3's `draw_enabled` has no effect here; list `plugins/draw.js` instead.) |
 | `max_tool_calls`, `max_tool_calls_manual` | Override the checkpoint caps. `0` disables a cap. |
 | `export` | Overrides the [export settings](./configuration#chat-export). |

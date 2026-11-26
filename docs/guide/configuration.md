@@ -1408,24 +1408,14 @@ The agentic tool-use loop is heavily prefill-dominated — every turn re-sends t
 
 ## Voice input (optional)
 
-Voice input is opt-in via a `transcription_model` entry in `config.json`. When present, a microphone button appears beside Send; when absent, the button stays hidden and the voice/transcription JS modules are never loaded (zero footprint).
+A microphone button appears beside Send when the app has a transcription model; without one the button stays hidden and the voice modules are never loaded.
 
 The voice pipeline runs in two phases:
 
-1. **Transcription** — the recorded audio is sent to `transcription_model` with a "transcribe exactly" prompt. The returned text lands in the chat input field so you can review and edit it before sending.
+1. **Transcription** — the recorded audio is sent to the transcription model with a "transcribe exactly" prompt. The returned text lands in the chat input field so you can review and edit it before sending.
 2. **Agent** — pressing send dispatches the (possibly edited) text through the normal agent loop, using whichever model is selected in the model dropdown. Voice input therefore works with *any* agent model, not just audio-capable ones.
 
-**Server-provided mode** — add at the top level of `config.json`:
-
-```json
-{
-  "transcription_model": {
-    "value": "gemma-small",
-    "endpoint": "/api/llm",
-    "api_key": "EMPTY"
-  }
-}
-```
+**Server-provided mode** — nothing to configure. The open-llm-proxy's `/models` names each tier's transcription model (`transcription_model`, currently `parakeet`, a Whisper model), and glen uses it with the same endpoint and key as the chat (SchmidtDSE/glen#542).
 
 **User-provided mode** — add inside the `llm` block in `layers-input.json`. The user's API key and endpoint are injected at runtime, so you usually only need to specify `value`:
 
@@ -1440,8 +1430,6 @@ The voice pipeline runs in two phases:
 }
 ```
 
-`/api/llm` is the path deployed apps use to reach the [open-llm-proxy](https://github.com/boettiger-lab/open-llm-proxy) through their nginx sidecar. Outside such a deployment, use `https://open-llm-proxy.nrp-nautilus.io/v1`.
-
 The `endpoint` must be an OpenAI-compatible chat-completions URL whose model accepts the `input_audio` content part. A model that serves chat is not enough: most don't take audio. `gemma-small` (`google/gemma-4-12B-it`) on the open-llm-proxy is the current reference implementation (checked 2026-10-16). NRP renames and retires model ids without notice, so check a new id with one request before configuring it:
 
 ```bash
@@ -1452,7 +1440,7 @@ curl -s https://open-llm-proxy.nrp-nautilus.io/v1/chat/completions \
         {"type": "input_audio", "input_audio": {"data": "'"$(base64 -w0 speech.wav)"'", "format": "wav"}}]}]}'
 ```
 
-A model without audio support answers 400 (e.g. `does not have an audio tower`) or 500. A dedicated Whisper deployment can be substituted by swapping this config block.
+A model without audio support answers 400 (e.g. `does not have an audio tower`) or 500. A Whisper model behind the proxy, such as `parakeet`, takes the same request.
 
 ## Geocoding (optional)
 
