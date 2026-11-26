@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from 'vitest';
-import { initialView, loadHighlighter, HIGHLIGHT_THEME, addScripts, addStylesheets, glenStylesheets, PAGE_SCRIPTS, PAGE_STYLESHEETS } from '../core/boot.js';
+import { initialView, loadHighlighter, HIGHLIGHT_THEME, addScripts, addStylesheets, glenStylesheets, PAGE_SCRIPTS, PAGE_STYLESHEETS, mergeRuntimeConfig, resolveModels, NO_MODEL_SERVICE, MODEL_SERVICE_UNAVAILABLE } from '../core/boot.js';
 
 describe('initialView', () => {
     it('opens on the whole world without a view', () => {
@@ -172,5 +172,63 @@ describe('the page\'s libraries and stylesheets (SchmidtDSE/glen#511)', () => {
         expect(doc.querySelector('link').integrity).toBe(PAGE_STYLESHEETS[0].integrity);
         settle(doc);
         await done;
+    });
+});
+
+describe('mergeRuntimeConfig', () => {
+    it('takes the model service endpoint from config.json, and no model names', () => {
+        const app = mergeRuntimeConfig({}, { llm_endpoint: '/api/llm', llm_model: 'kimi', export: true });
+        expect(app).toEqual({ llm_endpoint: '/api/llm', export: true });
+    });
+    it('leaves the static config alone without a config.json', () => {
+        expect(mergeRuntimeConfig({ a: 1 }, null)).toEqual({ a: 1 });
+    });
+});
+
+describe('resolveModels', () => {
+    const LIST = [{ value: 'glm-5', endpoint: '/api/llm' }];
+    const harness = (apply) => ({
+        applyProxyModelList: vi.fn(apply),
+        buildUserModels: vi.fn(() => ({ llm_models: [{ value: 'mine' }], llm_model: 'mine' })),
+        loadUserSettings: vi.fn(() => ({ apiKey: 'k' })),
+    });
+    beforeEach(() => vi.spyOn(console, 'warn').mockImplementation(() => {}));
+    afterEach(() => vi.restoreAllMocks());
+
+    it('takes the list from the model service', async () => {
+        const h = harness(async (c) => { c.llm_models = LIST; c.llm_model = 'glm-5'; return 'public'; });
+        const config = { llm_endpoint: '/api/llm' };
+        expect(await resolveModels(config, h)).toEqual({ source: 'proxy', tier: 'public' });
+        expect(config.llm_models).toBe(LIST);
+        expect(h.buildUserModels).not.toHaveBeenCalled();
+    });
+    it('asks the first llm_models endpoint while deployments still list models', async () => {
+        const h = harness(async () => 'private');
+        await resolveModels({ llm_models: [{ value: 'old', endpoint: '/api/llm' }] }, h);
+        expect(h.applyProxyModelList).toHaveBeenCalled();
+    });
+    it('keeps no stale list when the service does not answer', async () => {
+        const h = harness(async () => { throw Object.assign(new Error('503'), { code: 'model-list-unavailable' }); });
+        const config = { llm_endpoint: '/api/llm', llm_models: [{ value: 'old', endpoint: '/api/llm' }], llm_model: 'old' };
+        expect(await resolveModels(config, h)).toEqual({ source: 'none', notice: MODEL_SERVICE_UNAVAILABLE });
+        expect(config.llm_models).toBeUndefined();
+        expect(config.llm_model).toBeUndefined();
+    });
+    it('falls back to the visitor\'s own key when the app offers it', async () => {
+        const h = harness(async () => { throw new Error('503'); });
+        const config = { llm_endpoint: '/api/llm', llm: { user_provided: true } };
+        expect(await resolveModels(config, h)).toEqual({ source: 'user' });
+        expect(config).toMatchObject({ llm_model: 'mine', _userProvidedMode: true });
+    });
+    it('uses the visitor\'s own key with no model service', async () => {
+        const h = harness(async () => 'public');
+        const config = { llm: { user_provided: true } };
+        expect(await resolveModels(config, h)).toEqual({ source: 'user' });
+        expect(h.applyProxyModelList).not.toHaveBeenCalled();
+        expect(config._userProvidedMode).toBe(true);
+    });
+    it('says so when there is neither', async () => {
+        const h = harness(async () => 'public');
+        expect(await resolveModels({}, h)).toEqual({ source: 'none', notice: NO_MODEL_SERVICE });
     });
 });

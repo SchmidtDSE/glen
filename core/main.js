@@ -31,7 +31,7 @@ import { PortolanCatalog, exportCatalogView } from './portolan-catalog.js';
 import { createCoreMapTools } from './map-tools.js';
 import { loadPrompts } from './prompt.js';
 import { ensurePanelActions } from '../app/panel-actions.js';
-import { initialView, loadHighlighter, loadStylesheets, addScripts, addStylesheets, glenStylesheets, PAGE_SCRIPTS, PAGE_STYLESHEETS } from './boot.js';
+import { initialView, loadHighlighter, loadStylesheets, addScripts, addStylesheets, glenStylesheets, PAGE_SCRIPTS, PAGE_STYLESHEETS, mergeRuntimeConfig, resolveModels } from './boot.js';
 import { createBootProgress } from '../app/boot-progress.js';
 import { bindMapLink, linkParams, parseMapView } from '../app/link-state.js';
 
@@ -126,21 +126,10 @@ async function boot(extraPlugins, progress, given = {}) {
     // marked and DOMPurify, which the chat renders the model's answers with.
     const chatScripts = addScripts(CHAT_SCRIPTS.filter((x) => !x.src.includes('/highlight.js/')));
     mergeRuntimeConfig(appConfig, runtimeConfig);
-    // A user-provided key builds the model list from what this browser saved
-    // (glen#443). Otherwise, behind open-llm-proxy, the picker shows the
-    // models the app's key may use (glen#444); this runs beside the catalog
-    // and map, and the agent waits for it.
-    let modelListP = null;
-    if (!appConfig.llm_models && appConfig.llm?.user_provided) {
-        const saved = buildUserModels(appConfig.llm, loadUserSettings());
-        if (saved) Object.assign(appConfig, saved);
-        appConfig._userProvidedMode = true;
-    } else {
-        modelListP = applyProxyModelList(appConfig).catch((err) => {
-            console.warn('[core] Model list unavailable; using llm_models:', err.message);
-            return null;
-        });
-    }
+    // The model service's /models gives the model list (SchmidtDSE/glen#542),
+    // or the visitor brings their own key (glen#443). This runs beside the
+    // catalog and map, and the agent waits for it.
+    const modelsP = resolveModels(appConfig, { applyProxyModelList, buildUserModels, loadUserSettings });
 
     /* ── 2. Chrome, catalog and map (catalog and map load in parallel) ── */
     const layoutRefs = buildLayout(appConfig);
@@ -242,8 +231,8 @@ async function boot(extraPlugins, progress, given = {}) {
 
     /* ── 5. Agent and chat ─────────────────────────────────────────────── */
     const systemPrompt = [await promptP, catalog.generatePrompt(), ...promptParts].join('\n\n');
-    const tier = await modelListP;
-    if (tier) console.log(`[core] Models from the proxy (${tier} tier): ${appConfig.llm_models.length}`);
+    const models = await modelsP;
+    if (models.tier) console.log(`[core] Models from the proxy (${models.tier} tier): ${appConfig.llm_models.length}`);
     progress.step(null, 0.95);
     const agent = new Agent(appConfig, tools, { clientName: `glen-core/${CORE_VERSION}` });
     agent.setSystemPrompt(systemPrompt);
@@ -257,6 +246,7 @@ async function boot(extraPlugins, progress, given = {}) {
     ui.catalog = exportCatalogView(catalog);
     ctx.agent = agent;
     ctx.ui = ui;
+    if (models.notice) ui.addMessage('system', models.notice);
     for (const fn of readyHooks) {
         try { await fn({ agent, ui }); } catch (err) { console.error('[core] onReady hook failed:', err); }
     }
@@ -266,17 +256,6 @@ async function boot(extraPlugins, progress, given = {}) {
 
 /* ── Helpers ──────────────────────────────────────────────────────────── */
 
-
-/** Copy the deploy-time settings (models, keys) over the static config. */
-export function mergeRuntimeConfig(appConfig, runtimeConfig) {
-    if (!runtimeConfig) return appConfig;
-    // As in the full app. The MCP server's URL and token reach plugins/mcp.js
-    // through ctx.runtimeConfig instead.
-    for (const k of ['llm_models', 'llm_model', 'transcription_model', 'max_tool_calls', 'max_tool_calls_manual', 'geolocate', 'export']) {
-        if (runtimeConfig[k] != null) appConfig[k] = runtimeConfig[k];
-    }
-    return appConfig;
-}
 
 async function loadPluginModules(specs) {
     const out = [];

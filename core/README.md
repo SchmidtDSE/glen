@@ -21,7 +21,7 @@ Run it locally from the repository root with `python -m http.server 8000` and op
 
 ## Configuration
 
-The [configuration guide](../docs/guide/configuration.md) is the full reference, with every plugin. In short, `layers-input.json` takes the same chrome, model and welcome settings as the v3 full app (`sidebar`, `header`, `theme`, `llm`, `llm_models`, `welcome`, `view`, `default_basemap`, `geocoder`, `auto_approve`). As in the v3 full app, when every model is served by open-llm-proxy the model picker shows the models the app's key may use, and a user who brings their own key can name any model. Data comes from Portolan collections:
+The [configuration guide](../docs/guide/configuration.md) is the full reference, with every plugin. In short, `layers-input.json` takes the same chrome, model and welcome settings as the v3 full app (`sidebar`, `header`, `theme`, `llm`, `welcome`, `view`, `default_basemap`, `geocoder`, `auto_approve`). Behind open-llm-proxy the model picker shows the models the app's key may use, from the proxy's own list (the app names none), and a user who brings their own key can name any model. Data comes from Portolan collections:
 
 ```json
 {
@@ -101,7 +101,7 @@ node scripts/convert-to-core.mjs index.html --ref <glen tag> > index.core.html
 
 glen core reads the v3 full app's layer settings by the same names, `collection_id` and `collection_url` included, so collections pass through unchanged. The opt-in features become plugins: the MCP server (every v3 app had one, `duckdb-mcp.nrp-nautilus.io` when it named none), with its `geospatial-analyst` prompt; the hex tile tools, which every v3 app had; `charts`; `draw_enabled`; `upload_enabled` with its settings; and `geolocate`. `catalog_index_threshold`, `client_header_hosts` and collections' `preload` are dropped, with a note for each. The session export, on by default in v3, is kept with `"export": true` unless the app turned it off. The page's module script loads `core/main.js`, and its glen URLs move to the release. From v4.5.0 the converter also removes the library and stylesheet tags glen core now adds itself (see [the upgrading guide](../docs/guide/upgrading-to-v4.md#conversion)).
 
-The deploy-time `config.json` needs no change: `plugins/mcp.js` takes `mcp_server_url` and `mcp_auth_token` from it for the first server, and core reads `llm_models`, `llm_model`, `transcription_model`, `export` and the tool-call limits, as the v3 full app does. `plugins/geolocate.js`, listed without options, reads `geolocate` from it. A `draw_enabled` set only in `config.json` has no effect in core; list `plugins/draw.js` instead.
+The deploy-time `config.json` needs no change: `plugins/mcp.js` takes `mcp_server_url` and `mcp_auth_token` from it for the first server, and core reads `llm_endpoint` (or, until a deployment drops it, the first `llm_models` entry's endpoint), `transcription_model`, `export` and the tool-call limits. `plugins/geolocate.js`, listed without options, reads `geolocate` from it. A `draw_enabled` set only in `config.json` has no effect in core; list `plugins/draw.js` instead.
 
 ## Session export
 

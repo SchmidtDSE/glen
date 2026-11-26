@@ -1286,13 +1286,9 @@ Keep an app's prompt short: what the data is, who the app is for, and anything p
 
 The `llm` section controls how the chat agent connects to a language model. Two modes:
 
-**Server-provided** (default — omit `llm`): a `config.json` on the same server provides model endpoints and API keys (e.g., injected by Kubernetes at deploy time). See [Deployment](./deployment).
+**Server-provided** (default — omit `llm`): the deployment's `config.json` names the model service with `llm_endpoint`, e.g. `"/api/llm"`, the path a deployed app's nginx forwards to the [open-llm-proxy](https://github.com/boettiger-lab/open-llm-proxy) with the app's key added. See [Deployment](./deployment). The app names no models (SchmidtDSE/glen#542): the proxy's `GET /models` gives the models the key's tier may use, the default, and each model's settings (label, reasoning toggle, sampling and the like). The picker shows that list in its order and starts on the tier's default. The browser sends no `Authorization` header, so a deployment behind basic auth keeps the visitor's saved login.
 
-When every model in `config.json` uses one endpoint and that endpoint is the [open-llm-proxy](https://github.com/boettiger-lab/open-llm-proxy) (`/api/llm` in a deployed app), the app asks the proxy which models to offer (#444). Each app's proxy key carries a tier, public or private, and `GET /api/llm/models` returns that tier's models and its default. The picker then shows the proxy's list in its order:
-
-- `llm_models` only supplies per-model settings, matched by `value`: `label`, `reasoning_toggle`, sampling and the like. A model the proxy does not list is left out, since the proxy would refuse it with a 403.
-- The picker starts on the proxy's default model. The proxy keeps one default per tier, so the app's `llm_model` applies only when the list cannot be fetched.
-- If the request fails, or the endpoint is not the proxy (its `/models` has no `tier`), the picker uses `llm_models` as before.
+If the model service does not answer, the chat has no model and says so, unless the app also offers user-provided keys, in which case it falls back to those. A `config.json` that still lists `llm_models` keeps working: only the first entry's `endpoint` is read, and the names are ignored.
 
 **User-provided** (`"user_provided": true`): no `config.json` needed. A ⚙ button appears in the chat footer; visitors enter their own API key, stored in `localStorage` (never sent to the server). Ideal for static-site deployments.
 
@@ -1308,15 +1304,18 @@ The settings panel also has an optional model field (#443). The visitor's own ke
 
 The agent sends **`temperature: 0` by default**, so identical questions give as reproducible an answer as the model allows. This is a deliberate client-side default: geo-agent talks to many OpenAI-compatible endpoints (the NRP llm-proxy, OpenRouter, a user's own key) whose own defaults vary (0.7 and up), so reproducibility shouldn't depend on which endpoint is behind it.
 
-To change sampling, set any of `temperature`, `top_p`, `seed`, or `max_tokens`. Each is read **per-model first**, then falls back to a **top-level global default**, then to the built-in default (`temperature: 0`; the rest unset). Per-model overrides the global.
+To change sampling, set any of `temperature`, `top_p`, `seed`, or `max_tokens`. Each is read **per-model first**, then falls back to a **top-level global default**, then to the built-in default (`temperature: 0`; the rest unset). Per-model overrides the global. Behind the open-llm-proxy, per-model settings come from the proxy's model list (its `settings` for each model); with user-provided keys they go on the entries in `llm.models`, as in the examples below.
 
 ```json
 {
   "temperature": 0,
-  "llm_models": [
-    { "value": "minimax-m2", "endpoint": "…", "api_key": "…" },
-    { "value": "deepseek-v3", "endpoint": "…", "api_key": "…", "temperature": 0.7, "seed": 42 }
-  ]
+  "llm": {
+    "user_provided": true,
+    "models": [
+      { "value": "minimax-m2" },
+      { "value": "deepseek-v3", "temperature": 0.7, "seed": 42 }
+    ]
+  }
 }
 ```
 
@@ -1357,10 +1356,13 @@ The toggle emits a normalized `enable_thinking` flag that the [open-llm-proxy](h
 
 ```json
 {
-  "llm_models": [
-    { "value": "qwen3", "endpoint": "…", "api_key": "…", "reasoning_toggle": true, "reasoning_default": true },
-    { "value": "minimax-m2", "endpoint": "…", "api_key": "…" }
-  ]
+  "llm": {
+    "user_provided": true,
+    "models": [
+      { "value": "qwen3", "reasoning_toggle": true, "reasoning_default": true },
+      { "value": "minimax-m2" }
+    ]
+  }
 }
 ```
 
@@ -1388,10 +1390,13 @@ The agentic tool-use loop is heavily prefill-dominated — every turn re-sends t
 
 ```json
 {
-  "llm_models": [
-    { "value": "anthropic/claude-haiku-4.5", "endpoint": "…", "api_key": "…", "prompt_cache": true },
-    { "value": "minimax-m2", "endpoint": "…", "api_key": "…" }
-  ]
+  "llm": {
+    "user_provided": true,
+    "models": [
+      { "value": "anthropic/claude-haiku-4.5", "prompt_cache": true },
+      { "value": "minimax-m2" }
+    ]
+  }
 }
 ```
 
