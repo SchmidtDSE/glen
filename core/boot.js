@@ -199,8 +199,10 @@ export function mergeRuntimeConfig(appConfig, runtimeConfig) {
     if (!runtimeConfig) return appConfig;
     // The MCP server's URL and token reach plugins/mcp.js through
     // ctx.runtimeConfig instead. `llm_models` is read only for its endpoint,
-    // until every deployment gives `llm_endpoint` (SchmidtDSE/glen#542).
-    for (const k of ['llm_endpoint', 'llm_api_key', 'llm_models', 'transcription_model', 'max_tool_calls', 'max_tool_calls_manual', 'geolocate', 'export']) {
+    // until every deployment gives `llm_endpoint` (SchmidtDSE/glen#542). The
+    // model service's list also names the transcription model, so a
+    // `transcription_model` here is ignored.
+    for (const k of ['llm_endpoint', 'llm_api_key', 'llm_models', 'max_tool_calls', 'max_tool_calls_manual', 'geolocate', 'export']) {
         if (runtimeConfig[k] != null) appConfig[k] = runtimeConfig[k];
     }
     return appConfig;
