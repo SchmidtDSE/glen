@@ -177,8 +177,8 @@ describe('the page\'s libraries and stylesheets (SchmidtDSE/glen#511)', () => {
 
 describe('mergeRuntimeConfig', () => {
     it('takes the model service endpoint from config.json, and no model names', () => {
-        const app = mergeRuntimeConfig({}, { llm_endpoint: '/api/llm', llm_model: 'kimi', export: true });
-        expect(app).toEqual({ llm_endpoint: '/api/llm', export: true });
+        const app = mergeRuntimeConfig({}, { llm_endpoint: '/api/llm', llm_api_key: 'tok', llm_model: 'kimi', export: true });
+        expect(app).toEqual({ llm_endpoint: '/api/llm', llm_api_key: 'tok', export: true });
     });
     it('leaves the static config alone without a config.json', () => {
         expect(mergeRuntimeConfig({ a: 1 }, null)).toEqual({ a: 1 });

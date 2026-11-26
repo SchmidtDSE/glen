@@ -200,7 +200,7 @@ export function mergeRuntimeConfig(appConfig, runtimeConfig) {
     // The MCP server's URL and token reach plugins/mcp.js through
     // ctx.runtimeConfig instead. `llm_models` is read only for its endpoint,
     // until every deployment gives `llm_endpoint` (SchmidtDSE/glen#542).
-    for (const k of ['llm_endpoint', 'llm_models', 'transcription_model', 'max_tool_calls', 'max_tool_calls_manual', 'geolocate', 'export']) {
+    for (const k of ['llm_endpoint', 'llm_api_key', 'llm_models', 'transcription_model', 'max_tool_calls', 'max_tool_calls_manual', 'geolocate', 'export']) {
         if (runtimeConfig[k] != null) appConfig[k] = runtimeConfig[k];
     }
     return appConfig;
@@ -214,7 +214,8 @@ export const MODEL_SERVICE_UNAVAILABLE = 'The model service did not answer, so t
  * the list: behind open-llm-proxy, its `/models` gives the models, the default
  * and each model's settings, and glen names none. The endpoint is
  * `llm_endpoint` from the deployment's config.json (or, until deployments drop
- * it, the first `llm_models` entry's endpoint). An app with `llm.user_provided`
+ * it, the first `llm_models` entry's endpoint), with an optional
+ * `llm_api_key` sent as the bearer on /models and chat. An app with `llm.user_provided`
  * takes the visitor's own key and model instead, when it has no model service
  * or the service does not answer.
  *

@@ -135,8 +135,9 @@ data:
         add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Accept";
 
         # ── Reverse proxy to open-llm-proxy ──────────────────────────
-        # Clients send no bearer token (SchmidtDSE/glen#542); nginx sets the
-        # Authorization header, whatever the browser sends, from the
+        # config.json sets no llm_api_key, so clients send no bearer token
+        # (SchmidtDSE/glen#542); nginx sets the Authorization header,
+        # whatever the browser sends, from the
         # ${PROXY_KEY} substituted in at container startup. The browser
         # never receives the key.
         #
