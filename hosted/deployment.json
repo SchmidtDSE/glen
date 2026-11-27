@@ -68,7 +68,6 @@
                     {
                         "worker": "geo-query-worker.js",
                         "worker_config": {
-                            "discovery": false,
                             "allowedDirectories": [
                                 "s3://",
                                 "https://s3-west.nrp-nautilus.io/",
