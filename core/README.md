@@ -139,7 +139,7 @@ Each server entry may also give `auth_token`, sent to that server alone as a bea
 A server can also run in the page, in a Web Worker, such as [geo-query-wasm](https://github.com/SchmidtDSE/geo-query-wasm), which runs geo-query's tools on DuckDB-wasm in the visitor's browser. Its entry takes `worker`, the path of a worker file the app serves, in place of `url`, and `worker_config`, which the worker receives as JSON in a `config` search parameter:
 
 ```json
-"servers": [{ "worker": "geo-query-worker.js", "worker_config": { "discovery": false }, "include": ["query"] }]
+"servers": [{ "worker": "geo-query-worker.js", "include": ["query"] }]
 ```
 
 A page may start a Worker only from its own origin, so the app serves that file. For geo-query-wasm it is one line, `import 'https://cdn.jsdelivr.net/gh/SchmidtDSE/geo-query-wasm@<commit>/src/worker.js';`. The path is relative to the page. A worker entry takes the same rank, filters and prompt as a URL entry, and never offers a visitor token. A worker that fails to load is skipped like a server that cannot be reached. geo-query-wasm limits what SQL may read with two lists in `worker_config`. `allowedDirectories` covers the paths a query reads: by default any `s3://` path, and `https://` only on NRP and source.coop. `allowedEndpoints` covers the S3 hosts a query may name with `s3_endpoint`, which is how `get_schema` points the model at a host other than NRP or source.coop: by default NRP, minio.carlboettiger.info and AWS S3. So a collection on Google Cloud Storage needs `"allowedEndpoints": ["s3-west.nrp-nautilus.io", "storage.googleapis.com"]`. A list given in `worker_config` replaces geo-query-wasm's default list rather than adding to it.
@@ -169,7 +169,7 @@ When the first server is on another origin from the page and its entry sets no `
 ]
 ```
 
-`plugins/hex.js` adds the v3 full app's `add_hex_tile_layer` and `remove_hex_tile_layer`, which draw the H3 tile pyramid an SQL server builds with `register_hex_tiles`. duckdb-mcp serves those tiles over https. geo-query-wasm, run in a worker by `plugins/mcp.js`, keeps them in the browser at `geoquerywasm://` URLs; the plugin then registers geo-query-wasm's MapLibre protocol for them and reads each tileset's `metadata.json` through the worker. Its `geo_query_wasm` option names the geo-query-wasm release whose protocol module to load (default `v0.6.0`); match the worker's.
+`plugins/hex.js` adds the v3 full app's `add_hex_tile_layer` and `remove_hex_tile_layer`, which draw the H3 tile pyramid an SQL server builds with `register_hex_tiles`. duckdb-mcp serves those tiles over https. geo-query-wasm, run in a worker by `plugins/mcp.js`, keeps them in the browser at `geoquerywasm://` URLs; the plugin then registers geo-query-wasm's MapLibre protocol for them and reads each tileset's `metadata.json` through the worker. Its `geo_query_wasm` option names the geo-query-wasm release whose protocol module to load (default `v0.7.0`); match the worker's.
 
 `setup` runs after the map and the map tools exist and before the agent is built. It receives:
 

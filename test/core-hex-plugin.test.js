@@ -39,7 +39,7 @@ describe('glen core hex plugin (#445)', () => {
             hexFetch: (client) => async (url) => ({ ok: true, json: async () => ({ ...meta, url, from: client.client }) }),
         });
         await plugin.setup(ctx, { maplibregl: { addProtocol } });
-        expect(plugin.loadHexProtocol).toHaveBeenCalledWith('v0.6.0');
+        expect(plugin.loadHexProtocol).toHaveBeenCalledWith('v0.7.0');
         expect(addProtocol).toHaveBeenCalledWith('geoquerywasm', expect.any(Function));
         expect(seenClient.client).toBe(sdk);
         await ctx.tools.tools.get('add_hex_tile_layer').execute({ tile_url: 'geoquerywasm://tiles/hex/h1/{z}/{x}/{y}.pbf' });
