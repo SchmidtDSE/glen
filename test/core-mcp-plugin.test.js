@@ -428,6 +428,28 @@ describe('mcp plugin setup', () => {
         expect(clients[0].transport.closed).toBeUndefined();
     });
 
+    it('gives plugins the first worker server\'s Worker, and tells them of each one started (#463)', async () => {
+        const { ctx } = context();
+        await plugin.setup(ctx, { servers: [{ url: 'https://a/mcp' }, { worker: 'w.js' }] });
+        expect(ctx.sqlWorker.get()).toBe(workers[0]);
+        expect(clients[1].transport.port).toBe(workers[0]);
+        const started = [];
+        const stop = ctx.sqlWorker.onStart((w) => started.push(w));
+        await clients[1].connect();          // the last connection heard nothing: replaced
+        expect(started).toEqual([workers[1]]);
+        expect(ctx.sqlWorker.get()).toBe(workers[1]);
+        stop();
+        workers[1].dispatchEvent(new Event('error'));   // failed before answering: dropped
+        expect(ctx.sqlWorker.get()).toBe(workers[2]);     // started on demand
+        expect(started).toHaveLength(1);
+    });
+
+    it('has no sqlWorker without a worker server', async () => {
+        const { ctx } = context();
+        await plugin.setup(ctx, { url: 'https://a/mcp' });
+        expect(ctx.sqlWorker).toBeUndefined();
+    });
+
     it('adds each server\'s prompt, and leaves the data files to get_schema', async () => {
         const { ctx, prompts } = context();
         ctx.catalog = { getAll: () => [{ id: 'roads', url: 'https://x/roads/collection.json', stac: { assets: { d: { href: 'roads.parquet', type: 'application/vnd.apache.parquet', roles: ['data'] } } } }] };

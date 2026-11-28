@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
     validateUploadGeoJSON,
     explodeMultiPoints,
@@ -9,6 +9,8 @@ import {
     pickTooltipFields,
     buildObjectUrl,
     contentHash,
+    s3UploadStore,
+    workerUploadStore,
 } from '../app/upload-manager.js';
 
 const poly = (coords, props = {}) => ({
@@ -179,5 +181,77 @@ describe('point uploads (#435)', () => {
         const sql = pointHexSql("https://b.example/it's.geojson", ['h8', 'name', 'h0']);
         expect(sql).toContain('SELECT * EXCLUDE ("h8", "h0"), h3_latlng_to_cell');
         expect(sql).toContain("ST_Read('https://b.example/it''s.geojson')");
+    });
+});
+
+describe('upload stores', () => {
+    it('PUTs a file to the bucket and gives its URL', async () => {
+        const fetchImpl = vi.fn(async () => ({ ok: true }));
+        const store = s3UploadStore({ bucketUrl: 'https://s3/b/', prefix: 'uploads' }, fetchImpl);
+        expect(await store.put({ text: '{}', hash: 'abc' })).toEqual({ url: 'https://s3/b/uploads/abc/data.geojson' });
+        expect(fetchImpl).toHaveBeenCalledWith('https://s3/b/uploads/abc/data.geojson', expect.objectContaining({ method: 'PUT', body: '{}' }));
+        const refused = s3UploadStore({ bucketUrl: 'https://s3/b', prefix: 'u' }, async () => ({ ok: false, status: 403 }));
+        await expect(refused.put({ text: '{}', hash: 'abc' })).rejects.toThrow('HTTP 403');
+    });
+
+    // plugins/mcp.js's handle on the worker, with a worker that can be replaced.
+    function sqlWorker() {
+        const listeners = [];
+        const handle = {
+            current: { id: 1 },
+            get: () => handle.current,
+            onStart: (fn) => listeners.push(fn),
+            replace: async (w) => { handle.current = w; await Promise.all(listeners.map((fn) => fn(w))); },
+        };
+        return handle;
+    }
+    const files = () => {
+        const calls = [];
+        return {
+            calls,
+            addFile: vi.fn(async (worker, blob, name) => {
+                calls.push({ worker, name, text: await blob.text() });
+                return { name, path: `/upload/${name}`, read: `ST_Read('/upload/${name}')`, columns: [{ name: 'geom', type: 'GEOMETRY' }] };
+            }),
+        };
+    };
+
+    it('gives a file to the SQL worker, and the agent its path and columns (#463)', async () => {
+        const w = sqlWorker();
+        const lib = files();
+        const store = workerUploadStore(w, async () => lib);
+        const out = await store.put({ text: '{"type":"FeatureCollection"}', hash: 'abc' });
+        expect(out).toEqual({ url: '/upload/abc.geojson', columns: [{ name: 'geom', type: 'GEOMETRY' }] });
+        expect(lib.calls).toEqual([{ worker: { id: 1 }, name: 'abc.geojson', text: '{"type":"FeatureCollection"}' }]);
+    });
+
+    it('gives every file again to a worker that replaces the old one', async () => {
+        const w = sqlWorker();
+        const lib = files();
+        const store = workerUploadStore(w, async () => lib);
+        await w.replace({ id: 0 });               // nothing held yet: nothing to give
+        expect(lib.calls).toHaveLength(0);
+        await store.put({ text: 'A', hash: 'a' });
+        await store.put({ text: 'B', hash: 'b' });
+        await w.replace({ id: 2 });
+        expect(lib.calls.slice(2)).toEqual([
+            { worker: { id: 2 }, name: 'a.geojson', text: 'A' },
+            { worker: { id: 2 }, name: 'b.geojson', text: 'B' },
+        ]);
+    });
+
+    it('keeps no file the worker refused, and warns when a replacement refuses one', async () => {
+        const w = sqlWorker();
+        const lib = files();
+        lib.addFile.mockRejectedValueOnce(new Error('abc.geojson could not be read'));
+        const store = workerUploadStore(w, async () => lib);
+        await expect(store.put({ text: 'bad', hash: 'abc' })).rejects.toThrow('could not be read');
+        expect(store.held.size).toBe(0);
+        await store.put({ text: 'A', hash: 'a' });
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        lib.addFile.mockRejectedValueOnce(new Error('the worker did not answer'));
+        await w.replace({ id: 3 });
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('a.geojson'), 'the worker did not answer');
+        warn.mockRestore();
     });
 });

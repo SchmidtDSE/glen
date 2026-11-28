@@ -50,7 +50,11 @@
  *
  * A server can also run in the page, in a Web Worker, such as geo-query-wasm.
  * Its entry takes `worker`, a file the app serves, in place of `url`, and
- * `worker_config`; core/README.md describes both.
+ * `worker_config`; core/README.md describes both. The first worker server's
+ * handle is `ctx.sqlWorker`: `get()` returns its Worker, starting it if need
+ * be, and `onStart(fn)` hears of each Worker started, including one that
+ * replaces a worker that stopped answering. plugins/uploads.js gives the
+ * worker a visitor's files through it.
  *
  * When the first server is on another origin and its entry has no
  * Authorization header, a visitor can enter their own token for it in the
@@ -253,6 +257,10 @@ export default {
                 : new MCPClient(server.url, headers));
         }
         primary.client = clients[0];
+        // The first worker server, for plugins that give the worker files of
+        // their own (plugins/uploads.js, SchmidtDSE/glen#463).
+        const firstWorker = clients.find((c) => c.workerHandle);
+        if (firstWorker) ctx.sqlWorker = firstWorker.workerHandle;
         const required = await Promise.all(servers.map(async (server, rank) => {
             const filters = { rank, include: server.include, exclude: server.exclude };
             const client = clients[rank];
@@ -324,6 +332,17 @@ export default {
         const PostMessageTransport = await this.loadTransport();
         let worker = null;
         let last = null;
+        // Plugins that hand the worker data of their own (uploads) hear of
+        // each worker started, so they can give a replacement what the old
+        // one held.
+        const listeners = new Set();
+        const start = () => {
+            worker = this.startWorker(server);
+            for (const fn of listeners) {
+                try { fn(worker); } catch (err) { console.warn('[mcp plugin] worker listener failed:', err.message); }
+            }
+            return worker;
+        };
         const transport = () => {
             // A worker that never answered the last connection over it may
             // be stuck without an error; replace it rather than wait again.
@@ -332,8 +351,7 @@ export default {
             // The harness reconnects only after a network or timeout error,
             // so this is rare.
             if (worker && last && !last.heard) { worker.terminate?.(); worker = null; }
-            worker ??= this.startWorker(server);
-            const w = worker;
+            const w = worker ?? start();
             const t = new PostMessageTransport(w);
             const mine = last = { heard: false };
             w.addEventListener('message', () => { mine.heard = true; }, { once: true });
@@ -346,6 +364,13 @@ export default {
             w.addEventListener('message', () => w.removeEventListener('error', failed), { once: true });
             return t;
         };
-        return new MCPClient(server.url, {}, { transport });
+        const client = new MCPClient(server.url, {}, { transport });
+        client.workerHandle = {
+            /** The worker now running, started if there is none. */
+            get: () => worker ?? start(),
+            /** Calls `fn(worker)` for each worker started from now on; returns a function that stops it. */
+            onStart: (fn) => { listeners.add(fn); return () => listeners.delete(fn); },
+        };
+        return client;
     },
 };
