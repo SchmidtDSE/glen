@@ -3,7 +3,7 @@
  * core/main.js and plugins/mcp.js both take their harness URLs from here, so
  * a new harness release is this one line (SchmidtDSE/glen#511).
  */
-export const HARNESS_TAG = 'v0.10.1';
+export const HARNESS_TAG = 'v0.11.0';
 
 const RELEASE_BASE = `https://cdn.jsdelivr.net/gh/SchmidtDSE/glen-harness@${HARNESS_TAG}/`;
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
