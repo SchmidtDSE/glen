@@ -5,16 +5,21 @@ import { ensurePanelActions } from './panel-actions.js';
  * Opt-in only (never loaded unless `upload_enabled` is set in config). Lets a
  * user drop a small polygon or point GeoJSON on the map. The file is:
  *   1. parsed + validated + size/feature-capped entirely in the browser,
- *   2. PUT directly to the public-output S3 bucket (browser → S3, a plain
- *      fetch PUT — NOT an SDK chunked upload, which the anonymous endpoint
- *      corrupts), and
+ *   2. handed to a store, which puts it where the SQL can read it:
+ *      - s3UploadStore PUTs it to the public-output S3 bucket (browser → S3,
+ *        a plain fetch PUT — NOT an SDK chunked upload, which the anonymous
+ *        endpoint corrupts), for SQL that runs on a server;
+ *      - workerUploadStore gives it to the geo-query-wasm worker the page's
+ *        SQL runs in, under /upload/ (SchmidtDSE/glen#463). Nothing is stored
+ *        anywhere and the file never leaves the visitor's browser.
  *   3. drawn inline on the map.
  *
- * The upload payload never passes through the LLM — only the resulting URL is
- * exposed to the agent (via the `get_uploaded_dataset` tool wired in main.js),
- * which reads it back with DuckDB `ST_Read(...)` in the existing `query` tool.
- * See geo-agent#325. Large/complex/non-polygon data is out of scope by design;
- * the size cap steers those users to a data-ingest request.
+ * The upload payload never passes through the LLM — only where it is (a URL,
+ * or a path under /upload/) is exposed to the agent (via the
+ * `get_uploaded_dataset` tool), which reads it with DuckDB `ST_Read(...)` in
+ * the existing `query` tool. See geo-agent#325. Large/complex/non-polygon data
+ * is out of scope by design; the size cap steers those users to a data-ingest
+ * request.
  */
 
 const DEFAULTS = {
@@ -216,14 +221,80 @@ export async function contentHash(text) {
     return hex.slice(0, 16);
 }
 
+/* ── Stores: where an upload goes so the SQL can read it ────────────────────── */
+
+/**
+ * The full app's store: a plain PUT to a public bucket, read back over https
+ * by SQL that runs on a server.
+ * @param {{bucketUrl: string, prefix: string}} cfg
+ * @param {typeof fetch} [fetchImpl]
+ */
+export function s3UploadStore(cfg, fetchImpl = (...a) => fetch(...a)) {
+    return {
+        verb: 'Uploading',
+        async put({ text, hash }) {
+            const url = buildObjectUrl(cfg.bucketUrl, cfg.prefix, hash);
+            const res = await fetchImpl(url, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/geo+json' },
+                body: text, // plain PUT — anonymous endpoint corrupts SDK-chunked bodies
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return { url };
+        },
+    };
+}
+
+/**
+ * A store for SQL that runs in the page, in a geo-query-wasm worker
+ * (SchmidtDSE/glen#463). The file goes to the worker with geo-query-wasm's
+ * addFile, and SQL reads it at /upload/<hash>.geojson. The worker holds it
+ * only as long as it runs, so the store keeps each file it has given and
+ * gives them all again to a worker that replaces it.
+ *
+ * @param {{get(): Worker, onStart(fn: (w: Worker) => void): Function}} sqlWorker
+ *   plugins/mcp.js's handle on the worker (`ctx.sqlWorker`)
+ * @param {() => Promise<{addFile: Function}>} loadFiles - geo-query-wasm's src/files.js
+ */
+export function workerUploadStore(sqlWorker, loadFiles) {
+    const held = new Map();   // file name → GeoJSON text
+    let files = null;
+    const lib = () => (files ??= loadFiles());
+    const blob = (text) => new Blob([text], { type: 'application/geo+json' });
+    sqlWorker.onStart(async (worker) => {
+        if (!held.size) return;
+        const { addFile } = await lib();
+        for (const [name, text] of held) {
+            try {
+                await addFile(worker, blob(text), name);
+            } catch (err) {
+                console.warn(`[upload] Could not give ${name} to the new SQL worker:`, err.message);
+            }
+        }
+    });
+    return {
+        verb: 'Adding',
+        held,
+        async put({ text, hash }) {
+            const { addFile } = await lib();
+            const name = `${hash}.geojson`;
+            const added = await addFile(sqlWorker.get(), blob(text), name);
+            held.set(name, text);
+            return { url: added.path, columns: added.columns };
+        },
+    };
+}
+
 /* ── DOM / network glue (browser-only, verified manually) ──────────────────── */
 
 export class UploadManager {
     /**
      * @param {import('./map-manager.js').MapManager} mapManager
      * @param {Object} [config] - options object (or {} for defaults)
+     * @param {{store?: {verb: string, put: Function}}} [deps] - where files
+     *   go; the S3 bucket in `config` by default
      */
-    constructor(mapManager, config = {}) {
+    constructor(mapManager, config = {}, { store } = {}) {
         this.mapManager = mapManager;
         this.map = mapManager.map;
         this.cfg = {
@@ -234,7 +305,8 @@ export class UploadManager {
             maxPointFeatures: config.max_point_features || DEFAULTS.maxPointFeatures,
             ingestUrl: config.ingest_url || DEFAULTS.ingestUrl,
         };
-        /** @type {Array<{url,layerId,displayName,kind,geometryType,propertyKeys,featureCount,sqlSource?}>} */
+        this.store = store || s3UploadStore(this.cfg);
+        /** @type {Array<{url,layerId,displayName,kind,geometryType,propertyKeys,featureCount,sqlSource?,columns?}>} */
         this.uploads = [];
         this._input = null;
     }
@@ -309,7 +381,7 @@ export class UploadManager {
     }
 
     /**
-     * Parse → validate → hash → PUT to S3 → draw → announce.
+     * Parse → validate → hash → store (S3 or the SQL worker) → draw → announce.
      * @param {File} file
      */
     async handleFile(file) {
@@ -340,20 +412,15 @@ export class UploadManager {
             text = JSON.stringify(parsed);
         }
 
-        this._setStatus(`Uploading "${file.name}"…`);
+        this._setStatus(`${this.store.verb} "${file.name}"…`);
         const hash = await contentHash(text);
-        const url = buildObjectUrl(this.cfg.bucketUrl, this.cfg.prefix, hash);
-
+        let stored;
         try {
-            const res = await fetch(url, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/geo+json' },
-                body: text, // plain PUT — anonymous endpoint corrupts SDK-chunked bodies
-            });
-            if (!res.ok) return this._fail(`Upload failed (HTTP ${res.status}).`);
+            stored = await this.store.put({ text, hash });
         } catch (err) {
             return this._fail(`Upload failed: ${err.message}`);
         }
+        const { url } = stored;
 
         const displayName = file.name.replace(/\.(geo)?json$/i, '') || 'Uploaded layer';
         const bounds = computeBounds(parsed);
@@ -371,6 +438,7 @@ export class UploadManager {
             geometryType: v.kind === 'point' ? 'Point' : v.geometryTypes.join('+'),
             propertyKeys, featureCount: v.features.length,
         };
+        if (stored.columns) record.columns = stored.columns;
         if (v.kind === 'point') record.sqlSource = pointHexSql(url, allPropertyKeys(v.features));
         // Keep one record per url (idempotent re-upload).
         this.uploads = this.uploads.filter(u => u.url !== url);

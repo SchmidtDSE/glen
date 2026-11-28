@@ -17,7 +17,7 @@
  *     matter.
  *
  *   "plugins": [{ "url": "…/core/plugins/mcp.js", "options": { … } },
- *               { "url": "…/core/plugins/hex.js", "options": { "geo_query_wasm": "v0.7.0" } }]
+ *               { "url": "…/core/plugins/hex.js", "options": { "geo_query_wasm": "v0.8.0" } }]
  *
  * `geo_query_wasm` is the geo-query-wasm release whose hex protocol module
  * to load, when a worker server is configured; match the worker's.
@@ -36,8 +36,9 @@
  */
 
 import { hasControlsPlugin } from './charts.js';
+import { DEFAULT_GEO_QUERY_WASM, geoQueryWasmUrl } from '../geo-query-wasm.js';
 
-export const DEFAULT_GEO_QUERY_WASM = 'v0.7.0';
+export { DEFAULT_GEO_QUERY_WASM };
 
 /** Whether the app runs an MCP server in a worker (plugins/mcp.js `worker`). */
 export function hasWorkerServer(config) {
@@ -64,7 +65,7 @@ const plugin = {
 
     /** geo-query-wasm's hex protocol module; tests replace this method. */
     async loadHexProtocol(ref) {
-        return import(`https://cdn.jsdelivr.net/gh/SchmidtDSE/geo-query-wasm@${ref}/src/hex-protocol.js`);
+        return import(geoQueryWasmUrl(ref, 'src/hex-protocol.js'));
     },
 
     async setup(ctx, options = {}) {

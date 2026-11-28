@@ -28,9 +28,12 @@ describe('upload tools (shared by the full app and glen core)', () => {
         const tool = createUploadedDatasetTool({ getUploads: () => [
             { url: 'https://s3/u/a.geojson', displayName: 'Park', kind: 'polygon', geometryType: 'Polygon', featureCount: 1, propertyKeys: ['name'] },
             { url: 'https://s3/u/b.geojson', displayName: 'Sightings', kind: 'point', featureCount: 40, sqlSource: '(SELECT 1)' },
+            { url: '/upload/c.geojson', displayName: 'Site', kind: 'polygon', featureCount: 1, columns: [{ name: 'geom', type: 'GEOMETRY' }] },
         ] }, ['h10', 'h0']);
         const out = JSON.parse(tool.execute());
-        expect(out.datasets.map(d => d.url)).toEqual(['https://s3/u/a.geojson', 'https://s3/u/b.geojson']);
+        expect(out.datasets.map(d => d.url)).toEqual(['https://s3/u/a.geojson', 'https://s3/u/b.geojson', '/upload/c.geojson']);
+        expect(out.datasets[2].columns).toEqual([{ name: 'geom', type: 'GEOMETRY' }]);
+        expect(out.datasets[0].columns).toBeUndefined();
         expect(out.datasets[1]).toMatchObject({ sql_source: '(SELECT 1)', cell_columns: ['h10', 'h0'] });
         expect(out.hint).toMatch(/Boundaries:.*Points:/);
         expect(JSON.parse(createUploadedDatasetTool({ getUploads: () => [] }, []).execute()).success).toBe(false);

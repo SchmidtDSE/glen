@@ -9,9 +9,6 @@
         "servers": [
           {
             "worker": "geo-query-worker.js",
-            "worker_config": {
-              "discovery": false
-            },
             "include": [
               "query",
               "register_hex_tiles",
@@ -20,6 +17,10 @@
           }
         ]
       }
+    },
+    {
+      "url": "core/plugins/uploads.js",
+      "options": {}
     },
     {
       "url": "core/plugins/controls.js",

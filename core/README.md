@@ -159,7 +159,7 @@ When the first server is on another origin from the page and its entry sets no `
 ]
 ```
 
-`plugins/draw.js` adds the v3 full app's polygon draw button and the `get_drawn_region` tool, which returns the drawn region as WKT with an H3 resolution to join it at. `plugins/uploads.js` adds the v3 full app's GeoJSON upload: polygons or points, sent from the browser to S3, with the `get_uploaded_dataset` tool, which gives the agent the file's URL and never its geometry. Its options are the v3 full app's upload settings (`bucket_url`, `prefix`, `max_bytes`, `max_features`, `max_point_features`, `ingest_url`; see the [configuration guide](../docs/guide/configuration.md#geojson-upload)). Both tell the chat when a region is drawn or a file arrives. Both answers are meant for SQL, so these plugins go with an SQL server from `plugins/mcp.js`.
+`plugins/draw.js` adds the v3 full app's polygon draw button and the `get_drawn_region` tool, which returns the drawn region as WKT with an H3 resolution to join it at. `plugins/uploads.js` adds the v3 full app's GeoJSON upload: polygons or points, with the `get_uploaded_dataset` tool, which tells the agent where the file is and never gives it the geometry. When the app's SQL runs in the browser (a geo-query-wasm worker), the file goes to the worker and SQL reads it under `/upload/`, so it never leaves the visitor's browser (SchmidtDSE/glen#463); otherwise it is sent to S3, as in the v3 full app. `plugins/mcp.js` gives plugins the worker as `ctx.sqlWorker`. Its options are `storage` (`browser` or `s3`, chosen by default from the app's SQL), `geo_query_wasm`, and the v3 full app's upload settings (`bucket_url`, `prefix`, `max_bytes`, `max_features`, `max_point_features`, `ingest_url`; see the [configuration guide](../docs/guide/configuration.md#geojson-upload)). Both tell the chat when a region is drawn or a file arrives. Both answers are meant for SQL, so these plugins go with an SQL server from `plugins/mcp.js`.
 
 ```json
 "plugins": [
@@ -169,7 +169,7 @@ When the first server is on another origin from the page and its entry sets no `
 ]
 ```
 
-`plugins/hex.js` adds the v3 full app's `add_hex_tile_layer` and `remove_hex_tile_layer`, which draw the H3 tile pyramid an SQL server builds with `register_hex_tiles`. duckdb-mcp serves those tiles over https. geo-query-wasm, run in a worker by `plugins/mcp.js`, keeps them in the browser at `geoquerywasm://` URLs; the plugin then registers geo-query-wasm's MapLibre protocol for them and reads each tileset's `metadata.json` through the worker. Its `geo_query_wasm` option names the geo-query-wasm release whose protocol module to load (default `v0.7.0`); match the worker's.
+`plugins/hex.js` adds the v3 full app's `add_hex_tile_layer` and `remove_hex_tile_layer`, which draw the H3 tile pyramid an SQL server builds with `register_hex_tiles`. duckdb-mcp serves those tiles over https. geo-query-wasm, run in a worker by `plugins/mcp.js`, keeps them in the browser at `geoquerywasm://` URLs; the plugin then registers geo-query-wasm's MapLibre protocol for them and reads each tileset's `metadata.json` through the worker. Its `geo_query_wasm` option names the geo-query-wasm release whose protocol module to load (default `v0.8.0`); match the worker's.
 
 `setup` runs after the map and the map tools exist and before the agent is built. It receives:
 

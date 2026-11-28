@@ -3,9 +3,10 @@
  * (`upload_enabled`) and glen core's uploads plugin (core/plugins/uploads.js).
  *
  * `UploadManager` (upload-manager.js) owns the button and the files; this
- * module gives the agent `get_uploaded_dataset`, which returns only the
- * files' URLs so the geometry never enters the model's context
- * (geo-agent#325, points #435), and tells the chat when a file arrives.
+ * module gives the agent `get_uploaded_dataset`, which returns only where the
+ * files are (a URL, or a path under /upload/ when the SQL runs in the
+ * browser, SchmidtDSE/glen#463) so the geometry never enters the model's
+ * context (geo-agent#325, points #435), and tells the chat when a file arrives.
  */
 
 /**
@@ -19,8 +20,9 @@ export function createUploadedDatasetTool(uploadManager, POINT_CELL_COLUMNS) {
         name: 'get_uploaded_dataset',
         description:
             'Get the files the user uploaded to the map: polygon boundaries, or points such as their own ' +
-            'occurrence records. Returns public GeoJSON URL(s); the agent does NOT receive the geometry. ' +
-            'Read a boundary server-side in the query tool with ST_Read(url) and use it as an area-of-interest mask. ' +
+            'occurrence records. Returns where each GeoJSON file is (`url`: a URL, or a path such as /upload/<name>.geojson); ' +
+            'the agent does NOT receive the geometry. ' +
+            'Read a boundary in the query tool with ST_Read(url) and use it as an area-of-interest mask. ' +
             'A point upload comes with a ready `sql_source` that adds H3 cell columns h10…h0 (UBIGINT, like the ' +
             'catalog\'s hex columns), so the points join to any H3-indexed dataset on a shared column such as h10. ' +
             'Call this when the user refers to "the uploaded file", "my boundary", "my points", "my observations", ' +
@@ -34,7 +36,7 @@ export function createUploadedDatasetTool(uploadManager, POINT_CELL_COLUMNS) {
             const hints = [];
             if (uploads.some(u => u.kind !== 'point')) {
                 hints.push(
-                    "Boundaries: read server-side, never inline the geometry. For an H3-indexed dataset, convert the " +
+                    "Boundaries: read the file with ST_Read in SQL, never inline the geometry. For an H3-indexed dataset, convert the " +
                     "boundary once to cells and JOIN, also on h0, which catalog hex data is partitioned by: " +
                     "WITH aoi AS (SELECT ST_AsText(ST_Union_Agg(geom)) AS wkt FROM ST_Read('<url>')), " +
                     "cells AS (SELECT UNNEST(h3_polygon_wkt_to_cells(aoi.wkt, <res>)) AS cell FROM aoi) " +
@@ -68,6 +70,7 @@ export function createUploadedDatasetTool(uploadManager, POINT_CELL_COLUMNS) {
                     geometry_type: u.geometryType,
                     feature_count: u.featureCount,
                     property_keys: u.propertyKeys,
+                    ...(u.columns ? { columns: u.columns } : {}),
                     ...(u.sqlSource ? { sql_source: u.sqlSource, cell_columns: POINT_CELL_COLUMNS } : {}),
                 })),
                 hint: hints.join(' '),
@@ -93,7 +96,7 @@ export function wireUploadNotices({ agent, ui, target = window }) {
                 ? '[The user has uploaded a set of points to the map. Use the get_uploaded_dataset tool to get its ' +
                   'SQL source, with H3 cell columns, when answering questions about these points.]'
                 : '[The user has uploaded a polygon boundary to the map. ' +
-                  'Use the get_uploaded_dataset tool to retrieve its URL when answering spatial queries about this area.]',
+                  'Use the get_uploaded_dataset tool to find where it is when answering spatial queries about this area.]',
         });
     });
     target.addEventListener('geojson-upload-error', (e) => {

@@ -1163,15 +1163,22 @@ The agent receives a `get_drawn_region` tool that returns the polygon as WKT alo
 
 `plugins/uploads.js` lets a user drop a small polygon boundary (a study area, a parcel, a district) or a set of points (their own occurrence records, survey sites) onto the map and ask questions about it.
 
-An **Upload** button appears in the layer panel's action row, and a `.geojson` file can also be dragged onto the map. The file is validated in the browser, `PUT` straight to a public bucket, and drawn on the map. The file never passes through the model. The agent gets only the uploaded file's URL, through the `get_uploaded_dataset` tool, and reads it with DuckDB `ST_Read(...)` in an ordinary `query`.
+An **Upload** button appears in the layer panel's action row, and a `.geojson` file can also be dragged onto the map. The file is validated in the browser, put where the app's SQL can read it, and drawn on the map. The file never passes through the model. The agent gets only where the file is, through the `get_uploaded_dataset` tool, and reads it with DuckDB `ST_Read(...)` in an ordinary `query`.
+
+Where the file goes depends on where the app's SQL runs (SchmidtDSE/glen#463):
+
+- **SQL in the browser** (a [geo-query-wasm worker](#mcp-servers) in `plugins/mcp.js`): the file goes to the worker, and SQL reads it at `/upload/<name>.geojson`. Nothing is stored anywhere and the file never leaves the visitor's browser, so no bucket is needed. The worker also reports the file's columns, which the agent receives with it. The app's worker file and this plugin's `geo_query_wasm` must name the same geo-query-wasm release, v0.8.0 or later.
+- **SQL on a server**: the file is `PUT` to a public bucket and the agent gets its URL, as in the v3 full app. See the warning at the end of this section.
 
 Its options:
 
 | Field | Default | Description |
 |---|---|---|
-| `bucket_url` | `https://s3-west.nrp-nautilus.io/public-output` | Bucket the file is written to. |
-| `prefix` | `uploads` | Key prefix inside the bucket. Files are named by content hash. |
-| `max_bytes` | `5242880` (5 MB) | Largest file accepted. |
+| `storage` | `browser` with a worker server, else `s3` | Where files go: `browser` (the SQL worker) or `s3` (the bucket below). |
+| `geo_query_wasm` | `v0.8.0` | The geo-query-wasm release whose file helpers to load, for `browser`. Match the app's worker file. |
+| `bucket_url` | `https://s3-west.nrp-nautilus.io/public-output` | Bucket the file is written to, for `s3`. |
+| `prefix` | `uploads` | Key prefix inside the bucket, for `s3`. Files are named by content hash. |
+| `max_bytes` | `5242880` (5 MB) | Largest file accepted. The worker refuses files over its own `maxUploadBytes` (50 MB by default). |
 | `max_features` | `1000` | Most polygon features accepted. |
 | `max_point_features` | `50000` | Most points accepted, after each MultiPoint is split into its points. `max_bytes` still applies. |
 | `ingest_url` | none | Where to send people whose data is too big or isn't polygons or points, e.g. a data-ingest request form. |
@@ -1214,13 +1221,13 @@ The hint tells the agent to join at the finest resolution both sides have and to
 
 The cells are computed when the agent queries rather than stored in the file. Parsing the GeoJSON dominates the cost of a query, and storing the cells made the file up to 2.8 times larger and slower to read; #435 has the benchmark.
 
-::: warning The bucket must accept anonymous browser uploads
+::: warning With `s3`, the bucket must accept anonymous browser uploads
 The browser writes the file directly, so the bucket needs anonymous `PUT` **and** a CORS rule allowing `PUT` from your app's origin. Read-only CORS is the common default, and uploads fail at the preflight with a 403. On Ceph RGW the first rule whose `AllowedOrigin` matches wins, so put a specific-origin `PUT` rule before any broad `*` rule. Uploaded files are public.
 :::
 
 ### Hex tile layers
 
-`plugins/hex.js` adds `add_hex_tile_layer` and `remove_hex_tile_layer`, which draw the H3 tile pyramid an SQL server builds with `register_hex_tiles`. duckdb-mcp serves those tiles over https. geo-query-wasm, run in a worker by `plugins/mcp.js`, keeps them in the browser; the plugin then registers geo-query-wasm's MapLibre protocol for them. Its `geo_query_wasm` option names the geo-query-wasm release whose protocol module to load (default `v0.7.0`); match the worker's.
+`plugins/hex.js` adds `add_hex_tile_layer` and `remove_hex_tile_layer`, which draw the H3 tile pyramid an SQL server builds with `register_hex_tiles`. duckdb-mcp serves those tiles over https. geo-query-wasm, run in a worker by `plugins/mcp.js`, keeps them in the browser; the plugin then registers geo-query-wasm's MapLibre protocol for them. Its `geo_query_wasm` option names the geo-query-wasm release whose protocol module to load (default `v0.8.0`); match the worker's.
 
 **Colour range.** A `COUNT` or `SUM` tileset is coloured over each H3 level's own minimum and maximum, since its values grow about seven times from one level to the next. An `AVG`, `MIN` or `MAX` tileset keeps one scale at every level, so it is coloured over its finest level's range at every zoom, and a colour means the same value whichever level is on screen ([#521](https://github.com/SchmidtDSE/glen/issues/521)). A `range` of `[min, max]` puts that one range on every level instead, as when a hex layer should match another layer's legend ([#520](https://github.com/SchmidtDSE/glen/issues/520)). Calling `add_hex_tile_layer` again for a tileset already on the map recolours it in place with the call's `range`, `scale`, `palette` or `value_column`; changing its opacity or 3D still means removing it first.
 
