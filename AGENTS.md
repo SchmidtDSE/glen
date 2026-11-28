@@ -280,5 +280,4 @@ When a PR touches a covered module, expect tests to change too. When it touches 
 | `app/style-numbers.js` | covered | `test/style-numbers.test.js` — numeric strings read as numbers in `interpolate` and `step` stops, arithmetic arguments and plain numeric paint values, field names and `match` labels left alone, and `set_style` reporting what it changed (SchmidtDSE/glen#499). |
 | `app/map-manager.js`, `app/layout-manager.js`, `app/map-draw.js` | 0% | Browser-bound (DOM, MapLibre). Verify visually on a preview or at `/core/` — no harness yet. |
 
-Overall line coverage is reported on each PR via the coverage workflow.
 
