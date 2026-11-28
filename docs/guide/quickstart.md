@@ -121,11 +121,7 @@ Minimal example:
   ],
   "llm": {
     "user_provided": true,
-    "default_endpoint": "https://openrouter.ai/api/v1",
-    "models": [
-      { "value": "anthropic/claude-sonnet-4", "label": "Claude Sonnet" },
-      { "value": "google/gemini-2.5-flash", "label": "Gemini Flash" }
-    ]
+    "default_endpoint": "https://openrouter.ai/api/v1"
   }
 }
 ```

@@ -1303,26 +1303,22 @@ If the model service does not answer, the chat has no model and says so, unless 
 |---|---|
 | `user_provided` | `true` to enable browser-side API key entry. |
 | `default_endpoint` | Pre-filled endpoint URL shown in the settings panel. [OpenRouter](https://openrouter.ai) gives access to many models via one key. |
-| `models` | Array of `{ "value": "<model-id>", "label": "<display name>" }` entries in the model selector. |
 
-The settings panel also has an optional model field (#443). The visitor's own key pays, so they can name any model their endpoint serves; it is saved in `localStorage` next to the key, listed first in the picker and selected. The field suggests the ids the endpoint's `/models` lists (OpenRouter's catalog is public). Left empty, the picker offers `models`, which are suggestions rather than a limit.
+The app names no models in this mode either (SchmidtDSE/glen#547). The settings panel has a model field (SchmidtDSE/glen#443): the visitor's own key pays, so they can name any model their endpoint serves, and it is saved in `localStorage` next to the key. The field suggests the ids the endpoint's `/models` lists that can call tools (OpenRouter's catalog is public). Left empty, the chat uses the endpoint's default from glen-harness (`deepseek/deepseek-v4.1-flash-1017` on OpenRouter); for an endpoint glen-harness has no default for, the settings panel opens and asks for a model. An `llm.models` list in an older config is ignored.
 
 ### Sampling parameters (optional)
 
 The agent sends **`temperature: 0` by default**, so identical questions give as reproducible an answer as the model allows. This is a deliberate client-side default: geo-agent talks to many OpenAI-compatible endpoints (the NRP llm-proxy, OpenRouter, a user's own key) whose own defaults vary (0.7 and up), so reproducibility shouldn't depend on which endpoint is behind it.
 
-To change sampling, set any of `temperature`, `top_p`, `seed`, or `max_tokens`. Each is read **per-model first**, then falls back to a **top-level global default**, then to the built-in default (`temperature: 0`; the rest unset). Per-model overrides the global. Behind the open-llm-proxy, per-model settings come from the proxy's model list (its `settings` for each model); with user-provided keys they go on the entries in `llm.models`, as in the examples below.
+To change sampling, set any of `temperature`, `top_p`, `seed`, or `max_tokens`. Each is read **per-model first**, then falls back to a **top-level global default**, then to the built-in default (`temperature: 0`; the rest unset). Per-model overrides the global. Per-model values come from the open-llm-proxy's model list, each entry's `settings`, which the proxy's own config sets per tier; an app sets only the top-level defaults, in `layers-input.json`. With user-provided keys only the top-level defaults apply. An entry in the proxy's `/models` looks like this:
 
 ```json
 {
-  "temperature": 0,
-  "llm": {
-    "user_provided": true,
-    "models": [
-      { "value": "minimax-m2" },
-      { "value": "deepseek-v3", "temperature": 0.7, "seed": 42 }
-    ]
-  }
+  "object": "list", "tier": "public", "default_model": "minimax-m2",
+  "data": [
+    { "id": "minimax-m2" },
+    { "id": "deepseek-v3", "settings": { "temperature": 0.7, "seed": 42 } }
+  ]
 }
 ```
 
@@ -1363,13 +1359,10 @@ The toggle emits a normalized `enable_thinking` flag that the [open-llm-proxy](h
 
 ```json
 {
-  "llm": {
-    "user_provided": true,
-    "models": [
-      { "value": "qwen3", "reasoning_toggle": true, "reasoning_default": true },
-      { "value": "minimax-m2" }
-    ]
-  }
+  "data": [
+    { "id": "qwen3", "settings": { "reasoning_toggle": true, "reasoning_default": true } },
+    { "id": "minimax-m2" }
+  ]
 }
 ```
 
@@ -1397,13 +1390,10 @@ The agentic tool-use loop is heavily prefill-dominated — every turn re-sends t
 
 ```json
 {
-  "llm": {
-    "user_provided": true,
-    "models": [
-      { "value": "anthropic/claude-haiku-4.5", "prompt_cache": true },
-      { "value": "minimax-m2" }
-    ]
-  }
+  "data": [
+    { "id": "anthropic/claude-haiku-4.5", "settings": { "prompt_cache": true } },
+    { "id": "minimax-m2" }
+  ]
 }
 ```
 
@@ -1431,7 +1421,6 @@ The voice pipeline runs in two phases:
   "llm": {
     "user_provided": true,
     "default_endpoint": "https://open-llm-proxy.nrp-nautilus.io/v1",
-    "models": [ /* ... */ ],
     "transcription_model": { "value": "gemma-small" }
   }
 }
@@ -1837,11 +1826,7 @@ Use `["match", ["get", "col"], ["val1", "val2"], true, false]` for list membersh
 
   "llm": {
     "user_provided": true,
-    "default_endpoint": "https://openrouter.ai/api/v1",
-    "models": [
-      { "value": "anthropic/claude-sonnet-4", "label": "Claude Sonnet" },
-      { "value": "google/gemini-2.5-flash", "label": "Gemini Flash" }
-    ]
+    "default_endpoint": "https://openrouter.ai/api/v1"
   },
 
   "welcome": {
